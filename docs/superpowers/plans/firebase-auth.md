@@ -7,15 +7,15 @@ Spec: the user's request (no separate spec file): "add a native login on login p
 - Next.js 16 App Router, React 19, TypeScript, Tailwind v4. Firebase JS SDK v12 (modular API only: `firebase/app`, `firebase/auth`, `firebase/firestore`, `firebase/analytics`).
 - Package manager: pnpm. pnpm is not on PATH; run it as `npx -y pnpm@10 <args>`. `node_modules` is not installed yet; run `npx -y pnpm@10 install` first if missing.
 - "Native login" = Firebase **Email/Password** provider. The existing "Continue with Google" button stays and is wired to `signInWithPopup(GoogleAuthProvider)`; it must show a readable error if that provider is not enabled.
-- Firebase config is read from `NEXT_PUBLIC_FIREBASE_*` env vars in `.env.local` (git-ignored). Exact values:
+- Firebase config is read from `NEXT_PUBLIC_FIREBASE_*` env vars in `.env.local` (git-ignored); the real values live only there. Keys:
   ```
-  NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyD4glDBsEFqNpyDnKfmdxezIj1-WVKDH3U
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=echo-ai-9f0e5.firebaseapp.com
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID=echo-ai-9f0e5
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=echo-ai-9f0e5.firebasestorage.app
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1060608290245
-  NEXT_PUBLIC_FIREBASE_APP_ID=1:1060608290245:web:332decbaf0fd726f29afac
-  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-204FMGK3FP
+  NEXT_PUBLIC_FIREBASE_API_KEY=<your-value>
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=<your-value>
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID=<your-value>
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=<your-value>
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=<your-value>
+  NEXT_PUBLIC_FIREBASE_APP_ID=<your-value>
+  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=<your-value>
   ```
   `.env.example` (committed) lists the same keys with empty values.
 - Firebase must only initialize in the browser-safe way: `getApps().length ? getApp() : initializeApp(cfg)`. Analytics only via `isSupported()` and only when `typeof window !== 'undefined'`. `next build` must succeed (no SSR crash).

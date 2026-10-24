@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -58,25 +59,28 @@ export const memoriesCol = (uid: string) => sub<Memory>(uid, 'memories')
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = userDoc(user.uid)
-  const snap = await getDoc(ref)
-  if (snap.exists()) return snap.data()
-  await setDoc(ref, {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-    photoURL: user.photoURL,
-    preferredName: user.displayName || user.email?.split('@')[0] || '',
-    priorities: [],
-    yearGoals: [],
-    importantPeople: [],
-    tone: 'Gentle coach',
-    checkInTime: '20:30',
-    remindersEnabled: true,
-    onboarded: false,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  } as unknown as UserProfile)
-  return (await getDoc(ref)).data() as UserProfile
+  // Transaction makes read+create atomic so concurrent calls (StrictMode double effect) can't both create.
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    if (snap.exists()) return snap.data()
+    const base = {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      preferredName: user.displayName || user.email?.split('@')[0] || '',
+      priorities: [] as string[],
+      yearGoals: [] as string[],
+      importantPeople: [] as string[],
+      tone: 'Gentle coach',
+      checkInTime: '20:30',
+      remindersEnabled: true,
+      onboarded: false,
+    }
+    tx.set(ref, { ...base, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as unknown as UserProfile)
+    const now = Timestamp.now()
+    return { ...base, createdAt: now, updatedAt: now } as UserProfile
+  })
 }
 
 export async function completeOnboarding(uid: string, answers: OnboardingAnswers): Promise<void> {

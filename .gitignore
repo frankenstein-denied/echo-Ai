@@ -17,3 +17,5 @@ node_modules
 # tooling
 graphify-out/
 .superpowers/
+next-env.d.ts
+*.tsbuildinfo
