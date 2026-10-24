@@ -1,0 +1,203 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function isString(v, maxLen) {
+      return v is string && v.size() <= maxLen;
+    }
+    function isNullableString(v, maxLen) {
+      return v == null || isString(v, maxLen);
+    }
+    function isStringList(v) {
+      return v is list && v.size() <= 100;
+    }
+    function isNum(v, lo, hi) {
+      return (v is int || v is float) && v >= lo && v <= hi;
+    }
+    function isNonNegNum(v) {
+      return (v is int || v is float) && v >= 0;
+    }
+    // Writes always use serverTimestamp(), which arrives as request.time.
+    function createStamps(d) {
+      return d.createdAt == request.time && d.updatedAt == request.time;
+    }
+    function updateStamps(d) {
+      return d.createdAt == resource.data.createdAt && d.updatedAt == request.time;
+    }
+
+    match /users/{uid} {
+
+      // ---------- profile ----------
+      function validProfile(d) {
+        return d.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
+                'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
+                'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
+          && d.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
+                'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
+                'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
+          && d.uid == uid
+          && isNullableString(d.email, 320)
+          && isNullableString(d.displayName, 200)
+          && isNullableString(d.photoURL, 2048)
+          && isString(d.preferredName, 200)
+          && isStringList(d.priorities)
+          && isStringList(d.yearGoals)
+          && isStringList(d.importantPeople)
+          && isString(d.tone, 100)
+          && isString(d.checkInTime, 5)
+          && d.checkInTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && d.remindersEnabled is bool
+          && d.onboarded is bool;
+      }
+
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && validProfile(request.resource.data)
+        && createStamps(request.resource.data);
+      allow update: if isOwner(uid) && validProfile(request.resource.data)
+        && updateStamps(request.resource.data)
+        && request.resource.data.uid == resource.data.uid;
+
+      // ---------- notes ----------
+      match /notes/{id} {
+        function validNote(d) {
+          return d.keys().hasOnly(['title', 'body', 'category', 'tags', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['title', 'body', 'category', 'tags', 'createdAt', 'updatedAt'])
+            && isString(d.title, 500)
+            && isString(d.body, 100000)
+            && isString(d.category, 100)
+            && isStringList(d.tags);
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validNote(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validNote(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- goals ----------
+      // milestone element shape {text, done} is not checkable without loops in rules.
+      match /goals/{id} {
+        function validGoal(d) {
+          return d.keys().hasOnly(['title', 'category', 'progress', 'streak', 'milestones', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['title', 'category', 'progress', 'streak', 'milestones', 'createdAt', 'updatedAt'])
+            && isString(d.title, 500)
+            && isString(d.category, 100)
+            && isNum(d.progress, 0, 100)
+            && isNonNegNum(d.streak)
+            && d.milestones is list && d.milestones.size() <= 100;
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validGoal(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validGoal(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- healthLogs (doc id = YYYY-MM-DD; metrics optional) ----------
+      match /healthLogs/{date} {
+        function validHealth(d) {
+          return d.keys().hasOnly(['date', 'mood', 'sleepMinutes', 'waterGlasses', 'energy', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['date', 'createdAt', 'updatedAt'])
+            && d.date == date
+            && date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && (!('mood' in d) || isNum(d.mood, 1, 10))
+            && (!('sleepMinutes' in d) || isNonNegNum(d.sleepMinutes))
+            && (!('waterGlasses' in d) || isNonNegNum(d.waterGlasses))
+            && (!('energy' in d) || d.energy in ['low', 'medium', 'high']);
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validHealth(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validHealth(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- reminders (dueAt is a client Timestamp) ----------
+      match /reminders/{id} {
+        function validReminder(d) {
+          return d.keys().hasOnly(['title', 'dueAt', 'done', 'source', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['title', 'dueAt', 'done', 'source', 'createdAt', 'updatedAt'])
+            && isString(d.title, 500)
+            && d.dueAt is timestamp
+            && d.done is bool
+            && d.source in ['chat', 'routine', 'manual'];
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validReminder(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validReminder(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- routines ----------
+      match /routines/{id} {
+        function validRoutine(d) {
+          return d.keys().hasOnly(['title', 'cadence', 'confidence', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['title', 'cadence', 'confidence', 'createdAt', 'updatedAt'])
+            && isString(d.title, 500)
+            && isString(d.cadence, 100)
+            && isNum(d.confidence, 0, 1);
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validRoutine(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validRoutine(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- messages (no updatedAt) ----------
+      match /messages/{id} {
+        function validMessage(d) {
+          return d.keys().hasOnly(['role', 'text', 'createdAt'])
+            && d.keys().hasAll(['role', 'text', 'createdAt'])
+            && d.role in ['user', 'assistant']
+            && isString(d.text, 20000);
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validMessage(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isOwner(uid) && validMessage(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
+      }
+
+      // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
+      match /connectors/{provider} {
+        function validConnector(d) {
+          return d.keys().hasOnly(['name', 'connected', 'updatedAt'])
+            && d.keys().hasAll(['name', 'connected', 'updatedAt'])
+            && isString(d.name, 100)
+            && d.connected is bool
+            && d.updatedAt == request.time;
+        }
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validConnector(request.resource.data);
+      }
+
+      // ---------- memories (no updatedAt) ----------
+      match /memories/{id} {
+        function validMemory(d) {
+          return d.keys().hasOnly(['label', 'type', 'links', 'createdAt'])
+            && d.keys().hasAll(['label', 'type', 'links', 'createdAt'])
+            && isString(d.label, 500)
+            && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector']
+            && isStringList(d.links);
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validMemory(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isOwner(uid) && validMemory(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
+      }
+    }
+
+    // ---------- default deny ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
