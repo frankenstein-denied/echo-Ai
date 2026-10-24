@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+@theme inline {
+  --color-background: #07101f;
+  --color-foreground: #e9f2ff;
+  --color-card: #0d1a2d;
+  --color-card-foreground: #e9f2ff;
+  --color-primary: #79e9ff;
+  --color-primary-foreground: #06111f;
+  --color-muted: #14243a;
+  --color-muted-foreground: #8ba3bf;
+  --color-border: #203552;
+  --color-accent: #ad8cff;
+  --color-destructive: #fb7185;
+  --radius: 1rem;
+}
+:root { color-scheme: dark; }
+* { border-color: #203552; }
+body { margin: 0; background: radial-gradient(circle at 70% 0%, rgba(65, 93, 173, .18), transparent 35%), #07101f; color: #e9f2ff; font-family: Arial, sans-serif; }
+button, input, textarea { font: inherit; }
+.glass { background: linear-gradient(145deg, rgba(17,34,58,.82), rgba(9,20,36,.68)); border: 1px solid rgba(126, 170, 220, .16); box-shadow: 0 20px 60px rgba(0,0,0,.2), inset 0 1px rgba(255,255,255,.03); backdrop-filter: blur(18px); }
+.grid-bg { background-image: linear-gradient(rgba(101, 151, 213, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(101,151,213,.045) 1px, transparent 1px); background-size: 36px 36px; }
+.orb { background: radial-gradient(circle at 35% 28%, #ecffff 0 3%, #79e9ff 12%, #637cff 42%, #a66dff 65%, transparent 70%); box-shadow: 0 0 35px #79e9ff88, 0 0 100px #7c5cff66; animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 0%,100%{transform:scale(.96);filter:saturate(.9)} 50%{transform:scale(1.04);filter:saturate(1.25)} }
+@keyframes floatin { from {opacity:0; transform:translateY(10px)} to {opacity:1; transform:none} }
+.animate-in { animation: floatin .45s ease-out both; }
