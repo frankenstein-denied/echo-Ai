@@ -46,6 +46,14 @@ export function readWavInfo(buf: Buffer): WavInfo | null {
   return null
 }
 
+// Gemini TTS returns either raw L16 PCM or a complete WAV (some models append a C2PA
+// provenance chunk after the data). Re-wrapping a complete WAV as PCM makes its header
+// and metadata audible as noise, so pass real WAVs through untouched.
+export function ttsAudioToWav(audio: Buffer, mime: string | undefined): Buffer {
+  if (readWavInfo(audio)) return audio
+  return pcmToWav(audio, parsePcmRate(mime))
+}
+
 // Parse the sample rate from a mime like "audio/L16;codec=pcm;rate=24000".
 export function parsePcmRate(mime: string | undefined, fallback = 24000): number {
   const m = /rate=(\d+)/i.exec(mime ?? '')

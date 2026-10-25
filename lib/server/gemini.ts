@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { FallbackError, geminiModels, withModelFallback } from './gemini-fallback'
-import { parsePcmRate, pcmToWav } from './wav'
+import { ttsAudioToWav } from './wav'
 
 // Chosen from live probing on the project key; see .superpowers/sdd/echo-voice-router/task-4-report.md.
 export const DEFAULT_TTS_MODELS = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview']
@@ -63,7 +63,7 @@ export async function synthesizeSpeech(text: string, voice: string, models = tts
     const data = part?.inlineData?.data
     // Empty audio is retried on the next model, like a malformed response.
     if (!data) throw new SyntaxError('TTS returned no audio')
-    return pcmToWav(Buffer.from(data, 'base64'), parsePcmRate(part?.inlineData?.mimeType))
+    return ttsAudioToWav(Buffer.from(data, 'base64'), part?.inlineData?.mimeType)
   })
   return { wav: value, model }
 }

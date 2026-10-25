@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePcmRate, pcmToWav, readWavInfo, resamplePcm16Mono } from './wav'
+import { parsePcmRate, pcmToWav, readWavInfo, resamplePcm16Mono, ttsAudioToWav } from './wav'
 
 const pcm = (n: number) => {
   const b = Buffer.alloc(n * 2)
@@ -63,5 +63,28 @@ describe('wav', () => {
   it('computes duration for stereo and 24-bit audio', () => {
     expect(readWavInfo(pcmToWav(Buffer.alloc(16000 * 4), 16000, 2, 16))!.durationSec).toBeCloseTo(1, 5)
     expect(readWavInfo(pcmToWav(Buffer.alloc(16000 * 3 * 2), 16000, 1, 24))!.durationSec).toBeCloseTo(2, 5)
+  })
+})
+
+describe('ttsAudioToWav', () => {
+  const pcm = Buffer.alloc(480, 1)
+  it('passes a complete WAV through unchanged, so trailing metadata chunks are not played as audio', () => {
+    const c2pa = Buffer.concat([Buffer.from('C2PA', 'ascii'), Buffer.from([4, 0, 0, 0]), Buffer.from([9, 9, 9, 9])])
+    const wav = pcmToWav(pcm)
+    const withMeta = Buffer.concat([wav, c2pa])
+    withMeta.writeUInt32LE(withMeta.length - 8, 4)
+    const out = ttsAudioToWav(withMeta, 'audio/wav')
+    expect(out.equals(withMeta)).toBe(true)
+    expect(readWavInfo(out)?.dataLength).toBe(pcm.length)
+  })
+  it('detects a WAV by its RIFF header even when the mime type says otherwise', () => {
+    const wav = pcmToWav(pcm)
+    expect(ttsAudioToWav(wav, 'audio/L16;rate=24000').equals(wav)).toBe(true)
+  })
+  it('wraps raw L16 PCM using the rate from the mime type', () => {
+    const out = ttsAudioToWav(pcm, 'audio/l16; rate=16000; channels=1')
+    const info = readWavInfo(out)
+    expect(info?.sampleRate).toBe(16000)
+    expect(info?.dataLength).toBe(pcm.length)
   })
 })
