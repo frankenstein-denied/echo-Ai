@@ -98,7 +98,7 @@ export function AuthCard({ mode: modeProp, onModeChange }: { mode?: AuthMode; on
                 aria-pressed={showPassword}
                 size="sm"
                 onClick={() => setShowPassword(s => !s)}
-                className="absolute right-1 top-[30px]"
+                className="absolute right-1 top-[30px] max-lg:right-0 max-lg:top-[26px]"
               />
             </div>
             {error && <Alert variant="danger">{error}</Alert>}
@@ -121,7 +121,7 @@ export function AuthCard({ mode: modeProp, onModeChange }: { mode?: AuthMode; on
             type="button"
             disabled={busy}
             onClick={() => run(signInWithGoogle)}
-            className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#8E918F] bg-[#131314] px-4 text-sm font-medium text-[#E3E3E3] transition-colors hover:bg-[#1e1f20] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#8E918F] max-lg:h-11 bg-[#131314] px-4 text-sm font-medium text-[#E3E3E3] transition-colors hover:bg-[#1e1f20] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <GoogleG size={20} />
             Continue with Google

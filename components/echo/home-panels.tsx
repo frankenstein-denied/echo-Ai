@@ -131,7 +131,7 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
         <p className="mt-2 text-sm text-muted-foreground">No goals yet. Tell Echo a goal and it will appear here.</p>
       ) : (
         goals.map((g) => (
-          <button key={g.id} onClick={() => onNavigate('Goals')} className="mt-4 block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <button key={g.id} onClick={() => onNavigate('Goals')} className="mt-4 block w-full rounded-md text-left max-lg:mt-2 max-lg:py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <div className="flex justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-foreground">{g.title}</span>
               <span className="shrink-0 text-muted-foreground">{Math.round(g.progress)}%</span>

@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
-import { FileText, Plus, Search } from 'lucide-react'
+import { Check, FileText, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { addNote, notesCol, type Note } from '@/lib/firestore'
 import { filterNotes } from '@/lib/echo/view-helpers'
 import { filterByCategory, noteCategories, previewText, relativeDate, sortByUpdated } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Badge, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { NoteEditor } from './note-editor'
+import { Sheet, SheetItem } from './sheet'
 
 type NoteRow = Note & { id: string }
 
@@ -31,7 +32,7 @@ function NoteCard({ note, onOpen }: { note: NoteRow; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className={`flex h-full min-h-40 flex-col rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 ${FOCUS_RING}`}
+      className={`flex h-full min-h-40 flex-col rounded-xl border border-border bg-surface p-5 text-left max-sm:min-h-0 max-sm:w-full max-sm:p-4 transition-colors hover:border-border-strong hover:bg-surface-2 ${FOCUS_RING}`}
     >
       <span className="block w-full truncate text-base font-semibold text-foreground">{note.title || 'Untitled'}</span>
       <span className={`mt-2 line-clamp-3 text-sm leading-5 ${preview ? 'text-muted-foreground' : 'text-subtle'}`}>{preview || 'No content yet'}</span>
@@ -55,6 +56,7 @@ export function NotesView({ uid }: { uid: string }) {
   const [category, setCategory] = useState('All')
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [filterSheet, setFilterSheet] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const savedScroll = useRef<{ el: HTMLElement | null; top: number } | null>(null)
   const seenOpen = useRef(false)
@@ -142,13 +144,18 @@ export function NotesView({ uid }: { uid: string }) {
         </div>
       )}
       {notes !== null && notes.length > 0 && (
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 max-lg:mb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-xs">
-            <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-3 text-muted-foreground" />
+            <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-3 text-muted-foreground max-lg:top-3.5" />
             <Input aria-label="Search notes" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="Search notes" />
           </div>
           {categories.length > 1 && (
-            <div className="max-w-full overflow-x-auto">
+            <Button variant="secondary" icon={SlidersHorizontal} className="w-full sm:w-auto lg:hidden" aria-label="Filter notes" aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
+              {activeCategory === 'All' ? 'All categories' : activeCategory}
+            </Button>
+          )}
+          {categories.length > 1 && (
+            <div className="max-w-full overflow-x-auto max-lg:hidden">
               <Segmented
                 ariaLabel="Filter by category"
                 value={activeCategory}
@@ -180,7 +187,7 @@ export function NotesView({ uid }: { uid: string }) {
           action={<Button variant="secondary" onClick={() => { setSearch(''); setCategory('All') }}>Clear filters</Button>}
         />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 max-sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((n) => (
             <li key={n.id}>
               <NoteCard note={n} onOpen={() => open(n.id)} />
@@ -188,6 +195,24 @@ export function NotesView({ uid }: { uid: string }) {
           ))}
         </ul>
       )}
+      <Sheet open={filterSheet} onClose={() => setFilterSheet(false)} title="Filter notes" description="Show notes from one category.">
+        <div className="grid gap-1">
+          {['All', ...categories].map((c) => (
+            <SheetItem
+              key={c}
+              label={c === 'All' ? 'All categories' : c}
+              icon={c === activeCategory ? Check : undefined}
+              active={c === activeCategory}
+              aria-pressed={c === activeCategory}
+              className={c === activeCategory ? '' : 'pl-[44px]'}
+              onClick={() => {
+                setCategory(c)
+                setFilterSheet(false)
+              }}
+            />
+          ))}
+        </div>
+      </Sheet>
     </div>
   )
 }

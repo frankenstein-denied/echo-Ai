@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
-import { Brain, Maximize2, Minus, Pin, PinOff, Plus, X } from 'lucide-react'
+import { Brain, Maximize2, Minus, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { memoriesCol } from '@/lib/firestore'
 import {
   buildGraph,
@@ -19,6 +19,8 @@ import {
   type MemoryDoc,
 } from '@/lib/echo/graph'
 import { Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, RadioGroup, Skeleton } from './ui'
+import { Sheet } from './sheet'
+import { useIsMobile } from './use-mobile'
 
 type SimNode = GraphNode & SimulationNodeDatum
 type Transform = { x: number; y: number; k: number }
@@ -46,6 +48,8 @@ export function BrainView({ uid }: { uid: string }) {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoverId, setHoverId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+  const mobile = useIsMobile()
   const [tf, setTf] = useState<Transform>({ x: 0, y: 0, k: 1 })
   const [, setFrame] = useState(0)
 
@@ -420,10 +424,73 @@ export function BrainView({ uid }: { uid: string }) {
 
   const present = NODE_TYPES.filter((t) => (counts[t] ?? 0) > 0)
 
+  const filterControl = <RadioGroup label="Show" name="brain-filter" value={filter} onChange={(v) => setFilter(v as 'all' | GraphNodeType)} options={options} />
+  const legend = (
+    <>
+      <h2 className="mb-2 text-sm font-medium text-foreground">Legend</h2>
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+        {present.map((t) => (
+          <li key={t} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="size-2.5 rounded-full" style={{ background: typeColor(t) }} aria-hidden="true" />
+            {TYPE_LABEL[t]}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-muted-foreground">Bigger dots are mentioned more often.</p>
+    </>
+  )
+  const details = selected ? (
+    <>
+      {nodesRef.current.get(selected.id)?.fx != null && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
+          <span className="flex items-center gap-2"><Pin size={16} aria-hidden="true" />Pinned in place</span>
+          <Button variant="secondary" size="sm" icon={PinOff} onClick={() => releaseNode(selected.id)}>Release position</Button>
+        </div>
+      )}
+      <dl className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <dt className="text-xs text-muted-foreground">Mentions</dt>
+          <dd className="text-foreground">{selected.mentions}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Last seen</dt>
+          <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
+        </div>
+      </dl>
+      <div>
+        <h3 className="mb-1 text-sm font-medium text-foreground">Connected ({connected.length})</h3>
+        {connected.length ? (
+          <ul className="grid max-h-56 gap-1 overflow-y-auto">
+            {connected.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilter('all')
+                    setSelectedId(c.id)
+                    centreOn(c.id)
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-lg:min-h-11"
+                >
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: typeColor(c.type) }} aria-hidden="true" />
+                  <span className="truncate">{c.label}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{c.type}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No connections yet.</p>
+        )}
+      </div>
+    </>
+  ) : null
+  const filterLabel = filter === 'all' ? 'All' : TYPE_LABEL[filter]
+
   return (
     <div>
       {header}
-      <div className="mb-4 max-w-sm">
+      <div className="mb-4 max-w-sm max-lg:max-w-none">
         <Input
           label="Find a memory"
           type="search"
@@ -435,7 +502,7 @@ export function BrainView({ uid }: { uid: string }) {
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-        <div ref={wrapRef} className="relative h-[560px] overflow-hidden rounded-xl border border-border bg-surface">
+        <div ref={wrapRef} className="relative h-[560px] overflow-hidden rounded-xl border border-border bg-surface max-lg:h-[max(320px,calc(100dvh-var(--topbar-h)-var(--tabbar-h)-12.5rem))]">
           <svg
             ref={svgRef}
             className="size-full cursor-grab touch-none select-none"
@@ -489,6 +556,8 @@ export function BrainView({ uid }: { uid: string }) {
                   >
                     {nodesRef.current.get(gn.id)?.fx != null && <circle r={gn.radius + 7} fill="none" strokeWidth={1.5} strokeDasharray="3 3" style={{ stroke: 'var(--color-muted-foreground)' }} />}
                     {(isSel || isMatch || isHover) && <circle r={gn.radius + 4} fill="none" strokeWidth={2} style={{ stroke: isSel ? 'var(--color-foreground)' : 'var(--color-primary)' }} />}
+                    {/* Touch: invisible 44 px hit area around small dots. */}
+                    {mobile && <circle r={Math.max(gn.radius, 22 / tf.k)} fill="transparent" />}
                     <circle r={gn.radius} strokeWidth={1.5} style={{ fill: typeColor(gn.type), stroke: 'var(--color-surface)' }} />
                     {showLabel && (
                       <text x={gn.radius + 6 / tf.k} y={4 / tf.k} fontSize={12 / tf.k} paintOrder="stroke" strokeWidth={3 / tf.k} style={{ fill: 'var(--color-foreground)', stroke: 'var(--color-surface)' }}>
@@ -505,12 +574,14 @@ export function BrainView({ uid }: { uid: string }) {
             <IconButton icon={Minus} label="Zoom out" size="sm" onClick={() => zoomAt(1 / 1.3)} />
             <IconButton icon={Maximize2} label="Fit to view" size="sm" onClick={fit} />
           </div>
-          <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground">Drag nodes to arrange · double-tap or use Release position to unpin · drag the background to pan · scroll to zoom</p>
+          <Button variant="secondary" icon={SlidersHorizontal} className="absolute left-3 top-3 bg-surface-2 lg:hidden" aria-label="Filter and legend" aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
+            {filterLabel}
+          </Button>
+          <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground max-lg:hidden">Drag nodes to arrange · double-tap or use Release position to unpin · drag the background to pan · scroll to zoom</p>
+          <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap a dot for details · pinch to zoom · drag to pan</p>
         </div>
-        <div className="grid content-start gap-4">
-          <Card as="div">
-            <RadioGroup label="Show" name="brain-filter" value={filter} onChange={(v) => setFilter(v as 'all' | GraphNodeType)} options={options} />
-          </Card>
+        <div className="grid content-start gap-4 max-lg:hidden">
+          <Card as="div">{filterControl}</Card>
           {selected ? (
             <Card as="div" className="grid gap-3">
               <div className="flex items-start justify-between gap-2">
@@ -522,68 +593,25 @@ export function BrainView({ uid }: { uid: string }) {
                 </div>
                 <IconButton icon={X} label="Close details" size="sm" onClick={() => setSelectedId(null)} />
               </div>
-              {nodesRef.current.get(selected.id)?.fx != null && (
-                <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-2"><Pin size={16} aria-hidden="true" />Pinned in place</span>
-                  <Button variant="secondary" size="sm" icon={PinOff} onClick={() => releaseNode(selected.id)}>Release position</Button>
-                </div>
-              )}
-              <dl className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Mentions</dt>
-                  <dd className="text-foreground">{selected.mentions}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Last seen</dt>
-                  <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
-                </div>
-              </dl>
-              <div>
-                <h3 className="mb-1 text-sm font-medium text-foreground">Connected ({connected.length})</h3>
-                {connected.length ? (
-                  <ul className="grid max-h-56 gap-1 overflow-y-auto">
-                    {connected.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFilter('all')
-                            setSelectedId(c.id)
-                            centreOn(c.id)
-                          }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          <span className="size-2.5 shrink-0 rounded-full" style={{ background: typeColor(c.type) }} aria-hidden="true" />
-                          <span className="truncate">{c.label}</span>
-                          <span className="ml-auto text-xs text-muted-foreground">{c.type}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No connections yet.</p>
-                )}
-              </div>
+              {details}
             </Card>
           ) : (
             <Card as="div">
               <p className="text-sm text-muted-foreground">Select a memory to see its details and connections.</p>
             </Card>
           )}
-          <Card as="div">
-            <h2 className="mb-2 text-sm font-medium text-foreground">Legend</h2>
-            <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-              {present.map((t) => (
-                <li key={t} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="size-2.5 rounded-full" style={{ background: typeColor(t) }} aria-hidden="true" />
-                  {TYPE_LABEL[t]}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-xs text-muted-foreground">Bigger dots are mentioned more often.</p>
-          </Card>
+          <Card as="div">{legend}</Card>
         </div>
       </div>
+      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter and legend">
+        <div className="grid gap-5 px-2 pb-2">
+          {filterControl}
+          <div>{legend}</div>
+        </div>
+      </Sheet>
+      <Sheet open={mobile && !filterSheet && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Memory'} description={selected ? `${selected.type.charAt(0).toUpperCase()}${selected.type.slice(1)}` : undefined}>
+        <div className="grid gap-4 px-2 pb-2">{details}</div>
+      </Sheet>
     </div>
   )
 }

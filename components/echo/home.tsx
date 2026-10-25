@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
-import { Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Volume2 } from 'lucide-react'
+import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Volume2 } from 'lucide-react'
 import { addPageMessage, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, saveReply, sendToEcho, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
@@ -13,8 +13,10 @@ import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
 import { Alert, Badge, Button, IconButton, Skeleton } from './ui'
 import type { NodeType } from '@/lib/echo/ui-classes'
-import { CallBar, useEchoCall, type CallTurn, type LateResult } from './call-panel'
+import { CallBar, CallScreen, useEchoCall, type CallTurn, type LateResult } from './call-panel'
 import { TodayDrawer, TodayPanel, useToday } from './home-panels'
+import { Sheet } from './sheet'
+import { useCallFlag, useIsMobile } from './use-mobile'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -39,7 +41,7 @@ function ActionBadges({ types, onNavigate }: { types: string[]; onNavigate: (v: 
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {shown.map((t) => (
-        <button key={t} onClick={() => onNavigate(VIEW_FOR[t])} title={`Open ${VIEW_FOR[t]}`} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <button key={t} onClick={() => onNavigate(VIEW_FOR[t])} title={`Open ${VIEW_FOR[t]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
           <Badge type={NODE_FOR[t]}>{LABEL_FOR[t]}</Badge>
         </button>
       ))}
@@ -51,7 +53,7 @@ function Trace({ steps }: { steps: string[] }) {
   if (!steps.length) return null
   return (
     <details className="mt-2">
-      <summary className="cursor-pointer rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">AI trace · {steps.length} {steps.length === 1 ? 'step' : 'steps'}</summary>
+      <summary className="cursor-pointer rounded text-xs max-lg:py-3.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">AI trace · {steps.length} {steps.length === 1 ? 'step' : 'steps'}</summary>
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
         {steps.map((s, i) => (
           <p key={i}>
@@ -77,7 +79,7 @@ const timeLabel = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minut
 function UserBubble({ text, at }: { text: string; at?: Date | null }) {
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm text-foreground">{text}</div>
+      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm text-foreground max-lg:px-3.5 max-lg:text-[15px] max-lg:leading-[22px]">{text}</div>
       {at && <time className="px-1 text-xs text-subtle">{timeLabel(at)}</time>}
     </div>
   )
@@ -85,7 +87,7 @@ function UserBubble({ text, at }: { text: string; at?: Date | null }) {
 
 function EchoRow({ children, live = false }: { children: ReactNode; live?: boolean }) {
   return (
-    <div className="flex max-w-[92%] items-start gap-3" aria-live={live ? 'polite' : undefined}>
+    <div className="flex max-w-[92%] items-start gap-3 max-lg:gap-2" aria-live={live ? 'polite' : undefined}>
       <EchoAvatar />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
@@ -93,10 +95,10 @@ function EchoRow({ children, live = false }: { children: ReactNode; live?: boole
 }
 
 function EchoBubble({ children }: { children: ReactNode }) {
-  return <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-2.5 text-sm leading-6 text-foreground">{children}</div>
+  return <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-2.5 text-sm leading-6 text-foreground max-lg:px-3.5 max-lg:text-[15px] max-lg:leading-[22px]">{children}</div>
 }
 
-function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user: string; echo: string; saved: SavedItem[]; live?: boolean; onNavigate: (v: HomeView) => void }) {
+function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user: string; echo: string; saved: SavedItem[]; live?: boolean; onNavigate?: (v: HomeView) => void }) {
   const types = saved.map((s) => s.type)
   return (
     <>
@@ -104,7 +106,7 @@ function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user
       {(echo || types.length > 0) && (
         <EchoRow live={live}>
           {echo && <EchoBubble>{echo}</EchoBubble>}
-          <ActionBadges types={types} onNavigate={onNavigate} />
+          {onNavigate ? <ActionBadges types={types} onNavigate={onNavigate} /> : null}
         </EchoRow>
       )}
     </>
@@ -117,6 +119,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
+  const mobile = useIsMobile()
+  const callBtnRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     try {
       setTodayCollapsed(localStorage.getItem(TODAY_KEY) === '1')
@@ -410,6 +414,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   )
   const getCallContext = useCallback(() => buildContext(profile, messagesRef.current, memoriesRef.current), [profile])
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, onTurn: persistCallTurn, onLateResult })
+  useCallFlag(call.active)
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''
   useEffect(() => {
@@ -449,19 +454,25 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }
 
   const status = call.active ? '' : speaking ? 'Echo is speaking...' : thinking ? 'Echo is thinking...' : ''
+  // Mobile call screen transcript: this page's messages written since the call started.
+  const callStart = call.active ? call.startedAt : null
+  const callMessages = callStart ? (messages ?? []).filter((m) => (m.createdAt?.toMillis?.() ?? 0) >= callStart - 1000) : []
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 max-lg:gap-1 max-lg:py-1.5 max-lg:pl-1 max-lg:pr-3">
           <div className="min-w-0 flex-1">{header}</div>
           {meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{meta}</span>}
-          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <Button variant="secondary" size="sm" icon={CalendarCheck} className="shrink-0 lg:hidden" aria-label="Open Today" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)}>
+            Today
+          </Button>
           <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
         </div>
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6 max-lg:gap-4 max-lg:py-4">
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
             {messages?.length === 0 && !thinking && !error && !call.active && !pendingTurns.length && (
@@ -535,13 +546,16 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-border px-4 py-3">
+        <div className="shrink-0 border-t border-border px-4 py-3 max-lg:px-3 max-lg:py-2 max-lg:pb-[max(0.5rem,calc(env(safe-area-inset-bottom)-var(--tabbar-h)-var(--kb)+0.5rem))]">
           <div className="mx-auto w-full max-w-[720px]">
             {status && <p role="status" aria-live="polite" className="mb-2 text-xs text-muted-foreground">{status}</p>}
             {call.active ? (
-              <CallBar phase={call.phase} muted={call.muted} startedAt={call.startedAt} onMute={call.toggleMute} onEnd={call.end} />
+              // Below lg the full-screen CallScreen takes over.
+              <div className="max-lg:hidden">
+                <CallBar phase={call.phase} muted={call.muted} startedAt={call.startedAt} onMute={call.toggleMute} onEnd={call.end} />
+              </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
+              <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 max-lg:gap-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
                 <input
                   aria-label="Message Echo"
                   value={text}
@@ -555,7 +569,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                   maxLength={2000}
                   disabled={disabled}
                   placeholder="Tell Echo anything..."
-                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  enterKeyHint="send"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-lg:h-11 max-lg:px-2"
                 />
                 {tapToPlay && (
                   <Button variant="secondary" size="sm" icon={Volume2} onClick={() => void playAudio(tapToPlay)}>
@@ -563,7 +578,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                   </Button>
                 )}
                 {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                {prefs?.enabled && <IconButton icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
+                {prefs?.enabled && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
                 <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || !text.trim()} />
               </div>
             )}
@@ -576,7 +591,56 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           <TodayPanel uid={uid} day={day} onNavigate={onNavigate} />
         </aside>
       )}
-      {todayDrawer && <TodayDrawer uid={uid} day={day} onNavigate={onNavigate} onClose={() => setTodayDrawer(false)} />}
+      {todayDrawer && !mobile && <TodayDrawer uid={uid} day={day} onNavigate={onNavigate} onClose={() => setTodayDrawer(false)} />}
+      <Sheet open={todayDrawer && mobile} onClose={() => setTodayDrawer(false)} title="Today">
+        <div className="-mx-3">
+          <TodayPanel
+            uid={uid}
+            day={day}
+            onNavigate={(v) => {
+              setTodayDrawer(false)
+              onNavigate(v)
+            }}
+          />
+        </div>
+      </Sheet>
+      {call.active && (
+        <CallScreen
+          phase={call.phase}
+          muted={call.muted}
+          startedAt={call.startedAt}
+          onMute={call.toggleMute}
+          onEnd={call.end}
+          onClosed={() => callBtnRef.current?.focus({ preventScroll: true })}
+          scrollKey={`${liveKey}|${pendingTurns.length}|${callMessages.length}`}
+          alerts={
+            callSaveError || quotaNotice ? (
+              <>
+                {callSaveError && <Alert variant="warning">{callSaveError}</Alert>}
+                {quotaNotice && <Alert variant="warning">Echo&apos;s voice reached today&apos;s free limit — replies will stay as text.</Alert>}
+              </>
+            ) : undefined
+          }
+        >
+          {callMessages.map((m) =>
+            m.role === 'user' ? (
+              <UserBubble key={m.id} text={m.text} />
+            ) : (
+              <EchoRow key={m.id}>
+                <EchoBubble>{m.text}</EchoBubble>
+              </EchoRow>
+            ),
+          )}
+          {pendingTurns.map((t) => {
+            const has = (role: string, text: string) => !!text && callMessages.some((m) => m.role === role && m.text === text)
+            return <CallTurnBubbles key={t.key} user={has('user', t.userText) ? '' : t.userText} echo={has('assistant', t.echoText) ? '' : t.echoText} saved={[]} />
+          })}
+          {call.live && <CallTurnBubbles user={call.live.user} echo={call.live.echo} saved={[]} />}
+          {!callMessages.length && !pendingTurns.length && !(call.live && (call.live.user || call.live.echo)) && (
+            <p className="py-6 text-center text-sm text-muted-foreground">Start talking. What you and Echo say appears here.</p>
+          )}
+        </CallScreen>
+      )}
     </div>
   )
 }

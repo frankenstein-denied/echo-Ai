@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/firestore'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
 import { Alert, Button, Card, PageHeader, Select, Switch } from './ui'
+import { InstallAppButton } from './pwa'
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
@@ -115,12 +116,12 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             {row('Speak typed replies aloud', 'Echo reads each reply to a typed message. Calls always use voice.', <Switch checked={prefs.autoSpeak} onChange={(v) => update({ autoSpeak: v })} label="Speak typed replies aloud" />)}
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div className="min-w-40">
+            <div className="min-w-40 max-sm:w-full">
               <Select label="Voice (calls and spoken replies)" value={prefs.voice} onChange={(e) => update({ voice: e.target.value })} disabled={voicesError && !voices.length}>
                 {options.length ? options.map((v) => <option key={v.id} value={v.id}>{v.label}</option>) : <option value={prefs.voice}>{prefs.voice}</option>}
               </Select>
             </div>
-            <Button variant="secondary" icon={Play} onClick={() => void preview()} loading={previewing}>
+            <Button variant="secondary" icon={Play} onClick={() => void preview()} loading={previewing} className="max-sm:w-full">
               {previewing ? 'Loading...' : 'Preview'}
             </Button>
           </div>
@@ -138,10 +139,12 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
 
         <Card>
           <h2 className="text-base font-semibold text-foreground">Account</h2>
-          <div className="mt-3">
-            <Button variant="secondary" icon={LogOut} onClick={() => void signOut()}>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Button variant="secondary" icon={LogOut} onClick={() => void signOut()} className="max-sm:w-full">
               Sign out
             </Button>
+            {/* Renders nothing when the app is installed or the browser cannot install it. */}
+            <InstallAppButton className="max-sm:w-full max-lg:*:h-11 max-sm:[&>button:first-child]:flex-1 max-sm:[&>button:first-child]:justify-center" />
           </div>
         </Card>
       </div>

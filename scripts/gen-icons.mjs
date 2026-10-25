@@ -1,0 +1,41 @@
+// Generates the PWA icons from the Echo mark. Run: node scripts/gen-icons.mjs  (needs devDependency `sharp`;
+// if the node_modules/sharp link is dangling, run `pnpm install --force` first).
+import sharp from 'sharp'
+import { writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const icons = (name) => fileURLToPath(new URL(`../public/icons/${name}`, import.meta.url))
+
+const BG = '#0B0F14'
+const PRIMARY = '#2DD4BF'
+const FG = '#04201C'
+// lucide "sparkles" large star, filled, 24x24 box
+const STAR = 'M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'
+
+/** 512-unit canvas. circle = circle diameter, bg = 'full' | 'round' | 'none' */
+function svg({ circle, bg }) {
+  const r = circle / 2
+  const star = circle * 0.56
+  const s = star / 24
+  const bgEl = bg === 'full' ? `<rect width="512" height="512" fill="${BG}"/>` : bg === 'round' ? `<rect width="512" height="512" rx="112" fill="${BG}"/>` : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">${bgEl}<circle cx="256" cy="256" r="${r}" fill="${PRIMARY}"/><g transform="translate(${256 - star / 2} ${256 - star / 2}) scale(${s})"><path d="${STAR}" fill="${FG}"/></g></svg>`
+}
+
+const any = svg({ circle: 352, bg: 'round' })
+// maskable: all important content inside the central 80% safe zone (circle 60% of canvas)
+const maskable = svg({ circle: 300, bg: 'full' })
+const apple = svg({ circle: 352, bg: 'full' })
+const favicon = svg({ circle: 504, bg: 'none' })
+
+writeFileSync(icons('echo.svg'), any)
+const out = [
+  [any, 192, 'icon-192.png'],
+  [any, 512, 'icon-512.png'],
+  [maskable, 512, 'icon-maskable-512.png'],
+  [apple, 180, 'apple-touch-icon.png'],
+  [favicon, 32, 'favicon-32.png'],
+]
+for (const [s, size, name] of out) {
+  await sharp(Buffer.from(s), { density: 384 }).resize(size, size).png().toFile(icons(name))
+  console.log('wrote', name)
+}

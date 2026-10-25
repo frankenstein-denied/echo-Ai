@@ -10,6 +10,9 @@ import { filterPages, isPermissionDenied, normalizeTitle, relativeTime, RULES_ME
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Button, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
+import { MobileTitleBar } from './mobile-tabbar'
+import { Sheet, SheetItem } from './sheet'
+import { useIsMobile } from './use-mobile'
 
 type Page = DiaryPage & { id: string }
 // key changes only when the user picks a page, so an auto-created page keeps the live chat mounted.
@@ -77,7 +80,9 @@ function ConfirmDelete({ title, busy, error, onCancel, onConfirm }: { title: str
 }
 
 function RowMenu({ title, onRename, onDelete }: { title: string; onRename: () => void; onDelete: () => void }) {
+  const mobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [sheet, setSheet] = useState(false)
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 })
   const box = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -108,6 +113,10 @@ function RowMenu({ title, onRename, onDelete }: { title: string; onRename: () =>
   }, [open])
   // Fixed-position menu so the scrolling page list can never clip it; opens upward near the viewport bottom.
   const toggle = () => {
+    if (mobile) {
+      setSheet(true)
+      return
+    }
     if (!open && box.current) {
       const r = box.current.getBoundingClientRect()
       const right = window.innerWidth - r.right
@@ -118,8 +127,30 @@ function RowMenu({ title, onRename, onDelete }: { title: string; onRename: () =>
   const item = `flex h-9 w-full items-center gap-2 rounded-md px-3 text-sm ${FOCUS_RING} hover:bg-surface`
   return (
     <div ref={box} className="relative">
-      <IconButton icon={MoreVertical} label={`Actions for ${title}`} size="sm" aria-haspopup="menu" aria-expanded={open} onClick={toggle} />
+      <IconButton icon={MoreVertical} label={`Actions for ${title}`} size="sm" aria-haspopup={mobile ? 'dialog' : 'menu'} aria-expanded={mobile ? sheet : open} onClick={toggle} />
+      <Sheet open={sheet} onClose={() => setSheet(false)} title={title}>
+        <div className="grid gap-1">
+          <SheetItem
+            icon={Pencil}
+            label="Rename"
+            onClick={() => {
+              setSheet(false)
+              onRename()
+            }}
+          />
+          <SheetItem
+            icon={Trash2}
+            label="Delete"
+            tone="danger"
+            onClick={() => {
+              setSheet(false)
+              onDelete()
+            }}
+          />
+        </div>
+      </Sheet>
       {open &&
+        !mobile &&
         createPortal(
         <div ref={menu} role="menu" style={pos} className="fixed z-40 w-36 rounded-lg border border-border-strong bg-surface-2 p-1">
           <button
@@ -187,7 +218,7 @@ function TitleEditor({ title, editing, setEditing, onSave }: { title: string; ed
   if (!editing) {
     return (
       <div className="flex min-w-0 items-center gap-1">
-        <h2 className="truncate text-xl font-semibold text-foreground">{title}</h2>
+        <h2 className="truncate text-lg font-semibold text-foreground lg:text-xl">{title}</h2>
         <IconButton icon={Pencil} label="Rename page" size="sm" onClick={() => setEditing(true)} />
       </div>
     )
@@ -371,6 +402,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
   if (rulesError) {
     return (
       <div className="animate-in">
+        <MobileTitleBar title="Diary" />
         <PageHeader title="Diary" description={desc} />
         <Alert variant="danger" title={RULES_MESSAGE}>
           Publish the latest firestore.rules in the Firebase console (Firestore Database, Rules), then reload.
@@ -383,7 +415,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
   const list = (
     <aside aria-label="Diary pages" className={`${mobileOpen ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-border lg:border-r ${collapsed ? 'lg:w-14' : 'lg:w-[260px]'}`}>
       <div className={`flex items-center gap-2 px-4 pb-3 pt-4 ${collapsed ? 'lg:flex-col lg:px-2' : ''}`}>
-        <h1 className={`text-base font-semibold text-foreground ${railBtn}`}>Diary</h1>
+        <h1 className={`text-base font-semibold text-foreground max-lg:text-xl ${railBtn}`}>Diary</h1>
         <div className={`ml-auto flex items-center gap-1 ${collapsed ? 'lg:ml-0 lg:flex-col' : ''}`}>
           <Button size="sm" icon={Plus} onClick={() => void newPage()} loading={creating} className={railBtn}>
             New page
@@ -401,7 +433,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
             placeholder="Search pages"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className={`h-10 w-full rounded-lg border border-input-border bg-surface-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground ${FOCUS_RING}`}
+            className={`h-10 w-full rounded-lg border border-input-border bg-surface-2 pl-9 pr-3 text-sm max-lg:h-11 text-foreground placeholder:text-muted-foreground ${FOCUS_RING}`}
           />
         </div>
         {pages === null ? (
@@ -417,8 +449,8 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
             {shown.map((p) => {
               const isActive = p.id === sel.id
               return (
-                <li key={p.id} className={`flex shrink-0 items-start gap-1 rounded-lg p-1 ${isActive ? 'bg-primary-soft' : 'hover:bg-surface-2'}`}>
-                  <button type="button" onClick={() => select(p.id)} aria-current={isActive ? 'page' : undefined} className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left ${FOCUS_RING}`}>
+                <li key={p.id} className={`flex shrink-0 items-start gap-1 rounded-lg p-1 max-lg:items-center ${isActive ? 'bg-primary-soft' : 'hover:bg-surface-2'}`}>
+                  <button type="button" onClick={() => select(p.id)} aria-current={isActive ? 'page' : undefined} className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left max-lg:py-2 ${FOCUS_RING}`}>
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="truncate text-sm font-medium text-foreground">{p.title}</span>
                       <span className="shrink-0 text-xs text-subtle">{p.updatedAt ? relativeTime(p.updatedAt.toMillis()) : 'just now'}</span>
@@ -429,6 +461,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
                     title={p.title}
                     onRename={() => {
                       if (sel.id !== p.id) select(p.id)
+                      else setMobileOpen(true) // mobile list view: show the page pane so the title editor is visible
                       setEditing(true)
                     }}
                     onDelete={() => {
@@ -463,12 +496,13 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
   return (
     <div className="animate-in">
       {notice && (
-        <div className="mb-4">
+        <div className={`mb-4 ${pages !== null && (pages.length > 0 || sel.id) ? 'max-lg:hidden' : ''}`}>
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
       {pages !== null && pages.length === 0 && !sel.id ? (
         <>
+          <MobileTitleBar title="Diary" />
           <PageHeader title="Diary" description={desc} />
           <EmptyState
             icon={BookOpen}
@@ -482,7 +516,12 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
           />
         </>
       ) : (
-        <div className="flex h-[calc(100dvh-6rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface md:h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-4rem)] lg:flex-row">
+        <div className="diary-mobile-shell flex h-[calc(100dvh-6rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface md:h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-4rem)] lg:flex-row">
+          {notice && (
+            <div className="shrink-0 px-4 pt-3 lg:hidden">
+              <Alert variant="warning">{notice}</Alert>
+            </div>
+          )}
           {list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
             <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null} onNavigate={onNavigate} header={header} meta={meta} hint={desc} />

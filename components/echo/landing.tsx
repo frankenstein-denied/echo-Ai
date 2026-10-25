@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { AuthCard, type AuthMode } from '@/components/echo/login'
 import { Badge, Button, Card, EchoMark } from '@/components/echo/ui'
+import { InstallAppButton } from '@/components/echo/pwa'
 
 const features: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: BookOpen, title: 'Diary pages', text: 'Write or talk through your day and keep every entry in one place.' },
@@ -31,8 +32,8 @@ const privacy = [
 
 function Section({ id, title, intro, children }: { id: string; title: string; intro?: string; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 border-t border-border py-16">
-      <div className="mx-auto max-w-6xl px-6">
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 border-t border-border py-16 max-md:py-10">
+      <div className="mx-auto max-w-6xl px-6 max-md:px-4">
         <h2 id={`${id}-title`} className="text-2xl font-semibold leading-8 text-foreground">{title}</h2>
         {intro && <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{intro}</p>}
         <div className="mt-8">{children}</div>
@@ -114,9 +115,9 @@ export function Landing() {
     <div className="min-h-screen bg-background text-foreground">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
       <div role="status" aria-live="polite" className="sr-only">{announce}</div>
-      <header className="sticky top-0 z-40 border-b border-border bg-background">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6">
-          <a href="#main" className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+      <header className="sticky top-0 z-40 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6 max-md:h-14 max-md:px-4">
+          <a href="#main" className="touch-hit flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground"><AudioLines size={16} /></span>
             <span className="text-base font-semibold">Echo</span>
           </a>
@@ -133,14 +134,16 @@ export function Landing() {
       </header>
 
       <main id="main" tabIndex={-1} className="focus:outline-none">
-        <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:items-center lg:py-24">
+        <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 max-md:gap-8 max-md:px-4 max-md:py-8 lg:grid-cols-2 lg:items-center lg:py-24">
           <div className="landing-fade">
             <h1 id="hero-title" className="text-4xl font-semibold leading-tight text-foreground md:text-5xl">A diary that listens and remembers.</h1>
             <p className="mt-4 max-w-xl text-base text-muted-foreground">Talk or type about your day. Echo turns it into notes, reminders, goals and health check-ins, and keeps it all connected for you.</p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-3 max-md:mt-6 max-md:grid max-md:grid-cols-2">
               <Button onClick={() => openAuth('signup')}>Get started</Button>
               <Button variant="secondary" onClick={() => openAuth('signin')}>Sign in</Button>
             </div>
+            {/* Mobile only; renders nothing when installed or not installable. */}
+            <InstallAppButton dismissible className="mt-4 lg:hidden max-lg:*:h-11 max-lg:*:min-w-11" />
           </div>
           <div className="landing-fade mx-auto w-full max-w-[400px] lg:ml-auto">
             <AuthCard mode={mode} onModeChange={setMode} />
@@ -193,24 +196,24 @@ export function Landing() {
           </ul>
         </Section>
 
-        <section aria-labelledby="cta-title" className="px-6 pb-16">
-          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-xl border border-border bg-surface p-8 md:flex-row md:items-center">
+        <section aria-labelledby="cta-title" className="px-6 pb-16 max-md:px-4 max-md:pb-10">
+          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-xl border border-border bg-surface p-8 max-md:p-5 md:flex-row md:items-center">
             <div>
               <h2 id="cta-title" className="text-2xl font-semibold leading-8 text-foreground">Start your first entry today</h2>
               <p className="mt-1 text-sm text-muted-foreground">It takes a minute to set up.</p>
             </div>
-            <Button onClick={() => openAuth('signup')}>Create your diary</Button>
+            <Button onClick={() => openAuth('signup')} className="max-md:w-full">Create your diary</Button>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-6 text-xs text-muted-foreground">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-6 text-xs text-muted-foreground max-md:px-4 max-md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <p>&copy; {new Date().getFullYear()} Echo</p>
           <nav aria-label="Footer" className="flex gap-4">
-            <a href="#privacy" className="hover:text-foreground">Privacy</a>
-            <a href="#features" className="hover:text-foreground">Features</a>
-            <a href="#main" className="hover:text-foreground">Back to top</a>
+            <a href="#privacy" className="hover:text-foreground max-md:py-3">Privacy</a>
+            <a href="#features" className="hover:text-foreground max-md:py-3">Features</a>
+            <a href="#main" className="hover:text-foreground max-md:py-3">Back to top</a>
           </nav>
         </div>
       </footer>

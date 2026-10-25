@@ -32,7 +32,7 @@ export function Segmented({ value, onChange, options, ariaLabel, fullWidth = fal
               const next = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : null
               if (next !== null) { e.preventDefault(); go(next) }
             }}
-            className={`inline-flex h-8 items-center justify-center gap-1.5 ${fullWidth ? 'flex-1' : ''} rounded-md px-3 text-sm font-medium transition-colors ${FOCUS_RING} ${on ? 'bg-primary-soft text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`touch-hit inline-flex h-8 max-lg:h-10 items-center justify-center gap-1.5 ${fullWidth ? 'flex-1' : ''} rounded-md px-3 text-sm font-medium transition-colors ${FOCUS_RING} ${on ? 'bg-primary-soft text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {Icon && <Icon size={16} aria-hidden="true" />}
             {o.label}

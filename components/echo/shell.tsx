@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Settings, Target, X, type LucideIcon } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, Network, PanelLeftClose, PanelLeftOpen, Settings, Target, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UserProfile } from '@/lib/firestore'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
@@ -14,6 +14,8 @@ import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
 import { ConnectorsView } from './connectors-view'
 import { BrainView } from './brain-view'
+import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
+import { useMobileViewportSync } from './use-mobile'
 
 export type View = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Settings'
 
@@ -93,66 +95,6 @@ function Sidebar({ view, setView, collapsed, setCollapsed, days }: { view: View;
   )
 }
 
-const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-
-function MobileDrawer({ view, onSelect, onClose }: { view: View; onSelect: (v: View) => void; onClose: () => void }) {
-  const panel = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    panel.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
-    // Drawer is mobile-only: close it if the viewport grows to desktop while open.
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const onChange = (e: MediaQueryListEvent) => {
-      if (e.matches) onClose()
-    }
-    mq.addEventListener('change', onChange)
-    return () => {
-      mq.removeEventListener('change', onChange)
-      document.body.style.overflow = prevOverflow
-      previous?.focus()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      onClose()
-      return
-    }
-    if (e.key !== 'Tab' || !panel.current) return
-    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE))
-    if (!items.length) return
-    const first = items[0]
-    const last = items[items.length - 1]
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault()
-      last.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden" onKeyDown={onKeyDown}>
-      <div aria-hidden="true" className="absolute inset-0 bg-background/80" onClick={onClose} />
-      <div ref={panel} role="dialog" aria-modal="true" aria-label="Navigation" className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface p-4">
-        <div className="mb-6 flex items-center gap-3 px-1">
-          <EchoMark small />
-          <span className="text-lg font-semibold text-foreground">Echo</span>
-          <IconButton icon={X} label="Close navigation" size="sm" onClick={onClose} className="ml-auto" />
-        </div>
-        <NavList view={view} onSelect={onSelect} />
-        <UserFooter />
-      </div>
-    </div>
-  )
-}
-
 function daysWithEcho(profile: UserProfile): number | null {
   const created = profile.createdAt?.toDate?.()
   if (!created) return null
@@ -163,24 +105,25 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const { user, signOut } = useAuth()
   const [view, setView] = useState<View>('Diary')
   const [collapsed, setCollapsed] = useState(false)
-  const [drawer, setDrawer] = useState(false)
+  const [more, setMore] = useState(false)
   const days = daysWithEcho(profile)
+  useMobileViewportSync()
 
   const navigate = useCallback((v: View) => {
     setView(v)
-    setDrawer(false)
+    setMore(false)
+    // A new page starts at the top (the mobile layout scrolls the document).
+    window.scrollTo({ top: 0 })
   }, [])
+  const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} />
       <div className="min-w-0 flex-1">
-        <header className="flex h-16 items-center gap-3 border-b border-border px-4 lg:hidden">
-          <IconButton icon={Menu} label="Open navigation" onClick={() => setDrawer(true)} aria-haspopup="dialog" aria-expanded={drawer} />
-          <span className="text-base font-semibold text-foreground">Echo</span>
-          {days !== null && <p className="ml-auto text-xs text-muted-foreground">Day {days} with Echo</p>}
-        </header>
-        <main className="mx-auto max-w-[1500px] p-4 md:p-8">
+        <main className="mx-auto max-w-[1500px] p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]">
+          {/* Diary draws its own full-height mobile header (list / page bar). */}
+          {view !== 'Diary' && <MobileTitleBar title={view} />}
           {!user ? null : view === 'Diary' ? (
             <DiaryView user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Notes' ? (
@@ -200,7 +143,8 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           )}
         </main>
       </div>
-      {drawer && <MobileDrawer view={view} onSelect={navigate} onClose={() => setDrawer(false)} />}
+      <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
+      <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
     </div>
   )
 }

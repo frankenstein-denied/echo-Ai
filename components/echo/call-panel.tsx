@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
@@ -9,6 +9,7 @@ import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackS
 import { extractCheckInTime } from '@/lib/echo/context'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
+import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Button, EchoMark, IconButton, type EchoMarkState } from './ui'
 
 export type CallPhase = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking'
@@ -536,6 +537,85 @@ function Elapsed({ since }: { since: number | null }) {
     return () => clearInterval(t)
   }, [since])
   return <span className="text-xs tabular-nums text-muted-foreground">{since ? formatElapsed(Date.now() - since) : '0:00'}</span>
+}
+
+/**
+ * Full-screen call view for touch layouts (< lg): large Echo mark, state text, scrolling live transcript (children),
+ * and big Mute / End buttons at the bottom within thumb reach. Desktop keeps the CallBar.
+ */
+export function CallScreen({ phase, muted, startedAt, onMute, onEnd, scrollKey, children, alerts, onClosed }: { phase: CallPhase; muted: boolean; startedAt: number | null; onMute: () => void; onEnd: () => void; scrollKey: string; children: ReactNode; alerts?: ReactNode; onClosed?: () => void }) {
+  const status = muted && phase === 'listening' ? 'Muted' : PHASE_LABEL[phase]
+  const scroller = useRef<HTMLDivElement>(null)
+  const endRef = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const closedRef = useRef(onClosed)
+  closedRef.current = onClosed
+  useEffect(() => {
+    const el = scroller.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [scrollKey, alerts])
+  useEffect(() => {
+    // Only move focus when this view is actually shown (it is display:none at >= lg).
+    const shown = !!endRef.current?.offsetParent
+    if (shown) endRef.current?.focus({ preventScroll: true })
+    // After the call, hand focus back (Home focuses its Call button once the composer is back).
+    return () => {
+      if (shown) requestAnimationFrame(() => closedRef.current?.())
+    }
+  }, [])
+  // Focus trap: Tab and Shift+Tab cycle inside the call view.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || !panel.current) return
+    const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'))
+    if (!items.length) return
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (!panel.current.contains(document.activeElement)) {
+      e.preventDefault()
+      first.focus()
+    } else if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+  const round = `grid size-18 place-items-center rounded-full border transition-colors disabled:opacity-50 ${FOCUS_RING}`
+  return (
+    <div ref={panel} onKeyDown={onKeyDown} role="dialog" aria-modal="true" aria-label="Call with Echo" className="fixed inset-0 z-50 flex flex-col bg-background pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] lg:hidden">
+      <div className="flex h-12 shrink-0 items-center justify-center gap-2 px-4 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Call with Echo</span>
+        <span aria-hidden="true">·</span>
+        <Elapsed since={startedAt} />
+      </div>
+      <div className="flex shrink-0 flex-col items-center gap-3 px-6 pb-4 pt-4">
+        <EchoMark state={callMarkState(phase, muted)} />
+        <p role="status" aria-live="polite" className="mt-2 text-lg font-semibold text-foreground">
+          {status}
+        </p>
+        <p className="text-center text-sm text-muted-foreground">Echo replies after 2 s of silence.</p>
+      </div>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto border-t border-border">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-4 py-4">{children}</div>
+      </div>
+      {alerts && <div className="grid shrink-0 gap-2 border-t border-border px-4 py-3">{alerts}</div>}
+      <div className="flex shrink-0 items-start justify-center gap-16 border-t border-border px-6 pb-6 pt-5">
+        <div className="flex flex-col items-center gap-2">
+          <button type="button" aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} onClick={onMute} disabled={phase === 'connecting'} className={`${round} ${muted ? 'border-foreground bg-foreground text-background' : 'border-border-strong bg-surface-2 text-foreground active:bg-surface'}`}>
+            {muted ? <MicOff size={28} aria-hidden="true" /> : <Mic size={28} aria-hidden="true" />}
+          </button>
+          <span aria-hidden="true" className="text-xs text-muted-foreground">{muted ? 'Unmute' : 'Mute'}</span>
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <button ref={endRef} type="button" aria-label="End call" onClick={onEnd} className={`${round} border-transparent bg-danger text-background active:bg-danger/90`}>
+            <PhoneOff size={28} aria-hidden="true" />
+          </button>
+          <span aria-hidden="true" className="text-xs text-muted-foreground">End</span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** In-call bar: Echo mark state, status, elapsed time, Mute and End. Replaces the composer row during a call. */

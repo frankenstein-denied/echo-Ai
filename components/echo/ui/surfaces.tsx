@@ -11,17 +11,18 @@ import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react'
 
 export function Card({ children, className = '', as: Tag = 'section' }: { children: ReactNode; className?: string; as?: 'section' | 'div' }) {
-  return <Tag className={`rounded-xl border border-border bg-surface p-5 ${className}`}>{children}</Tag>
+  return <Tag className={`rounded-xl border border-border bg-surface p-5 max-sm:p-4 ${className}`}>{children}</Tag>
 }
 
 export function PageHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4 max-lg:mb-5 max-lg:gap-3">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold leading-8 text-foreground">{title}</h1>
+        {/* Below lg the shell's compact title bar shows the title; the h1 stays for screen readers. */}
+        <h1 className="text-2xl font-semibold leading-8 text-foreground max-lg:sr-only">{title}</h1>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 max-sm:w-full max-sm:*:w-full">{action}</div>}
     </header>
   )
 }

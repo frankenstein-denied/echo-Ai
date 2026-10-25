@@ -36,8 +36,8 @@ export const BUTTON_VARIANT_CLASSES: Record<ButtonVariant, string> = {
 }
 
 export const BUTTON_SIZE_CLASSES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm gap-1.5',
-  md: 'h-10 px-4 text-sm gap-2',
+  sm: 'h-8 px-3 text-sm gap-1.5 max-lg:h-11',
+  md: 'h-10 px-4 text-sm gap-2 max-lg:h-11',
 }
 
 export const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'

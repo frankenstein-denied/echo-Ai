@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Loader2, Trash2, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, MoreHorizontal, Trash2, TriangleAlert } from 'lucide-react'
 import { deleteNote, updateNote } from '@/lib/firestore'
 import { debounce, parseTags, type Debounced } from '@/lib/echo/view-helpers'
 import { categoryOptions } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { Alert, Badge, Button, Input, Select } from './ui'
+import { Alert, Badge, Button, IconButton, Input, Select } from './ui'
+import { Sheet, SheetItem } from './sheet'
 
 export type EditableNote = { id: string; title: string; body: string; category: string; tags: string[] }
 
@@ -19,6 +20,7 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
   const [tagText, setTagText] = useState(note.tags.join(', '))
   const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [error, setError] = useState('')
+  const [actions, setActions] = useState(false)
   const touched = useRef(new Set<string>())
   const saver = useRef<Debounced<Fields> | null>(null)
 
@@ -62,8 +64,9 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
     saver.current?.(t, b, tg, c)
   }
 
-  const remove = async () => {
-    if (!window.confirm('Delete this note? This cannot be undone.')) return
+  // The mobile actions sheet is itself the confirmation step.
+  const remove = async (confirmed = false) => {
+    if (!confirmed && !window.confirm('Delete this note? This cannot be undone.')) return
     saver.current?.cancel()
     try {
       await deleteNote(uid, note.id)
@@ -78,18 +81,31 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
   const tags = parseTags(tagText)
 
   return (
-    <div className="animate-in">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={onBack}>All notes</Button>
-        <div className="flex items-center gap-3">
+    // Below lg the editor is a full-screen layer (covers the title and tab bars) with a sticky top bar.
+    <div className="animate-in max-lg:fixed max-lg:inset-0 max-lg:z-[45] max-lg:overflow-y-auto max-lg:overscroll-contain max-lg:bg-background max-lg:pb-[env(safe-area-inset-bottom)]">
+      <div className="mb-6 flex items-center justify-between gap-3 max-lg:sticky max-lg:top-0 max-lg:z-10 max-lg:mb-0 max-lg:border-b max-lg:border-border max-lg:bg-background max-lg:px-2 max-lg:pb-1 max-lg:pt-[calc(env(safe-area-inset-top)+4px)]">
+        <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={onBack} aria-label="All notes" className="max-lg:px-2">All notes</Button>
+        <div className="flex items-center gap-3 max-lg:gap-1">
           <span role="status" className={`inline-flex items-center gap-1.5 text-xs ${status === 'error' ? 'text-danger' : 'text-muted-foreground'}`}>
             <StatusIcon size={14} aria-hidden="true" className={status === 'saving' ? 'animate-spin' : ''} />
             {status === 'saving' ? 'Saving...' : status === 'error' ? 'Not saved' : 'Saved'}
           </span>
-          <Button variant="danger" size="sm" icon={Trash2} onClick={remove}>Delete</Button>
+          <Button variant="danger" size="sm" icon={Trash2} onClick={() => void remove()} className="max-lg:hidden">Delete</Button>
+          <IconButton icon={MoreHorizontal} label="Note actions" className="lg:hidden" aria-haspopup="dialog" aria-expanded={actions} onClick={() => setActions(true)} />
         </div>
       </div>
-      <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface p-6 sm:p-8">
+      <Sheet open={actions} onClose={() => setActions(false)} title={title.trim() || 'Untitled'} description="Deleting a note cannot be undone.">
+        <SheetItem
+          icon={Trash2}
+          label="Delete note"
+          tone="danger"
+          onClick={() => {
+            setActions(false)
+            void remove(true)
+          }}
+        />
+      </Sheet>
+      <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface p-6 sm:p-8 max-lg:rounded-none max-lg:border-0 max-lg:bg-background max-lg:px-4 max-lg:pb-8 max-lg:pt-5">
         <input
           aria-label="Note title"
           value={title}
@@ -100,7 +116,7 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
           }}
           placeholder="Title"
           maxLength={500}
-          className={`w-full rounded-md bg-transparent text-2xl font-semibold leading-8 text-foreground placeholder:text-muted-foreground ${FOCUS_RING}`}
+          className={`w-full rounded-md bg-transparent text-2xl font-semibold leading-8 text-foreground placeholder:text-muted-foreground max-lg:py-2 ${FOCUS_RING}`}
         />
         <p className="mt-2 text-xs text-muted-foreground">{dateLabel}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr]">
@@ -146,7 +162,7 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
             change(title, e.target.value, tagText, category)
           }}
           placeholder="Write something..."
-          className={`mt-6 min-h-[360px] w-full resize-y rounded-md bg-transparent text-base leading-7 text-foreground placeholder:text-muted-foreground ${FOCUS_RING}`}
+          className={`mt-6 min-h-[360px] w-full resize-y max-lg:min-h-[50dvh] max-lg:resize-none rounded-md bg-transparent text-base leading-7 text-foreground placeholder:text-muted-foreground ${FOCUS_RING}`}
         />
         {error && (
           <div className="mt-4">

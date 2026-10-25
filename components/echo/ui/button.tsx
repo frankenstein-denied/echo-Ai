@@ -5,7 +5,7 @@
  *   One primary button per area; secondary = outline; ghost for toolbar actions; danger for destructive.
  * IconButton props: icon: LucideIcon, label: string (REQUIRED, becomes aria-label), variant (default ghost), size, native props.
  */
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, Ref } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,10 +27,11 @@ export function Button({ variant = 'primary', size = 'md', icon: Icon, loading =
   )
 }
 
-type IconButtonProps = Omit<ButtonProps, 'icon' | 'children' | 'loading'> & { icon: LucideIcon; label: string }
+type IconButtonProps = Omit<ButtonProps, 'icon' | 'children' | 'loading'> & { icon: LucideIcon; label: string; ref?: Ref<HTMLButtonElement> }
 
 export function IconButton({ icon: Icon, label, variant = 'ghost', size = 'md', className = '', type = 'button', ...rest }: IconButtonProps) {
-  const dim = size === 'sm' ? 'size-8 px-0' : 'size-10 px-0'
+  // 44 px on touch layouts (< lg); desktop sizes unchanged.
+  const dim = size === 'sm' ? 'size-8 px-0 max-lg:size-11' : 'size-10 px-0 max-lg:size-11'
   return (
     <button type={type} aria-label={label} title={label} className={cn(buttonClass(variant, size), dim, className)} {...rest}>
       <Icon size={size === 'sm' ? 16 : 20} aria-hidden="true" />

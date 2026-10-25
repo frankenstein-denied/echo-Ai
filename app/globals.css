@@ -54,7 +54,6 @@
 }
 
 :root { color-scheme: dark; }
-* { border-color: var(--color-border); }
 body {
   margin: 0;
   background: var(--color-background);
@@ -63,8 +62,9 @@ body {
   font-size: 14px;
   line-height: 20px;
 }
-button, input, textarea, select { font: inherit; }
+/* Tailwind preflight already sets font: inherit on form controls (in @layer base), so text utilities apply to them. */
 @layer base {
+  * { border-color: var(--color-border); }
   :focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
@@ -89,3 +89,68 @@ button, input, textarea, select { font: inherit; }
 
 @keyframes landing-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .landing-fade { animation: landing-fade 0.5s ease-out both; }
+
+/* ---------- Mobile (< 1024 px). Everything below is gated so desktop/laptop rendering is unchanged. ---------- */
+:root {
+  --tabbar-h: 0px;
+  --topbar-h: 0px;
+  --kb: 0px;
+  --vv-top: 0px;
+}
+html { -webkit-tap-highlight-color: transparent; }
+button, a, summary, label, [role='button'], [role='tab'], [role='radio'], [role='switch'], [role='menuitem'] { touch-action: manipulation; }
+
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+.sheet-panel { animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.sheet-backdrop { animation: sheet-fade 0.2s ease-out backwards; }
+
+@media (max-width: 1023.98px) {
+  :root {
+    --tabbar-h: calc(56px + env(safe-area-inset-bottom));
+    --topbar-h: calc(48px + env(safe-area-inset-top));
+  }
+  /* Tab bar is hidden while typing (keyboard up) and during a call. */
+  :root[data-kb], :root[data-call] { --tabbar-h: 0px; }
+  :root[data-kb] .mobile-tabbar, :root[data-call] .mobile-tabbar { display: none; }
+
+  /* >= 16 px text in form fields stops iOS from zooming on focus (unlayered, so it wins over text-sm utilities). */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select { font-size: 16px; }
+  input.text-lg, input.text-xl { font-size: 18px; }
+  input.text-2xl { font-size: 22px; line-height: 30px; font-weight: 600; }
+
+  /* Diary: a full-screen, app-like shell between the top safe area and the tab bar / keyboard. */
+  .diary-mobile-shell {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--vv-top);
+    bottom: calc(var(--tabbar-h) + var(--kb));
+    z-index: 10;
+    height: auto;
+    min-height: 0;
+    border-width: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  /* A transformed (animating) ancestor would become the containing block of the fixed shell. */
+  .animate-in:has(> .diary-mobile-shell) { animation: none; }
+}
+
+/* Extends a small control's hit area to at least 44x44 px on touch layouts without changing its look. */
+@layer components {
+  @media (max-width: 1023.98px) {
+    .touch-hit { position: relative; }
+    .touch-hit::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}

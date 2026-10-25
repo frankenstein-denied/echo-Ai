@@ -136,7 +136,7 @@ function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields 
             onChange={(e) => logMood(Number(e.target.value))}
             onPointerUp={(e) => logMood(Number(e.currentTarget.value))}
             onClick={(e) => logMood(Number(e.currentTarget.value))}
-            className={`mt-3 w-full accent-primary ${mood == null ? 'opacity-50' : ''}`}
+            className={`mt-3 w-full accent-primary max-lg:mt-1 max-lg:h-11 ${mood == null ? 'opacity-50' : ''}`}
           />
         </div>
         <div>

@@ -32,7 +32,7 @@ export function Input({ label, hint, error, className = '', id, ...rest }: Input
   const fid = id ?? auto
   return (
     <Field id={fid} label={label} hint={hint} error={error}>
-      <input id={fid} className={cn(CONTROL, 'h-10', className)} {...aria(fid, { hint, error })} {...rest} />
+      <input id={fid} className={cn(CONTROL, 'h-10 max-lg:h-11', className)} {...aria(fid, { hint, error })} {...rest} />
     </Field>
   )
 }
@@ -52,7 +52,7 @@ export function Select({ label, hint, error, className = '', id, children, ...re
   const fid = id ?? auto
   return (
     <Field id={fid} label={label} hint={hint} error={error}>
-      <select id={fid} className={cn(CONTROL, 'h-10', className)} {...aria(fid, { hint, error })} {...rest}>{children}</select>
+      <select id={fid} className={cn(CONTROL, 'h-10 max-lg:h-11', className)} {...aria(fid, { hint, error })} {...rest}>{children}</select>
     </Field>
   )
 }
@@ -85,7 +85,7 @@ export function Switch({ checked, onChange, label, disabled = false }: { checked
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${FOCUS_RING} ${checked ? 'border-primary bg-primary' : 'border-input-border bg-surface-2'}`}
+      className={`touch-hit relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${FOCUS_RING} ${checked ? 'border-primary bg-primary' : 'border-input-border bg-surface-2'}`}
     >
       <span aria-hidden="true" className={`inline-block size-4 rounded-full transition-transform ${checked ? 'translate-x-6 bg-primary-foreground' : 'translate-x-1 bg-muted-foreground'}`} />
     </button>

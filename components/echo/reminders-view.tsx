@@ -6,6 +6,7 @@ import { Bell, Plus, Trash2 } from 'lucide-react'
 import { addReminder, deleteReminder, remindersCol, routinesCol, setReminderDone, type Reminder, type Routine } from '@/lib/firestore'
 import { splitReminders } from '@/lib/echo/view-helpers'
 import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, Skeleton } from './ui'
+import { useIsMobile } from './use-mobile'
 
 type ReminderRow = Reminder & { id: string; dueMs: number }
 
@@ -29,6 +30,8 @@ export function RemindersView({ uid }: { uid: string }) {
   const [title, setTitle] = useState('')
   const [due, setDue] = useState(defaultDueValue)
   const [adding, setAdding] = useState(false)
+  // Touch layouts: the whole row (label) toggles done; desktop: only the checkbox does.
+  const HitRow = useIsMobile() ? 'label' : 'div'
 
   useEffect(() => {
     const q = query(remindersCol(uid), orderBy('dueAt'))
@@ -84,13 +87,21 @@ export function RemindersView({ uid }: { uid: string }) {
   }
 
   const row = (r: ReminderRow) => (
-    <div key={r.id} className="flex items-center gap-3 border-b border-border py-3 last:border-b-0">
-      <input type="checkbox" className="size-4 accent-primary" checked={r.done} onChange={() => run(() => setReminderDone(uid, r.id, !r.done), 'Could not update the reminder.')} aria-label={`Done: ${r.title}`} />
-      <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm ${r.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{r.title}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{dueText(r.dueMs)}</p>
-      </div>
-      <Badge variant="neutral">{SOURCE_LABEL[r.source] ?? r.source}</Badge>
+    <div key={r.id} className="flex items-center gap-3 border-b border-border py-3 last:border-b-0 max-lg:gap-2 max-lg:py-2">
+      {/* The label makes checkbox + text one tap target on touch screens. */}
+      <HitRow className="flex min-w-0 flex-1 items-center gap-3">
+        <input type="checkbox" className="size-4 shrink-0 accent-primary max-lg:size-5" checked={r.done} onChange={() => run(() => setReminderDone(uid, r.id, !r.done), 'Could not update the reminder.')} aria-label={`Done: ${r.title}`} />
+        <span className="block min-w-0 flex-1">
+          <span className={`block truncate text-sm ${r.done ? 'text-muted-foreground line-through' : 'text-foreground'} max-lg:text-[15px]`}>{r.title}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {dueText(r.dueMs)}
+            <span className="sm:hidden"> · {SOURCE_LABEL[r.source] ?? r.source}</span>
+          </span>
+        </span>
+      </HitRow>
+      <span className="max-sm:hidden">
+        <Badge variant="neutral">{SOURCE_LABEL[r.source] ?? r.source}</Badge>
+      </span>
       <IconButton icon={Trash2} label={`Delete reminder: ${r.title}`} size="sm" onClick={() => remove(r)} />
     </div>
   )
@@ -109,7 +120,7 @@ export function RemindersView({ uid }: { uid: string }) {
             <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <Input label="New reminder" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Remind me to..." maxLength={500} />
               <Input label="Due" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
-              <Button type="submit" icon={Plus} loading={adding} disabled={!title.trim()}>
+              <Button type="submit" icon={Plus} loading={adding} disabled={!title.trim()} className="max-md:w-full">
                 Add reminder
               </Button>
             </form>
