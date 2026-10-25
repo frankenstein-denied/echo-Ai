@@ -173,15 +173,20 @@ export async function renameDiaryPage(uid: string, pageId: string, title: string
   await updateDoc(doc(diaryPagesCol(uid), pageId), { title: t, updatedAt: serverTimestamp() } as never)
 }
 
-// Deletes the page's messages in batches of <= 400, then the page. Notes, goals etc. are untouched.
+// Deletes the page doc first (so no new message can be added through the UI), then sweeps its messages in
+// batches of <= 400, re-querying until empty so a send that was in flight cannot leave orphans.
+// Notes, goals etc. are untouched.
 export async function deleteDiaryPage(uid: string, pageId: string): Promise<void> {
-  const snap = await getDocs(pageMessagesCol(uid, pageId))
-  for (const ids of chunk(snap.docs.map((d) => d.ref), BATCH_MAX)) {
-    const batch = writeBatch(db)
-    for (const r of ids) batch.delete(r)
-    await batch.commit()
-  }
   await deleteDoc(doc(diaryPagesCol(uid), pageId))
+  for (let round = 0; round < 5; round++) {
+    const snap = await getDocs(pageMessagesCol(uid, pageId))
+    if (snap.empty) return
+    for (const refs of chunk(snap.docs.map((d) => d.ref), BATCH_MAX)) {
+      const batch = writeBatch(db)
+      for (const r of refs) batch.delete(r)
+      await batch.commit()
+    }
+  }
 }
 
 // One batch: the message plus the page's preview, count and timestamps.
@@ -195,26 +200,56 @@ export async function addPageMessage(uid: string, pageId: string, role: Message[
 }
 
 // One-time, re-runnable move of the old flat messages into the "Earlier entries" page.
-// Order: copy (same ids, skipping ones already copied) -> create page if missing -> delete old docs.
-export async function migrateFlatMessages(uid: string): Promise<boolean> {
+// Order: copy (same ids, skipping ones already copied) -> create page if missing (transaction) -> delete old docs.
+// One run per uid per session; a failed copy batch re-reads what exists and retries only the missing ids, so a
+// concurrent run (another tab) that already copied them is not mistaken for a rules error.
+const migrations = new Map<string, Promise<boolean>>()
+
+export function migrateFlatMessages(uid: string): Promise<boolean> {
+  let p = migrations.get(uid)
+  if (!p) {
+    p = runMigration(uid)
+    migrations.set(uid, p)
+    p.catch(() => migrations.delete(uid)) // allow a retry after a real failure
+  }
+  return p
+}
+
+async function runMigration(uid: string): Promise<boolean> {
   const old = await getDocs(query(messagesCol(uid), orderBy('createdAt')))
   if (old.empty) return false
   const pageId = MIGRATION_PAGE_ID
-  const existing = await getDocs(pageMessagesCol(uid, pageId))
-  const plan = planMigration(old.docs.map((d) => d.id), existing.docs.map((d) => d.id))
+  const target = pageMessagesCol(uid, pageId)
+  const oldIds = old.docs.map((d) => d.id)
+  const existingIds = async () => (await getDocs(target)).docs.map((d) => d.id)
+  const plan = planMigration(oldIds, await existingIds())
   const byId = new Map(old.docs.map((d) => [d.id, d]))
   for (const ids of plan.copyBatches) {
-    const batch = writeBatch(db)
-    for (const id of ids) {
-      const m = byId.get(id)!.data()
-      batch.set(doc(pageMessagesCol(uid, pageId), id), { role: m.role, text: m.text, ...(m.category ? { category: m.category } : {}), createdAt: m.createdAt } as never)
+    const write = async (list: string[]) => {
+      const batch = writeBatch(db)
+      for (const id of list) {
+        const m = byId.get(id)!.data()
+        batch.set(doc(target, id), { role: m.role, text: m.text, ...(m.category ? { category: m.category } : {}), createdAt: m.createdAt } as never)
+      }
+      await batch.commit()
     }
-    await batch.commit()
+    try {
+      await write(ids)
+    } catch (e) {
+      const have = new Set(await existingIds())
+      const missing = ids.filter((id) => !have.has(id))
+      if (missing.length) await write(missing).catch(() => { throw e })
+    }
   }
   const pageRef = doc(diaryPagesCol(uid), pageId)
-  if (!(await getDoc(pageRef)).exists()) {
-    const last = old.docs[old.docs.length - 1].data()
-    await setDoc(pageRef, { title: MIGRATION_PAGE_TITLE, preview: previewOf(last.text), messageCount: plan.total, createdAt: serverTimestamp(), updatedAt: last.createdAt, lastMessageAt: last.createdAt } as never)
+  const last = old.docs[old.docs.length - 1].data()
+  try {
+    await runTransaction(db, async (tx) => {
+      if ((await tx.get(pageRef)).exists()) return
+      tx.set(pageRef, { title: MIGRATION_PAGE_TITLE, preview: previewOf(last.text), messageCount: plan.total, createdAt: serverTimestamp(), updatedAt: last.createdAt, lastMessageAt: last.createdAt } as never)
+    })
+  } catch (e) {
+    if (!(await getDoc(pageRef)).exists()) throw e // only a real failure if the page still does not exist
   }
   for (const ids of plan.deleteBatches) {
     const batch = writeBatch(db)

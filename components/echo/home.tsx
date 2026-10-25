@@ -64,7 +64,7 @@ function Trace({ steps }: { steps: string[] }) {
   )
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, onNavigate }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; onNavigate: (v: HomeView) => void }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void }) {
   const uid = user.uid
   const pageRef = useRef(pageId)
   useEffect(() => {
@@ -306,7 +306,7 @@ export function Home({ user, profile, pageId, onEnsurePage, onNavigate }: { user
 
   const submit = () => {
     const t = text.trim()
-    if (!t || thinking || micState !== 'idle') return
+    if (!t || disabled || thinking || micState !== 'idle') return
     setText('')
     void send(t)
   }
@@ -384,6 +384,7 @@ export function Home({ user, profile, pageId, onEnsurePage, onNavigate }: { user
                 }
               }}
               maxLength={2000}
+              disabled={disabled}
               placeholder="Tell Echo anything..."
               className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-3 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
@@ -398,7 +399,7 @@ export function Home({ user, profile, pageId, onEnsurePage, onNavigate }: { user
             {prefs?.enabled && (
               <MicButton
                 user={user}
-                disabled={sttQuotaOff}
+                disabled={sttQuotaOff || disabled}
                 onStateChange={(s) => {
                   setMicState(s)
                   if (s === 'recording') {
@@ -411,7 +412,7 @@ export function Home({ user, profile, pageId, onEnsurePage, onNavigate }: { user
                 onQuota={markSttQuota}
               />
             )}
-            <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={thinking || micState !== 'idle' || !text.trim()} />
+            <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || micState !== 'idle' || !text.trim()} />
           </div>
         </Card>
       </div>

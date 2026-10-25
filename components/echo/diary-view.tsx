@@ -128,7 +128,9 @@ function TitleEditor({ title, editing, setEditing, onSave }: { title: string; ed
       setDraft(title)
       setError(null)
     }
-  }, [editing, title])
+    // Only reset when editing starts: a snapshot changing `title` mid-edit must not wipe the draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
   const commit = async () => {
     if (done.current) return
     const t = normalizeTitle(draft)
@@ -252,6 +254,19 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
     }
   }, [pages, auto])
 
+  // If the open page vanishes (deleted from another tab), fall back to the newest remaining page.
+  const seen = useRef(new Set<string>())
+  useEffect(() => {
+    if (!pages) return
+    pages.forEach((p) => seen.current.add(p.id))
+    if (sel.id && seen.current.has(sel.id) && !pages.some((p) => p.id === sel.id)) {
+      const next = sortPages(pages)[0]
+      setSel((s) => ({ id: next?.id ?? null, key: s.key + 1 }))
+      setEditing(false)
+      if (!next) setMobileOpen(false)
+    }
+  }, [pages, sel.id])
+
   const sorted = useMemo(() => sortPages(pages ?? []), [pages])
   const shown = useMemo(() => filterPages(sorted, q), [sorted, q])
   const active = sel.id ? (sorted.find((p) => p.id === sel.id) ?? null) : null
@@ -304,6 +319,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
   }
 
   const name = profile.preferredName
+  const dateLine = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(active?.createdAt?.toDate?.() ?? new Date())
   const desc = `${greeting(new Date())}${name ? `, ${name}` : ''}. Each page is one conversation.`
 
   if (rulesError) {
@@ -403,18 +419,21 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
           <div className={`min-w-0 ${mobileOpen ? 'block' : 'hidden lg:block'}`}>
             <Card className="mb-5 flex items-center gap-2 p-3">
               <IconButton icon={ArrowLeft} label="Back to pages" size="sm" className="lg:hidden" onClick={() => setMobileOpen(false)} />
-              {active ? (
-                <TitleEditor title={active.title} editing={editing} setEditing={setEditing} onSave={(t) => renameDiaryPage(uid, active.id, t)} />
-              ) : (
-                <h2 className="text-xl font-semibold text-foreground">New page</h2>
-              )}
+              <div className="min-w-0 flex-1">
+                {active ? (
+                  <TitleEditor title={active.title} editing={editing} setEditing={setEditing} onSave={(t) => renameDiaryPage(uid, active.id, t)} />
+                ) : (
+                  <h2 className="text-xl font-semibold text-foreground">New page</h2>
+                )}
+                <p className="px-1 text-xs text-muted-foreground">{dateLine}</p>
+              </div>
               {active && (
                 <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                   {active.messageCount} {active.messageCount === 1 ? 'message' : 'messages'}
                 </span>
               )}
             </Card>
-            <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} onNavigate={onNavigate} />
+            <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null} onNavigate={onNavigate} />
           </div>
         </div>
       )}
