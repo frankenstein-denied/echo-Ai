@@ -1,25 +1,86 @@
 @import 'tailwindcss';
-@theme inline {
-  --color-background: #07101f;
-  --color-foreground: #e9f2ff;
-  --color-card: #0d1a2d;
-  --color-card-foreground: #e9f2ff;
-  --color-primary: #79e9ff;
-  --color-primary-foreground: #06111f;
-  --color-muted: #14243a;
-  --color-muted-foreground: #8ba3bf;
-  --color-border: #203552;
-  --color-accent: #ad8cff;
-  --color-destructive: #fb7185;
-  --radius: 1rem;
+
+/* static: emit every token as a :root CSS variable even when no utility uses it, so TSX can use var(--color-node-*) in SVG styles. */
+@theme static inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: #0b0f14;
+  --color-surface: #12171e;
+  --color-surface-2: #181f28;
+  --color-border: #232b36;
+  --color-border-strong: #313b48;
+
+  --color-foreground: #e6eaf0;
+  --color-muted-foreground: #9aa4b2;
+  /* subtle: decorative/disabled only, never readable text (fails AA on surfaces). */
+  --color-subtle: #6b7684;
+  /* input-border: >=3:1 against surface-2 for control boundaries (WCAG 1.4.11). */
+  --color-input-border: #6b7684;
+
+  --color-primary: #2dd4bf;
+  --color-primary-hover: #5eead4;
+  --color-primary-foreground: #04201c;
+  --color-primary-soft: #0f2e2b;
+
+  --color-success: #22c55e;
+  --color-success-soft: #0e2a1b;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #2e2208;
+  --color-danger: #ef4444;
+  --color-danger-soft: #2e1112;
+  --color-info: #60a5fa;
+  --color-info-soft: #0f1f33;
+
+  --color-node-person: #f472b6;
+  --color-node-topic: #60a5fa;
+  --color-node-interest: #a78bfa;
+  --color-node-goal: #fbbf24;
+  --color-node-health: #34d399;
+  --color-node-task: #2dd4bf;
+  --color-node-diary: #fb923c;
+  --color-node-connector: #94a3b8;
+
+  /* Legacy aliases (shadcn button + older pages); map onto the tokens above. */
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-foreground);
+  --color-muted: var(--color-surface-2);
+  --color-secondary: var(--color-surface-2);
+  --color-secondary-foreground: var(--color-foreground);
+  --color-accent: var(--color-surface-2);
+  --color-accent-foreground: var(--color-foreground);
+  --color-destructive: var(--color-danger);
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-primary);
 }
+
 :root { color-scheme: dark; }
-* { border-color: #203552; }
-body { margin: 0; background: radial-gradient(circle at 70% 0%, rgba(65, 93, 173, .18), transparent 35%), #07101f; color: #e9f2ff; font-family: Arial, sans-serif; }
-button, input, textarea { font: inherit; }
-.glass { background: linear-gradient(145deg, rgba(17,34,58,.82), rgba(9,20,36,.68)); border: 1px solid rgba(126, 170, 220, .16); box-shadow: 0 20px 60px rgba(0,0,0,.2), inset 0 1px rgba(255,255,255,.03); backdrop-filter: blur(18px); }
-.grid-bg { background-image: linear-gradient(rgba(101, 151, 213, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(101,151,213,.045) 1px, transparent 1px); background-size: 36px 36px; }
-.orb { background: radial-gradient(circle at 35% 28%, #ecffff 0 3%, #79e9ff 12%, #637cff 42%, #a66dff 65%, transparent 70%); box-shadow: 0 0 35px #79e9ff88, 0 0 100px #7c5cff66; animation: breathe 4s ease-in-out infinite; }
-@keyframes breathe { 0%,100%{transform:scale(.96);filter:saturate(.9)} 50%{transform:scale(1.04);filter:saturate(1.25)} }
-@keyframes floatin { from {opacity:0; transform:translateY(10px)} to {opacity:1; transform:none} }
-.animate-in { animation: floatin .45s ease-out both; }
+* { border-color: var(--color-border); }
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+}
+button, input, textarea, select { font: inherit; }
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@keyframes echo-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes echo-dot { 0%,80%,100% { opacity: .3; } 40% { opacity: 1; } }
+@keyframes echo-fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-in { animation: echo-fadein .25s ease-out both; }
+.echo-pulse { animation: echo-pulse 1.6s ease-in-out infinite; }
+.echo-dot { animation: echo-dot 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

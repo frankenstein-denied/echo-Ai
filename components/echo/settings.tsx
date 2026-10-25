@@ -1,0 +1,150 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import type { User } from 'firebase/auth'
+import { LogOut, Play } from 'lucide-react'
+import type { UserProfile } from '@/lib/firestore'
+import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
+import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { Alert, Button, Card, PageHeader, Select, Switch } from './ui'
+
+export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
+  const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
+  const [voices, setVoices] = useState<VoiceOption[]>([])
+  const [voicesError, setVoicesError] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewMsg, setPreviewMsg] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const seq = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      seq.current++
+    }
+  }, [])
+
+  useEffect(() => {
+    setPrefs(loadVoicePrefs())
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    listVoices(user)
+      .then((r) => {
+        if (!live) return
+        setVoices(r.voices)
+      })
+      .catch(() => live && setVoicesError(true))
+    return () => {
+      live = false
+      audioRef.current?.pause()
+    }
+  }, [user])
+
+  const update = (patch: Partial<VoicePrefs>) => {
+    const next = { ...prefs, ...patch }
+    setPrefs(next)
+    saveVoicePrefs(next)
+  }
+
+  const preview = async () => {
+    setPreviewMsg(null)
+    setPreviewing(true)
+    try {
+      audioRef.current?.pause()
+      const my = ++seq.current
+      const a = await speak(user, "Hi, I'm Echo.", prefs.voice)
+      if (!mounted.current || my !== seq.current) {
+        URL.revokeObjectURL(a.src)
+        return
+      }
+      audioRef.current = a
+      await a.play()
+    } catch (e) {
+      if (!mounted.current) return
+      setPreviewMsg(
+        e instanceof VoiceError && e.kind === 'quota'
+          ? "Echo's voice reached today's free limit."
+          : e instanceof DOMException && e.name === 'NotAllowedError'
+            ? 'Your browser blocked playback. Try again.'
+            : 'Could not play the preview right now.',
+      )
+    } finally {
+      if (mounted.current) setPreviewing(false)
+    }
+  }
+
+  const name = profile.preferredName || user.displayName || ''
+  const email = user.email || profile.email || ''
+  const options = voices.some((v) => v.id === prefs.voice) || !voices.length ? voices : [{ id: prefs.voice, label: prefs.voice }, ...voices]
+
+  const row = (title: string, hint: string, control: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div>
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </div>
+      {control}
+    </div>
+  )
+
+  return (
+    <div className="animate-in mx-auto max-w-2xl">
+      <PageHeader title="Settings" description="Your profile, voice and account." />
+      <div className="grid gap-5">
+        <Card>
+          <h2 className="text-base font-semibold text-foreground">Profile</h2>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Name</dt>
+              <dd className="text-foreground">{name || '—'}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Email</dt>
+              <dd className="truncate text-foreground">{email || '—'}</dd>
+            </div>
+          </dl>
+        </Card>
+
+        <Card>
+          <h2 className="text-base font-semibold text-foreground">Voice</h2>
+          <div className="mt-1 divide-y divide-border">
+            {row('Enable voice', 'Show the microphone in the Diary.', <Switch checked={prefs.enabled} onChange={(v) => update({ enabled: v })} label="Enable voice" />)}
+            {row('Speak replies aloud', 'Echo reads each reply after you send a message.', <Switch checked={prefs.autoSpeak} onChange={(v) => update({ autoSpeak: v })} label="Speak replies aloud" />)}
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-40">
+              <Select label="Voice" value={prefs.voice} onChange={(e) => update({ voice: e.target.value })} disabled={voicesError && !voices.length}>
+                {options.length ? options.map((v) => <option key={v.id} value={v.id}>{v.label}</option>) : <option value={prefs.voice}>{prefs.voice}</option>}
+              </Select>
+            </div>
+            <Button variant="secondary" icon={Play} onClick={() => void preview()} loading={previewing}>
+              {previewing ? 'Loading...' : 'Preview'}
+            </Button>
+          </div>
+          {voicesError && (
+            <div className="mt-3">
+              <Alert variant="warning">Could not load the voice list. Using your saved voice.</Alert>
+            </div>
+          )}
+          {previewMsg && (
+            <div className="mt-3">
+              <Alert variant="danger">{previewMsg}</Alert>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="text-base font-semibold text-foreground">Account</h2>
+          <div className="mt-3">
+            <Button variant="secondary" icon={LogOut} onClick={() => void signOut()}>
+              Sign out
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+}

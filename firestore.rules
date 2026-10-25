@@ -83,13 +83,14 @@ service cloud.firestore {
       // milestone element shape {text, done} is not checkable without loops in rules.
       match /goals/{id} {
         function validGoal(d) {
-          return d.keys().hasOnly(['title', 'category', 'progress', 'streak', 'milestones', 'createdAt', 'updatedAt'])
+          return d.keys().hasOnly(['title', 'category', 'progress', 'streak', 'milestones', 'targetDate', 'createdAt', 'updatedAt'])
             && d.keys().hasAll(['title', 'category', 'progress', 'streak', 'milestones', 'createdAt', 'updatedAt'])
             && isString(d.title, 500)
             && isString(d.category, 100)
             && isNum(d.progress, 0, 100)
             && isNonNegNum(d.streak)
-            && d.milestones is list && d.milestones.size() <= 100;
+            && d.milestones is list && d.milestones.size() <= 100
+            && (!('targetDate' in d) || (d.targetDate is string && d.targetDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
         }
         allow read, delete: if isOwner(uid);
         allow create: if isOwner(uid) && validGoal(request.resource.data)
@@ -153,16 +154,52 @@ service cloud.firestore {
       // ---------- messages (no updatedAt) ----------
       match /messages/{id} {
         function validMessage(d) {
-          return d.keys().hasOnly(['role', 'text', 'createdAt'])
+          return d.keys().hasOnly(['role', 'text', 'category', 'createdAt'])
             && d.keys().hasAll(['role', 'text', 'createdAt'])
             && d.role in ['user', 'assistant']
-            && isString(d.text, 20000);
+            && isString(d.text, 20000)
+            && (!('category' in d) || d.category in ['note', 'goal', 'health', 'reminder', 'connector', 'general']);
         }
         allow read, delete: if isOwner(uid);
         allow create: if isOwner(uid) && validMessage(request.resource.data)
           && request.resource.data.createdAt == request.time;
         allow update: if isOwner(uid) && validMessage(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
+      }
+
+      // ---------- diaryPages (conversations) ----------
+      // Stamps may be any timestamp <= request.time so the one-time migration can preserve original times;
+      // serverTimestamp() (== request.time) satisfies this too. createdAt is immutable.
+      match /diaryPages/{pageId} {
+        function validPage(d) {
+          return d.keys().hasOnly(['title', 'preview', 'messageCount', 'createdAt', 'updatedAt', 'lastMessageAt'])
+            && d.keys().hasAll(['title', 'preview', 'messageCount', 'createdAt', 'updatedAt', 'lastMessageAt'])
+            && d.title is string && d.title.size() >= 1 && d.title.size() <= 120
+            && isString(d.preview, 160)
+            && d.messageCount is int && d.messageCount >= 0
+            && d.updatedAt is timestamp && d.updatedAt <= request.time
+            && d.lastMessageAt is timestamp && d.lastMessageAt <= request.time;
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validPage(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isOwner(uid) && validPage(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+
+        // create-only + delete; migration copies keep their original createdAt (<= request.time)
+        match /messages/{id} {
+          function validPageMessage(d) {
+            return d.keys().hasOnly(['role', 'text', 'category', 'createdAt'])
+              && d.keys().hasAll(['role', 'text', 'createdAt'])
+              && d.role in ['user', 'assistant']
+              && isString(d.text, 20000)
+              && d.createdAt is timestamp && d.createdAt <= request.time
+              && (!('category' in d) || d.category in ['note', 'goal', 'health', 'reminder', 'connector', 'general']);
+          }
+          allow read, delete: if isOwner(uid);
+          allow create: if isOwner(uid) && validPageMessage(request.resource.data);
+        }
       }
 
       // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
@@ -178,20 +215,24 @@ service cloud.firestore {
         allow create, update: if isOwner(uid) && validConnector(request.resource.data);
       }
 
-      // ---------- memories (no updatedAt) ----------
+      // ---------- memories (no updatedAt; doc id = <type>-<slug>; type and createdAt immutable) ----------
       match /memories/{id} {
         function validMemory(d) {
-          return d.keys().hasOnly(['label', 'type', 'links', 'createdAt'])
-            && d.keys().hasAll(['label', 'type', 'links', 'createdAt'])
+          return d.keys().hasOnly(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt'])
+            && d.keys().hasAll(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt'])
             && isString(d.label, 500)
-            && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector']
-            && isStringList(d.links);
+            && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
+            && d.links is list && d.links.size() <= 50
+            && d.mentions is int && d.mentions >= 1
+            && d.lastSeenAt == request.time
+            && id.matches(d.type + '-.+');
         }
         allow read, delete: if isOwner(uid);
         allow create: if isOwner(uid) && validMemory(request.resource.data)
           && request.resource.data.createdAt == request.time;
         allow update: if isOwner(uid) && validMemory(request.resource.data)
-          && request.resource.data.createdAt == resource.data.createdAt;
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.type == resource.data.type;
       }
     }
 

@@ -1,8 +1,13 @@
 import type { User } from 'firebase/auth'
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  orderBy,
+  query,
+  increment,
   runTransaction,
   serverTimestamp,
   setDoc,
@@ -13,6 +18,11 @@ import {
   type DocumentReference,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { slugifyLabel } from '@/lib/echo/sanitize'
+import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
+import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
+
+export type { EchoCategory, MemoryType }
 
 // Timestamps are read as Timestamp and written as serverTimestamp() (except reminder.dueAt).
 export type UserProfile = {
@@ -34,16 +44,16 @@ export type UserProfile = {
 export type OnboardingAnswers = Pick<UserProfile, 'preferredName' | 'priorities' | 'yearGoals' | 'importantPeople' | 'tone' | 'checkInTime' | 'remindersEnabled'>
 export type Note = { title: string; body: string; category: string; tags: string[]; createdAt: Timestamp; updatedAt: Timestamp }
 export type Milestone = { text: string; done: boolean }
-export type Goal = { title: string; category: string; progress: number; streak: number; milestones: Milestone[]; createdAt: Timestamp; updatedAt: Timestamp }
+export type Goal = { title: string; category: string; progress: number; streak: number; milestones: Milestone[]; targetDate?: string; createdAt: Timestamp; updatedAt: Timestamp }
 export type Energy = 'low' | 'medium' | 'high'
 export type HealthLog = { date: string; mood: number; sleepMinutes: number; waterGlasses: number; energy: Energy; createdAt: Timestamp; updatedAt: Timestamp }
 export type ReminderSource = 'chat' | 'routine' | 'manual'
 export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source: ReminderSource; createdAt: Timestamp; updatedAt: Timestamp }
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
-export type Message = { role: 'user' | 'assistant'; text: string; createdAt: Timestamp }
+export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; createdAt: Timestamp }
+export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
 export type Connector = { name: string; connected: boolean; updatedAt: Timestamp }
-export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector'
-export type Memory = { label: string; type: MemoryType; links: string[]; createdAt: Timestamp }
+export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
 
@@ -54,6 +64,8 @@ export const healthLogsCol = (uid: string) => sub<HealthLog>(uid, 'healthLogs')
 export const remindersCol = (uid: string) => sub<Reminder>(uid, 'reminders')
 export const routinesCol = (uid: string) => sub<Routine>(uid, 'routines')
 export const messagesCol = (uid: string) => sub<Message>(uid, 'messages')
+export const diaryPagesCol = (uid: string) => sub<DiaryPage>(uid, 'diaryPages')
+export const pageMessagesCol = (uid: string, pageId: string) => collection(db, 'users', uid, 'diaryPages', pageId, 'messages') as CollectionReference<Message>
 export const connectorsCol = (uid: string) => sub<Connector>(uid, 'connectors')
 export const memoriesCol = (uid: string) => sub<Memory>(uid, 'memories')
 
@@ -116,9 +128,16 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
   for (const [id, name] of connectors) {
     batch.set(doc(connectorsCol(uid), id), { name, connected: false, updatedAt: serverTimestamp() } as never)
   }
-  batch.set(doc(messagesCol(uid)), { role: 'assistant', text: `Nice to meet you, ${answers.preferredName || 'friend'}. What's on your mind?`, createdAt: serverTimestamp() } as never)
+  const welcome = `Nice to meet you, ${answers.preferredName || 'friend'}. What's on your mind?`
+  const pageRef = doc(diaryPagesCol(uid))
+  batch.set(pageRef, { title: defaultPageTitle(), preview: previewOf(welcome), messageCount: 1, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), lastMessageAt: serverTimestamp() } as never)
+  batch.set(doc(pageMessagesCol(uid, pageRef.id)), { role: 'assistant', text: welcome, createdAt: serverTimestamp() } as never)
+  const seenPeople = new Set<string>()
   for (const label of answers.importantPeople) {
-    batch.set(doc(memoriesCol(uid)), { label, type: 'person', links: [], createdAt: serverTimestamp() } as never)
+    const id = memoryId('person', label)
+    if (seenPeople.has(id)) continue
+    seenPeople.add(id)
+    batch.set(doc(memoriesCol(uid), id), { label, type: 'person', links: [], mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
   }
   await batch.commit()
 }
@@ -129,9 +148,9 @@ export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | '
   return ref.id
 }
 
-export async function addGoal(uid: string, goal: Pick<Goal, 'title' | 'category'>): Promise<string> {
+export async function addGoal(uid: string, goal: Pick<Goal, 'title' | 'category' | 'targetDate'>): Promise<string> {
   const ref = doc(goalsCol(uid))
-  await setDoc(ref, { title: goal.title, category: goal.category, progress: 0, streak: 0, milestones: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  await setDoc(ref, { title: goal.title, category: goal.category, progress: 0, streak: 0, milestones: [], ...(goal.targetDate ? { targetDate: goal.targetDate } : {}), createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
   return ref.id
 }
 
@@ -141,10 +160,68 @@ export async function addReminder(uid: string, r: { title: string; dueAt: Date; 
   return ref.id
 }
 
-export async function addMessage(uid: string, role: Message['role'], text: string): Promise<string> {
-  const ref = doc(messagesCol(uid))
-  await setDoc(ref, { role, text, createdAt: serverTimestamp() } as never)
+// ---------- diary pages ----------
+export async function createDiaryPage(uid: string, title?: string): Promise<string> {
+  const ref = doc(diaryPagesCol(uid))
+  await setDoc(ref, { title: normalizeTitle(title ?? '') ?? defaultPageTitle(), preview: '', messageCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), lastMessageAt: serverTimestamp() } as never)
   return ref.id
+}
+
+export async function renameDiaryPage(uid: string, pageId: string, title: string): Promise<void> {
+  const t = normalizeTitle(title)
+  if (!t) throw new Error('Title must be 1-120 characters.')
+  await updateDoc(doc(diaryPagesCol(uid), pageId), { title: t, updatedAt: serverTimestamp() } as never)
+}
+
+// Deletes the page's messages in batches of <= 400, then the page. Notes, goals etc. are untouched.
+export async function deleteDiaryPage(uid: string, pageId: string): Promise<void> {
+  const snap = await getDocs(pageMessagesCol(uid, pageId))
+  for (const ids of chunk(snap.docs.map((d) => d.ref), BATCH_MAX)) {
+    const batch = writeBatch(db)
+    for (const r of ids) batch.delete(r)
+    await batch.commit()
+  }
+  await deleteDoc(doc(diaryPagesCol(uid), pageId))
+}
+
+// One batch: the message plus the page's preview, count and timestamps.
+export async function addPageMessage(uid: string, pageId: string, role: Message['role'], text: string, category?: EchoCategory): Promise<string> {
+  const ref = doc(pageMessagesCol(uid, pageId))
+  const batch = writeBatch(db)
+  batch.set(ref, { role, text, ...(category ? { category } : {}), createdAt: serverTimestamp() } as never)
+  batch.update(doc(diaryPagesCol(uid), pageId), { preview: previewOf(text), messageCount: increment(1), updatedAt: serverTimestamp(), lastMessageAt: serverTimestamp() } as never)
+  await batch.commit()
+  return ref.id
+}
+
+// One-time, re-runnable move of the old flat messages into the "Earlier entries" page.
+// Order: copy (same ids, skipping ones already copied) -> create page if missing -> delete old docs.
+export async function migrateFlatMessages(uid: string): Promise<boolean> {
+  const old = await getDocs(query(messagesCol(uid), orderBy('createdAt')))
+  if (old.empty) return false
+  const pageId = MIGRATION_PAGE_ID
+  const existing = await getDocs(pageMessagesCol(uid, pageId))
+  const plan = planMigration(old.docs.map((d) => d.id), existing.docs.map((d) => d.id))
+  const byId = new Map(old.docs.map((d) => [d.id, d]))
+  for (const ids of plan.copyBatches) {
+    const batch = writeBatch(db)
+    for (const id of ids) {
+      const m = byId.get(id)!.data()
+      batch.set(doc(pageMessagesCol(uid, pageId), id), { role: m.role, text: m.text, ...(m.category ? { category: m.category } : {}), createdAt: m.createdAt } as never)
+    }
+    await batch.commit()
+  }
+  const pageRef = doc(diaryPagesCol(uid), pageId)
+  if (!(await getDoc(pageRef)).exists()) {
+    const last = old.docs[old.docs.length - 1].data()
+    await setDoc(pageRef, { title: MIGRATION_PAGE_TITLE, preview: previewOf(last.text), messageCount: plan.total, createdAt: serverTimestamp(), updatedAt: last.createdAt, lastMessageAt: last.createdAt } as never)
+  }
+  for (const ids of plan.deleteBatches) {
+    const batch = writeBatch(db)
+    for (const id of ids) batch.delete(byId.get(id)!.ref)
+    await batch.commit()
+  }
+  return true
 }
 
 // date is YYYY-MM-DD and is the doc id. Creates with createdAt, otherwise updates only the given fields.
@@ -153,4 +230,97 @@ export async function upsertHealthLog(uid: string, date: string, fields: Partial
   const snap = await getDoc(ref)
   if (snap.exists()) await updateDoc(ref, { ...fields, updatedAt: serverTimestamp() })
   else await setDoc(ref, { ...fields, date, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+}
+
+// Saves Health-form changes. Water is a delta so a stale form can never overwrite a value Echo logged:
+// existing doc -> increment(delta) (clamped so the result stays >= 0); new doc -> concrete number.
+export async function saveHealthChanges(
+  uid: string,
+  date: string,
+  fields: Partial<Pick<HealthLog, 'mood' | 'sleepMinutes' | 'energy'>>,
+  waterDelta = 0,
+): Promise<void> {
+  const ref = doc(healthLogsCol(uid), date)
+  const snap = await getDoc(ref)
+  if (snap.exists()) {
+    const upd: Record<string, unknown> = { ...fields, updatedAt: serverTimestamp() }
+    if (waterDelta) {
+      const cur = snap.data().waterGlasses ?? 0
+      upd.waterGlasses = cur + waterDelta < 0 ? 0 : increment(waterDelta)
+    }
+    await updateDoc(ref, upd as never)
+  } else {
+    const data: Record<string, unknown> = { ...fields, date, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+    if (waterDelta) data.waterGlasses = Math.max(0, waterDelta)
+    await setDoc(ref, data as never)
+  }
+}
+
+// ---------- edit helpers (every write stamps updatedAt and never touches createdAt) ----------
+export async function updateNote(uid: string, id: string, fields: Partial<Pick<Note, 'title' | 'body' | 'tags' | 'category'>>): Promise<void> {
+  await updateDoc(doc(notesCol(uid), id), { ...fields, updatedAt: serverTimestamp() } as never)
+}
+
+export async function deleteNote(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(notesCol(uid), id))
+}
+
+export async function updateGoal(uid: string, id: string, fields: Partial<Pick<Goal, 'progress' | 'milestones' | 'title'>>): Promise<void> {
+  await updateDoc(doc(goalsCol(uid), id), { ...fields, updatedAt: serverTimestamp() } as never)
+}
+
+export async function deleteGoal(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(goalsCol(uid), id))
+}
+
+export async function setReminderDone(uid: string, id: string, done: boolean): Promise<void> {
+  await updateDoc(doc(remindersCol(uid), id), { done, updatedAt: serverTimestamp() } as never)
+}
+
+export async function deleteReminder(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(remindersCol(uid), id))
+}
+
+// Memory doc id = <type>-<slug(label)>; matches the router's dedupe keys.
+export function memoryId(type: MemoryType, label: string): string {
+  return `${type}-${slugifyLabel(label) || 'unnamed'}`
+}
+
+const MAX_LINKS = 50
+
+// Creates each memory (mentions: 1) or bumps mentions and merges links. All reads happen before any write.
+export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promise<void> {
+  const byId = new Map<string, MemoryInput>()
+  for (const m of inputs) {
+    if (!slugifyLabel(m.label)) continue
+    const id = memoryId(m.type, m.label)
+    if (!byId.has(id)) byId.set(id, m)
+  }
+  if (!byId.size) return
+  const idBySlug = new Map<string, string>()
+  for (const [id, m] of byId) idBySlug.set(slugifyLabel(m.label), id)
+  const linkIds = (id: string, links: string[]) => {
+    const out: string[] = []
+    for (const l of links) {
+      const slug = slugifyLabel(l)
+      if (!slug) continue
+      const target = idBySlug.get(slug) ?? `topic-${slug}`
+      if (target !== id && !out.includes(target)) out.push(target)
+    }
+    return out
+  }
+  await runTransaction(db, async (tx) => {
+    const entries = [...byId.entries()].map(([id, m]) => ({ id, m, ref: doc(memoriesCol(uid), id) }))
+    const snaps = await Promise.all(entries.map((e) => tx.get(e.ref)))
+    entries.forEach((e, i) => {
+      const snap = snaps[i]
+      const links = linkIds(e.id, e.m.links)
+      if (snap.exists()) {
+        const merged = [...new Set([...(snap.data().links ?? []), ...links])].slice(-MAX_LINKS)
+        tx.update(e.ref, { mentions: increment(1), links: merged, lastSeenAt: serverTimestamp() } as never)
+      } else {
+        tx.set(e.ref, { label: e.m.label, type: e.m.type, links: links.slice(0, MAX_LINKS), mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
+      }
+    })
+  })
 }
