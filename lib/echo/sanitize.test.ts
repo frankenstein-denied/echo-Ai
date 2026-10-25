@@ -191,7 +191,7 @@ describe('memories, reply, trace', () => {
 
   it('validates, de-duplicates and caps memories', () => {
     const memories = [
-      { label: 'Mama', type: 'person', links: ['Family', 'Mama', 'Family'] },
+      { label: 'Mama', type: 'person', links: [{ label: 'Family', type: 'topic' }, { label: 'Mama', type: 'person' }] },
       { label: 'mama', type: 'person', links: [] },
       { label: 'Mama', type: 'topic', links: [] },
       { label: 'x'.repeat(100), type: 'interest', links: [] },
@@ -202,10 +202,103 @@ describe('memories, reply, trace', () => {
     ]
     const out = resp([], { memories }).memories
     expect(out).toHaveLength(10)
-    expect(out[0]).toEqual({ label: 'Mama', type: 'person', links: ['Family'] })
-    expect(out[1]).toEqual({ label: 'Mama', type: 'topic', links: [] })
+    expect(out[0]).toEqual({ label: 'Mama', type: 'person', linkIds: [] })
+    expect(out[1].linkIds).toEqual(['person-mama'])
     expect(out[2].label).toHaveLength(60)
     expect(out.some((m) => m.label === 'Bad')).toBe(false)
+  })
+
+  describe('link resolution', () => {
+    const ctx = [
+      { label: 'Alex', type: 'person', mentions: 2 },
+      { label: 'Running', type: 'interest', mentions: 3 },
+      { label: 'Half marathon', type: 'goal', mentions: 1 },
+      { label: 'Report', type: 'task', mentions: 1 },
+      { label: 'Checkup', type: 'health', mentions: 1 },
+      { label: 'Day one', type: 'diary', mentions: 1 },
+      { label: 'Calendar', type: 'connector', mentions: 1 },
+      { label: 'Sleep', type: 'topic', mentions: 1 },
+    ]
+    const run = (memories: unknown[]) => sanitizeEchoResponse({ reply: 'x', actions: [], memories, trace: [] }, NOW, '09:00', ctx).memories
+
+    it('resolves existing context memories of every type to <type>-<slug> ids', () => {
+      const targets = ctx.map((c) => ({ label: c.label, type: c.type }))
+      const out = run([{ label: 'Knee', type: 'topic', links: targets }])
+      expect(out[0].linkIds).toEqual([
+        'person-alex', 'interest-running', 'goal-half-marathon', 'task-report', 'health-checkup', 'diary-day-one', 'connector-calendar', 'topic-sleep',
+      ])
+    })
+
+    it('links to memories in the same response', () => {
+      const out = run([
+        { label: 'Alex', type: 'person', links: [{ label: 'Running', type: 'interest' }] },
+        { label: 'Running', type: 'interest', links: [] },
+      ])
+      expect(out[0].linkIds).toEqual(['interest-running'])
+    })
+
+    it('drops unknown targets and invalid types instead of guessing topic', () => {
+      const out = run([
+        { label: 'Knee', type: 'topic', links: [{ label: 'Nobody', type: 'person' }, 5, null, { label: '!!!', type: 'topic' }] },
+      ])
+      expect(out[0].linkIds).toEqual([])
+    })
+
+    it('adopts the existing memory when the model picks a different type for the same slug', () => {
+      const out = run([
+        { label: 'running', type: 'topic', links: [{ label: 'Running', type: 'topic' }, { label: 'Alex', type: 'interest' }] },
+        { label: 'Health', type: 'topic', links: [{ label: 'Sleep', type: 'health' }] },
+      ])
+      expect(out[0]).toEqual({ label: 'Running', type: 'interest', linkIds: ['person-alex'] })
+      expect(out[1].linkIds).toEqual(['topic-sleep'])
+    })
+
+    it('keeps distinct types when the slug is ambiguous in context or duplicated in the response', () => {
+      const amb = sanitizeEchoResponse({ reply: 'x', actions: [], memories: [{ label: 'Mama', type: 'topic', links: [] }], trace: [] }, NOW, '09:00', [
+        { label: 'Mama', type: 'person' },
+        { label: 'Mama', type: 'interest' },
+      ]).memories
+      expect(amb[0]).toMatchObject({ label: 'Mama', type: 'topic' })
+      const dup = sanitizeEchoResponse({ reply: 'x', actions: [], memories: [{ label: 'Mama', type: 'person', links: [] }, { label: 'Mama', type: 'topic', links: [] }], trace: [] }, NOW, '09:00', [
+        { label: 'Mama', type: 'person' },
+      ]).memories
+      expect(dup.map((m) => m.type)).toEqual(['person', 'topic'])
+    })
+
+    it('resolves bare label strings only when unambiguous', () => {
+      const out = run([{ label: 'Knee', type: 'topic', links: ['Alex', 'alex', 'Nobody'] }])
+      expect(out[0].linkIds).toEqual(['person-alex'])
+    })
+
+    it('links otherwise-isolated memories to the primary one (co-occurrence)', () => {
+      const out = run([
+        { label: 'Running', type: 'interest', links: [] },
+        { label: 'Knee', type: 'topic', links: [] },
+        { label: 'Alex', type: 'person', links: [] },
+        { label: 'Sleep', type: 'topic', links: [{ label: 'Alex', type: 'person' }] },
+      ])
+      expect(out[0].linkIds).toEqual([])
+      expect(out[1].linkIds).toEqual(['interest-running'])
+      expect(out[2].linkIds).toEqual([])
+      expect(out[3].linkIds).toEqual(['person-alex'])
+    })
+
+    it('does not co-link a memory that is already targeted by another', () => {
+      const out = run([
+        { label: 'Running', type: 'interest', links: [] },
+        { label: 'Knee', type: 'topic', links: [{ label: 'Alex', type: 'person' }] },
+        { label: 'Alex', type: 'person', links: [] },
+      ])
+      expect(out[2].linkIds).toEqual([])
+    })
+
+    it('caps links per memory at 8 and drops self links', () => {
+      const memories = Array.from({ length: 10 }, (_, i) => ({ label: `T${i}`, type: 'topic', links: [] }))
+      const links = memories.map((m) => ({ label: m.label, type: m.type }))
+      const out = run([{ label: 'Hub', type: 'topic', links: [{ label: 'Hub', type: 'topic' }, ...links] }, ...memories.slice(0, 9)])
+      expect(out[0].linkIds).toHaveLength(8)
+      expect(out[0].linkIds).not.toContain('topic-hub')
+    })
   })
 
   it('caps the reply at 1200 chars', () => {

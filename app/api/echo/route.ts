@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       })
       return JSON.parse(result.text ?? '') as unknown
     })
-    const out = sanitizeEchoResponse(raw, parsed.clientTime, extractCheckInTime(parsed.context.profile))
+    const out = sanitizeEchoResponse(raw, parsed.clientTime, extractCheckInTime(parsed.context.profile), parsed.context.memoryLabels)
     if (!out.reply) out.reply = 'Got it.'
     if (process.env.NODE_ENV !== 'production') console.info(`[echo] answered by ${model}`)
     return NextResponse.json(out)

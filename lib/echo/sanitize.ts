@@ -20,7 +20,7 @@ export const LIMITS = {
   category: 40,
   provider: 40,
   request: 500,
-  memoryLinks: 10,
+  memoryLinks: 8,
 } as const
 
 const MEMORY_TYPES: MemoryType[] = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
@@ -245,29 +245,103 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
   }
 }
 
-function sanitizeMemories(raw: unknown): MemoryInput[] {
+type KnownLabel = { label: string; type: string }
+
+function sanitizeMemories(raw: unknown, context: KnownLabel[]): MemoryInput[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
-  const out: MemoryInput[] = []
+  const ctxIds = new Set<string>()
+  const ctxBySlug = new Map<string, { label: string; type: MemoryType }[]>()
+  for (const c of context) {
+    const cs = slugifyLabel(c.label)
+    if (!cs || !MEMORY_TYPES.includes(c.type as MemoryType) || ctxIds.has(`${c.type}-${cs}`)) continue
+    ctxIds.add(`${c.type}-${cs}`)
+    ctxBySlug.set(cs, [...(ctxBySlug.get(cs) ?? []), { label: c.label, type: c.type as MemoryType }])
+  }
+  const rawSlugCount = new Map<string, number>()
+  for (const m of raw) {
+    if (!isObj(m)) continue
+    const rs = slugifyLabel(str(m.label, LIMITS.labelLength))
+    if (rs) rawSlugCount.set(rs, (rawSlugCount.get(rs) ?? 0) + 1)
+  }
+  const kept: { label: string; type: MemoryType; id: string; rawLinks: unknown[] }[] = []
   for (const m of raw) {
     if (!isObj(m)) continue
     const label = str(m.label, LIMITS.labelLength)
     if (!label || !MEMORY_TYPES.includes(m.type as MemoryType)) continue
     const slug = slugifyLabel(label)
     if (!slug) continue
-    const key = `${m.type}-${slug}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    const links = Array.isArray(m.links)
-      ? [...new Set(m.links.map((l) => str(l, LIMITS.labelLength)).filter((l) => l && slugifyLabel(l) && l !== label))].slice(0, LIMITS.memoryLinks)
-      : []
-    out.push({ label, type: m.type as MemoryType, links })
-    if (out.length >= LIMITS.memories) break
+    let type = m.type as MemoryType
+    let finalLabel = label
+    // Same slug as exactly one existing memory (any type): reuse it instead of creating a duplicate node.
+    if (!ctxIds.has(`${type}-${slug}`)) {
+      const only = ctxBySlug.get(slug)
+      if (only && only.length === 1 && rawSlugCount.get(slug) === 1) {
+        type = only[0].type
+        finalLabel = only[0].label
+      }
+    }
+    const id = `${type}-${slug}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    kept.push({ label: finalLabel, type, id, rawLinks: Array.isArray(m.links) ? m.links : [] })
+    if (kept.length >= LIMITS.memories) break
+  }
+
+  // Known targets: this response's memories plus the request's existing memories.
+  const known = new Set<string>(seen)
+  const bySlug = new Map<string, string[]>()
+  const addKnown = (type: string, label: string) => {
+    const slug = slugifyLabel(label)
+    if (!slug || !MEMORY_TYPES.includes(type as MemoryType)) return
+    const id = `${type}-${slug}`
+    known.add(id)
+    const ids = bySlug.get(slug) ?? []
+    if (!ids.includes(id)) ids.push(id)
+    bySlug.set(slug, ids)
+  }
+  for (const k of kept) addKnown(k.type, k.label)
+  for (const c of context) addKnown(c.type, c.label)
+
+  const resolve = (l: unknown): string | null => {
+    if (isObj(l)) {
+      const slug = slugifyLabel(str(l.label, LIMITS.labelLength))
+      if (!slug || typeof l.type !== 'string') return null
+      const id = `${l.type}-${slug}`
+      if (known.has(id)) return id
+      const only = ctxBySlug.get(slug)
+      return only && only.length === 1 ? `${only[0].type}-${slug}` : null
+    }
+    // Bare label strings (older shape) resolve only when exactly one known memory has that slug.
+    if (typeof l === 'string') {
+      const ids = bySlug.get(slugifyLabel(str(l, LIMITS.labelLength)))
+      return ids && ids.length === 1 ? ids[0] : null
+    }
+    return null
+  }
+
+  const out: MemoryInput[] = kept.map((k) => {
+    const linkIds: string[] = []
+    for (const l of k.rawLinks) {
+      const id = resolve(l)
+      if (id && id !== k.id && !linkIds.includes(id)) linkIds.push(id)
+      if (linkIds.length >= LIMITS.memoryLinks) break
+    }
+    return { label: k.label, type: k.type, linkIds }
+  })
+
+  // Co-occurrence: a memory from this message with no connection at all joins the primary (first) memory.
+  if (out.length > 1) {
+    const primary = kept[0].id
+    const targeted = new Set(out.flatMap((m) => m.linkIds))
+    out.forEach((m, i) => {
+      if (i > 0 && !m.linkIds.length && !targeted.has(kept[i].id)) m.linkIds.push(primary)
+    })
   }
   return out
 }
 
-export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTime: string): EchoResponse {
+export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTime: string, existingMemories: KnownLabel[] = []): EchoResponse {
   const obj = isObj(raw) ? raw : {}
   const client = parseClientTime(clientTime) ?? { wallMs: Date.now(), offsetMin: 0 }
   const clientDate = new Date(client.wallMs).toISOString().slice(0, 10)
@@ -287,7 +361,7 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
   return {
     reply: str(obj.reply, LIMITS.reply),
     actions: finalActions,
-    memories: sanitizeMemories(obj.memories),
+    memories: sanitizeMemories(obj.memories, existingMemories),
     trace: [...trace, ...notes].slice(0, LIMITS.trace),
   }
 }

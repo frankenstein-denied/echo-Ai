@@ -20,6 +20,7 @@ import {
 import { db } from '@/lib/firebase'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
+import { buildReciprocalUpdate, mergeLinks, planReciprocalLinks } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
 
 export type { EchoCategory, MemoryType }
@@ -321,9 +322,8 @@ export function memoryId(type: MemoryType, label: string): string {
   return `${type}-${slugifyLabel(label) || 'unnamed'}`
 }
 
-const MAX_LINKS = 50
-
-// Creates each memory (mentions: 1) or bumps mentions and merges links. All reads happen before any write.
+// Creates each memory (mentions: 1) or bumps mentions and merges links, and adds reciprocal links
+// (B also lists A) to existing targets without touching their mentions. All reads happen before any write.
 export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promise<void> {
   const byId = new Map<string, MemoryInput>()
   for (const m of inputs) {
@@ -332,30 +332,36 @@ export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promis
     if (!byId.has(id)) byId.set(id, m)
   }
   if (!byId.size) return
-  const idBySlug = new Map<string, string>()
-  for (const [id, m] of byId) idBySlug.set(slugifyLabel(m.label), id)
-  const linkIds = (id: string, links: string[]) => {
-    const out: string[] = []
-    for (const l of links) {
-      const slug = slugifyLabel(l)
-      if (!slug) continue
-      const target = idBySlug.get(slug) ?? `topic-${slug}`
-      if (target !== id && !out.includes(target)) out.push(target)
-    }
-    return out
-  }
+  const linksOf = (id: string) => (byId.get(id)?.linkIds ?? []).filter((t) => t !== id)
+  const reciprocal = planReciprocalLinks([...byId.keys()].map((id) => ({ id, linkIds: linksOf(id) })))
+  const externalIds = [...reciprocal.keys()].filter((id) => !byId.has(id))
   await runTransaction(db, async (tx) => {
     const entries = [...byId.entries()].map(([id, m]) => ({ id, m, ref: doc(memoriesCol(uid), id) }))
-    const snaps = await Promise.all(entries.map((e) => tx.get(e.ref)))
+    const externals = externalIds.map((id) => ({ id, ref: doc(memoriesCol(uid), id) }))
+    const [snaps, extSnaps] = await Promise.all([
+      Promise.all(entries.map((e) => tx.get(e.ref))),
+      Promise.all(externals.map((e) => tx.get(e.ref))),
+    ])
+    const existingExternal = new Set(externals.filter((_, i) => extSnaps[i].exists()).map((e) => e.id))
     entries.forEach((e, i) => {
       const snap = snaps[i]
-      const links = linkIds(e.id, e.m.links)
+      // Drop targets that no longer exist (stale context) so links never dangle.
+      const links = linksOf(e.id).filter((t) => byId.has(t) || existingExternal.has(t))
+      const withBack = [...links, ...(reciprocal.get(e.id) ?? [])]
       if (snap.exists()) {
-        const merged = [...new Set([...(snap.data().links ?? []), ...links])].slice(-MAX_LINKS)
+        const merged = mergeLinks(snap.data().links ?? [], withBack)
         tx.update(e.ref, { mentions: increment(1), links: merged, lastSeenAt: serverTimestamp() } as never)
       } else {
-        tx.set(e.ref, { label: e.m.label, type: e.m.type, links: links.slice(0, MAX_LINKS), mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
+        tx.set(e.ref, { label: e.m.label, type: e.m.type, links: mergeLinks([], withBack), mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
       }
+    })
+    externals.forEach((e, i) => {
+      const snap = extSnaps[i]
+      if (!snap.exists()) return
+      const upd = buildReciprocalUpdate(snap.data(), reciprocal.get(e.id) ?? [])
+      if (!upd) return
+      // Rules require lastSeenAt == request.time on every update (so it is bumped); mentions is only set for legacy docs lacking it.
+      tx.update(e.ref, { ...upd, lastSeenAt: serverTimestamp() } as never)
     })
   })
 }

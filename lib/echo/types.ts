@@ -15,7 +15,8 @@ export type EchoAction =
 export type MemoryInput = {
   label: string
   type: MemoryType
-  links: string[]
+  /** Resolved memory doc ids (`<type>-<slug>`), already validated by the router. */
+  linkIds: string[]
 }
 
 export type EchoRequestMessage = { role: 'user' | 'assistant'; text: string }

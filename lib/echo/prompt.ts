@@ -35,9 +35,11 @@ TIME RULES
 - For health, "date" is YYYY-MM-DD in the user's local time; default to today. Sleep is in minutes (6 hours = 360). Mood is 1-10, water is glasses.
 
 MEMORY EXTRACTION
-- "memories" are the people, interests, topics and recurring activities worth remembering from this message, each with a short "label" (max 60 characters, e.g. "Mama", "Running", "Thesis").
-- type is one of: person, interest, topic, goal, task, health, diary, connector. Use person for named people, interest for hobbies/likes, topic for life areas or themes (Family, Work, Sleep), goal for goals.
-- "links" lists labels of OTHER memories this one relates to (e.g. Mama -> Family). Prefer reusing labels from the known memory list. Return at most 10 memories; return none for small talk.
+- "memories" are the people, interests, topics and recurring activities worth remembering from this message, each with a short "label" (max 60 characters). Labels are short, canonical and singular; topics and interests in Title Case ("Running", not "running sessions"; "Half marathon"; "Knee"). If the KNOWN MEMORIES list already has the same thing, reuse its label and type EXACTLY.
+- type is one of: person, interest, topic, goal, task, health, diary, connector. Use person for named people, interest for hobbies/likes, topic for life areas, body parts or themes (Family, Work, Sleep, Knee), goal for goals.
+- Also emit a memory for the main subject of every action you save (the goal's topic, the person in a reminder, the activity in a note) so each saved action connects into the graph.
+- "links" connect memories. Every memory MUST link to (a) the other memories from this same message that it relates to, and (b) the most relevant memories from the KNOWN MEMORIES list, each given as {"label","type"} copied exactly. Give 1-4 links per memory whenever any sensible relation exists (a person to the activity they share, a symptom to the activity or body part, a goal to its activity). Only link to memories in this response or in the known list; never invent targets.
+- Return at most 10 memories; return none for small talk.
 
 TRACE
 - "trace" is 1-4 short human-readable steps, e.g. "Classified as Reminder", "Extracted: Mama, 8:30 PM".
@@ -123,7 +125,18 @@ export const RESPONSE_SCHEMA = {
         properties: {
           label: str('max 60 characters'),
           type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic'] },
-          links: { type: Type.ARRAY, items: { type: Type.STRING } },
+          links: {
+            type: Type.ARRAY,
+            description: 'related memories from this response or the known list, exact label and type',
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: str('exact label of the related memory'),
+                type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic'] },
+              },
+              required: ['label', 'type'],
+            },
+          },
         },
         required: ['label', 'type', 'links'],
       },
