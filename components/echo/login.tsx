@@ -3,14 +3,18 @@
 import { useState, type FormEvent } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { authErrorMessage, useAuth } from '@/lib/auth-context'
-import { Alert, Button, Card, EchoMark, IconButton, Input, Segmented } from '@/components/echo/ui'
+import { Alert, Button, Card, IconButton, Input, Segmented } from '@/components/echo/ui'
 import { GoogleG } from '@/components/echo/google-g'
 
 type Mode = 'signin' | 'signup'
 
-export function Login() {
+export type AuthMode = Mode
+
+/** Auth card (sign in / create account / Google). Mode is controlled when `mode` is passed, otherwise internal. */
+export function AuthCard({ mode: modeProp, onModeChange }: { mode?: AuthMode; onModeChange?: (m: AuthMode) => void }) {
   const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth()
-  const [mode, setMode] = useState<Mode>('signin')
+  const [innerMode, setInnerMode] = useState<Mode>('signin')
+  const mode = modeProp ?? innerMode
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -50,20 +54,15 @@ export function Login() {
   }
 
   const switchMode = (m: string) => {
-    setMode(m as Mode)
+    setInnerMode(m as Mode)
+    onModeChange?.(m as Mode)
     setError('')
     setInfo('')
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-[400px]">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <EchoMark small />
-          <h1 className="mt-3 text-2xl font-semibold leading-8 text-foreground">Echo</h1>
-          <p className="text-sm text-muted-foreground">Your private journal that remembers for you.</p>
-        </div>
-        <Card className="p-6">
+    <div id="auth-card" className="w-full">
+      <Card className="p-6">
           <div className="mb-5">
             <Segmented
               fullWidth
@@ -127,9 +126,8 @@ export function Login() {
             <GoogleG size={20} />
             Continue with Google
           </button>
-        </Card>
-        <p className="mt-4 text-center text-xs text-muted-foreground">Your data stays yours. Export or delete it anytime.</p>
-      </div>
-    </main>
+      </Card>
+      <p className="mt-3 text-center text-xs text-muted-foreground">Your entries are stored under your account only.</p>
+    </div>
   )
 }

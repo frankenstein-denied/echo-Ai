@@ -64,9 +64,11 @@ body {
   line-height: 20px;
 }
 button, input, textarea, select { font: inherit; }
-:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 }
 
 @keyframes echo-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
@@ -84,3 +86,6 @@ button, input, textarea, select { font: inherit; }
     scroll-behavior: auto !important;
   }
 }
+
+@keyframes landing-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.landing-fade { animation: landing-fade 0.5s ease-out both; }

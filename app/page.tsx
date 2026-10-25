@@ -1,12 +1,28 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { ensureUserProfile, type UserProfile } from '@/lib/firestore'
-import { Login } from '@/components/echo/login'
+import { Landing } from '@/components/echo/landing'
 import { Onboarding } from '@/components/echo/onboarding'
 import { Dashboard } from '@/components/echo/shell'
 import { Alert, Button, EchoMark } from '@/components/echo/ui'
+
+const HINT_KEY = 'echo:signed-in'
+const readHint = () => {
+  try {
+    return window.localStorage.getItem(HINT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const writeHint = (on: boolean) => {
+  try {
+    if (on) window.localStorage.setItem(HINT_KEY, '1')
+    else window.localStorage.removeItem(HINT_KEY)
+  } catch {}
+}
+const subscribeNone = () => () => {}
 
 function Loader() {
   return (
@@ -23,6 +39,12 @@ export default function Page() {
   const [state, setState] = useState<{ uid: string; profile: UserProfile | null; error: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const uid = user?.uid
+  const hinted = useSyncExternalStore(subscribeNone, readHint, () => false)
+
+  useEffect(() => {
+    if (user) writeHint(true)
+    else if (!loading) writeHint(false)
+  }, [user, loading])
 
   useEffect(() => {
     if (!user) return
@@ -40,8 +62,9 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid, attempt])
 
+  if (loading && hinted) return <Loader />
+  if (!user) return <Landing />
   if (loading) return <Loader />
-  if (!user) return <Login />
   if (!state || state.uid !== user.uid) return <Loader />
   if (!state.profile) {
     return (

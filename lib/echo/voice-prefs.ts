@@ -1,6 +1,7 @@
 export type VoicePrefs = { enabled: boolean; voice: string; autoSpeak: boolean }
 export const VOICE_PREFS_KEY = 'echo.voicePrefs'
-export const DEFAULT_VOICE_PREFS: VoicePrefs = { enabled: true, voice: 'Kore', autoSpeak: true }
+// autoSpeak is off by default: typed replies are text-only unless the user opts in (calls are always voice).
+export const DEFAULT_VOICE_PREFS: VoicePrefs = { enabled: true, voice: 'Kore', autoSpeak: false }
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 

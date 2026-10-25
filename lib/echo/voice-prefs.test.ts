@@ -12,6 +12,9 @@ describe('voice prefs', () => {
     expect(loadVoicePrefs()).toEqual(DEFAULT_VOICE_PREFS) // node: no window
     expect(saveVoicePrefs(DEFAULT_VOICE_PREFS, null)).toBe(false)
   })
+  it('typed replies are text-only by default', () => {
+    expect(DEFAULT_VOICE_PREFS).toEqual({ enabled: true, voice: 'Kore', autoSpeak: false })
+  })
   it('round-trips', () => {
     const s = fake()
     expect(saveVoicePrefs({ enabled: false, voice: 'Puck', autoSpeak: false }, s)).toBe(true)

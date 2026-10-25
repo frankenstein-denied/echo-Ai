@@ -97,19 +97,13 @@ function hhmmToMs(s: string): number {
   return (h * 60 + m) * 60000
 }
 
-export function parseEchoRequest(body: unknown): EchoRequest | { error: string } {
-  if (!isObj(body)) return { error: 'Body must be a JSON object' }
-  if (typeof body.text !== 'string') return { error: 'text is required' }
-  const text = body.text.trim()
-  if (!text) return { error: 'text is required' }
-  if (text.length > LIMITS.text) return { error: `text must be at most ${LIMITS.text} characters` }
-  if (typeof body.clientTime !== 'string' || !parseClientTime(body.clientTime)) {
-    return { error: 'clientTime must be ISO 8601 with offset' }
-  }
-  if (typeof body.timeZone !== 'string' || !body.timeZone.trim() || body.timeZone.trim().length > LIMITS.timeZone) {
-    return { error: 'timeZone is required' }
-  }
-  const ctx = isObj(body.context) ? body.context : {}
+export function isValidClientTime(s: unknown): s is string {
+  return typeof s === 'string' && !!parseClientTime(s)
+}
+
+/** Validate and cap the client-built context (profile, recent messages, memory labels). */
+export function parseEchoContext(raw: unknown): EchoRequest['context'] {
+  const ctx = isObj(raw) ? raw : {}
   const recentMessages: EchoRequest['context']['recentMessages'] = []
   if (Array.isArray(ctx.recentMessages)) {
     for (const m of ctx.recentMessages.slice(-LIMITS.recentMessages)) {
@@ -128,11 +122,27 @@ export function parseEchoRequest(body: unknown): EchoRequest | { error: string }
       memoryLabels.push({ label, type: str(m.type, 20), mentions })
     }
   }
+  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels }
+}
+
+export function parseEchoRequest(body: unknown): EchoRequest | { error: string } {
+  if (!isObj(body)) return { error: 'Body must be a JSON object' }
+  if (typeof body.text !== 'string') return { error: 'text is required' }
+  const text = body.text.trim()
+  if (!text) return { error: 'text is required' }
+  if (text.length > LIMITS.text) return { error: `text must be at most ${LIMITS.text} characters` }
+  if (typeof body.clientTime !== 'string' || !parseClientTime(body.clientTime)) {
+    return { error: 'clientTime must be ISO 8601 with offset' }
+  }
+  if (typeof body.timeZone !== 'string' || !body.timeZone.trim() || body.timeZone.trim().length > LIMITS.timeZone) {
+    return { error: 'timeZone is required' }
+  }
+  const context = parseEchoContext(body.context)
   return {
     text,
     clientTime: body.clientTime,
     timeZone: body.timeZone.trim(),
-    context: { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels },
+    context,
   }
 }
 

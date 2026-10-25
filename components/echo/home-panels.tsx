@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { doc, limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
-import { Bell, Droplet, HeartPulse, Moon, Smile, Target, Zap, type LucideIcon } from 'lucide-react'
+import { Bell, Droplet, HeartPulse, Moon, Smile, Target, X, Zap, type LucideIcon } from 'lucide-react'
 import { goalsCol, healthLogsCol, remindersCol, type Goal, type HealthLog, type Reminder } from '@/lib/firestore'
-import { Button, Card, Skeleton } from './ui'
+import { Button, IconButton, Skeleton } from './ui'
 import type { HomeView } from './home'
 
 export function localDateString(d: Date = new Date()): string {
@@ -20,6 +20,11 @@ export function useToday(): string {
     return () => clearInterval(id)
   }, [])
   return day
+}
+
+// Flat block inside the Today column: separated by dividers, never a card inside a card.
+function Section({ children }: { children: ReactNode }) {
+  return <section className="border-b border-border px-5 py-5 last:border-b-0">{children}</section>
 }
 
 const sleepText = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`
@@ -38,7 +43,7 @@ export function TodayReminders({ uid, day }: { uid: string; day: string }) {
     )
   }, [uid, day])
   return (
-    <Card>
+    <Section>
       <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
         <Bell size={16} aria-hidden="true" className="text-muted-foreground" />
         Today&apos;s reminders
@@ -57,7 +62,7 @@ export function TodayReminders({ uid, day }: { uid: string; day: string }) {
           ))}
         </ul>
       )}
-    </Card>
+    </Section>
   )
 }
 
@@ -78,7 +83,7 @@ export function HealthToday({ uid, day, onNavigate }: { uid: string; day: string
     if (log.energy) rows.push(['Energy', log.energy, Zap])
   }
   return (
-    <Card>
+    <Section>
       <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
         <HeartPulse size={16} aria-hidden="true" className="text-muted-foreground" />
         Health today
@@ -102,7 +107,7 @@ export function HealthToday({ uid, day, onNavigate }: { uid: string; day: string
           ))}
         </dl>
       )}
-    </Card>
+    </Section>
   )
 }
 
@@ -117,7 +122,7 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
     )
   }, [uid])
   return (
-    <Card>
+    <Section>
       <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
         <Target size={16} aria-hidden="true" className="text-muted-foreground" />
         Goal progress
@@ -137,6 +142,75 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
           </button>
         ))
       )}
-    </Card>
+    </Section>
+  )
+}
+
+/** Reminders, health and goals for today, stacked as flat sections. */
+export function TodayPanel({ uid, day, onNavigate }: { uid: string; day: string; onNavigate: (v: HomeView) => void }) {
+  return (
+    <>
+      <TodayReminders uid={uid} day={day} />
+      <HealthToday uid={uid} day={day} onNavigate={onNavigate} />
+      <GoalProgress uid={uid} onNavigate={onNavigate} />
+    </>
+  )
+}
+
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+
+/** Right-hand drawer (below xl): focus-trapped, Esc or the backdrop closes it, closes if the viewport grows to xl. */
+export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; day: string; onNavigate: (v: HomeView) => void; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    panel.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
+    const mq = window.matchMedia('(min-width: 1280px)')
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) onClose()
+    }
+    mq.addEventListener('change', onChange)
+    return () => {
+      mq.removeEventListener('change', onChange)
+      document.body.style.overflow = prevOverflow
+      previous?.focus()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      onClose()
+      return
+    }
+    if (e.key !== 'Tab' || !panel.current) return
+    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+    if (!items.length) return
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (!panel.current.contains(document.activeElement) || document.activeElement === panel.current) {
+      e.preventDefault()
+      ;(e.shiftKey ? last : first).focus()
+    } else if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 xl:hidden" onKeyDown={onKeyDown}>
+      <div aria-hidden="true" className="absolute inset-0 bg-background/80" onClick={onClose} />
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Today" className="absolute inset-y-0 right-0 flex w-80 max-w-[90vw] flex-col overflow-y-auto border-l border-border bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h2 className="text-base font-semibold text-foreground">Today</h2>
+          <IconButton icon={X} label="Close Today" size="sm" onClick={onClose} />
+        </div>
+        <TodayPanel uid={uid} day={day} onNavigate={(v) => { onClose(); onNavigate(v) }} />
+      </div>
+    </div>
   )
 }

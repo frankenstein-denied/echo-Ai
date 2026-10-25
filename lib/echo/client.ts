@@ -48,8 +48,8 @@ export async function saveReply(uid: string, pageId: string, reply: string, cate
   }
 }
 
-// Applies actions and memories; a failure in one never blocks the others. Saves the assistant message last.
-export async function applyEchoResponse(uid: string, pageId: string, res: EchoResponse): Promise<ApplyResult> {
+// Applies actions and memories (no reply); a failure in one never blocks the others. Used by typed chat and calls.
+export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions' | 'memories'>): Promise<{ saved: SavedItem[]; failed: string[] }> {
   const saved: SavedItem[] = []
   const failed: string[] = []
   const run = async (type: SavedItem['type'], label: string, fn: () => Promise<unknown>) => {
@@ -99,6 +99,12 @@ export async function applyEchoResponse(uid: string, pageId: string, res: EchoRe
     }
   }
   if (res.memories.length) await run('memory', '2nd Brain memories', () => upsertMemories(uid, res.memories))
+  return { saved, failed }
+}
+
+// Applies actions and memories, then saves the assistant message last.
+export async function applyEchoResponse(uid: string, pageId: string, res: EchoResponse): Promise<ApplyResult> {
+  const { saved, failed } = await applyActions(uid, res)
   const category = deriveCategory(saved)
   const reply = res.reply || fallbackReply(saved)
   let messageId: string | undefined

@@ -1,108 +1,49 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
-import { FileText, Plus, Search, Trash2 } from 'lucide-react'
-import { addNote, deleteNote, notesCol, updateNote, type Note } from '@/lib/firestore'
-import { debounce, filterNotes, parseTags, type Debounced } from '@/lib/echo/view-helpers'
+import { FileText, Plus, Search } from 'lucide-react'
+import { addNote, notesCol, type Note } from '@/lib/firestore'
+import { filterNotes } from '@/lib/echo/view-helpers'
+import { filterByCategory, noteCategories, previewText, relativeDate, sortByUpdated } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { Alert, Badge, Button, Card, EmptyState, Input, PageHeader, Skeleton } from './ui'
+import { Alert, Badge, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { NoteEditor } from './note-editor'
 
 type NoteRow = Note & { id: string }
 
-const dateText = (n: NoteRow) =>
-  n.createdAt ? n.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'
+const updatedMs = (n: NoteRow) => (n.updatedAt ?? n.createdAt)?.toMillis?.() ?? Date.now()
 
-function NoteEditor({ uid, note, onDeleted }: { uid: string; note: NoteRow; onDeleted: () => void }) {
-  const [title, setTitle] = useState(note.title)
-  const [body, setBody] = useState(note.body)
-  const [tagText, setTagText] = useState(note.tags.join(', '))
-  const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
-  const [error, setError] = useState('')
-  const saver = useRef<Debounced<[string, string, string]> | null>(null)
+const fullDate = (n: NoteRow) =>
+  n.createdAt ? `Created ${n.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Just now'
 
-  useEffect(() => {
-    const s = debounce(async (t: string, b: string, tg: string) => {
-      try {
-        await updateNote(uid, note.id, { title: t, body: b, tags: parseTags(tg) })
-        setStatus('saved')
-        setError('')
-      } catch (e) {
-        setStatus('error')
-        setError(e instanceof Error ? e.message : 'Could not save this note.')
-      }
-    }, 800)
-    saver.current = s
-    return () => s.flush()
-  }, [uid, note.id])
-
-  const change = (t: string, b: string, tg: string) => {
-    setStatus('saving')
-    saver.current?.(t, b, tg)
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p
   }
+  return null
+}
 
-  const remove = async () => {
-    if (!window.confirm('Delete this note? This cannot be undone.')) return
-    saver.current?.cancel()
-    try {
-      await deleteNote(uid, note.id)
-      onDeleted()
-    } catch (e) {
-      setStatus('error')
-      setError(e instanceof Error ? e.message : 'Could not delete this note.')
-    }
-  }
-
+function NoteCard({ note, onOpen }: { note: NoteRow; onOpen: () => void }) {
+  const preview = previewText(note.body)
   return (
-    <Card className="flex flex-col">
-      <input
-        aria-label="Note title"
-        value={title}
-        onChange={(e) => {
-          setTitle(e.target.value)
-          change(e.target.value, body, tagText)
-        }}
-        placeholder="Title"
-        maxLength={500}
-        className="w-full rounded-md bg-transparent text-2xl font-semibold leading-8 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      />
-      <p className="mt-2 text-xs text-muted-foreground">
-        {note.category} · {dateText(note)} · {status === 'saving' ? 'Saving...' : status === 'error' ? 'Not saved' : 'Saved'}
-      </p>
-      <textarea
-        aria-label="Note body"
-        value={body}
-        onChange={(e) => {
-          setBody(e.target.value)
-          change(title, e.target.value, tagText)
-        }}
-        placeholder="Write something..."
-        className="mt-6 min-h-[320px] w-full resize-none rounded-md bg-transparent text-sm leading-6 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      />
-      {error && (
-        <div className="mb-3">
-          <Alert variant="danger">{error}</Alert>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-        {parseTags(tagText).map((t) => (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex h-full min-h-40 flex-col rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 ${FOCUS_RING}`}
+    >
+      <span className="block w-full truncate text-base font-semibold text-foreground">{note.title || 'Untitled'}</span>
+      <span className={`mt-2 line-clamp-3 text-sm leading-5 ${preview ? 'text-muted-foreground' : 'text-subtle'}`}>{preview || 'No content yet'}</span>
+      <span className="mt-auto flex w-full flex-wrap items-center gap-1.5 pt-4">
+        <Badge variant="primary">{note.category}</Badge>
+        {note.tags.slice(0, 3).map((t) => (
           <Badge key={t} variant="neutral">{t}</Badge>
         ))}
-        <input
-          aria-label="Tags, comma separated"
-          value={tagText}
-          onChange={(e) => {
-            setTagText(e.target.value)
-            change(title, body, e.target.value)
-          }}
-          placeholder="tags, comma separated"
-          className="min-w-[160px] flex-1 rounded-md bg-transparent px-1 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        />
-        <Button variant="danger" size="sm" icon={Trash2} onClick={remove} className="ml-auto">
-          Delete
-        </Button>
-      </div>
-    </Card>
+        {note.tags.length > 3 && <Badge variant="neutral">+{note.tags.length - 3}</Badge>}
+        <span className="ml-auto text-xs text-muted-foreground">{relativeDate(updatedMs(note), Date.now())}</span>
+      </span>
+    </button>
   )
 }
 
@@ -111,15 +52,19 @@ export function NotesView({ uid }: { uid: string }) {
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [category, setCategory] = useState('All')
+  const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const savedScroll = useRef<{ el: HTMLElement | null; top: number } | null>(null)
+  const seenOpen = useRef(false)
 
   useEffect(() => {
     const q = query(notesCol(uid), orderBy('createdAt', 'desc'))
     return onSnapshot(
       q,
       (snap) => {
-        setNotes(snap.docs.map((s) => ({ ...s.data({ serverTimestamps: 'estimate' }), id: s.id })))
+        setNotes(sortByUpdated(snap.docs.map((s) => ({ ...s.data({ serverTimestamps: 'estimate' }), id: s.id }))))
         setLoadError('')
       },
       (e) => {
@@ -129,8 +74,31 @@ export function NotesView({ uid }: { uid: string }) {
     )
   }, [uid])
 
-  const visible = useMemo(() => filterNotes(notes ?? [], search), [notes, search])
-  const selected = notes?.find((n) => n.id === selectedId) ?? visible[0] ?? null
+  const categories = useMemo(() => noteCategories(notes ?? []), [notes])
+  const activeCategory = category === 'All' || categories.some((c) => c.toLowerCase() === category.toLowerCase()) ? category : 'All'
+  const visible = useMemo(() => filterByCategory(filterNotes(notes ?? [], search), activeCategory), [notes, search, activeCategory])
+  const opened = openId ? notes?.find((n) => n.id === openId) ?? null : null
+
+  const open = (id: string) => {
+    const el = scrollParent(root.current)
+    savedScroll.current = { el, top: el ? el.scrollTop : window.scrollY }
+    seenOpen.current = false
+    setOpenId(id)
+    ;(el ?? window).scrollTo({ top: 0 })
+  }
+
+  const close = useCallback(() => {
+    setOpenId(null)
+    const s = savedScroll.current
+    requestAnimationFrame(() => (s?.el ?? window).scrollTo({ top: s?.top ?? 0 }))
+  }, [])
+
+  // If the open note disappears (deleted elsewhere), return to the grid.
+  useEffect(() => {
+    if (!openId || notes === null) return
+    if (opened) seenOpen.current = true
+    else if (seenOpen.current) close()
+  }, [openId, notes, opened, close])
 
   const create = async () => {
     setCreating(true)
@@ -138,7 +106,8 @@ export function NotesView({ uid }: { uid: string }) {
     try {
       const id = await addNote(uid, { title: 'Untitled note', body: '', category: 'Diary', tags: [] })
       setSearch('')
-      setSelectedId(id)
+      setCategory('All')
+      open(id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create a note.')
     } finally {
@@ -146,8 +115,22 @@ export function NotesView({ uid }: { uid: string }) {
     }
   }
 
+  if (openId) {
+    return (
+      <div ref={root}>
+        {opened ? (
+          <NoteEditor key={opened.id} uid={uid} note={opened} categories={categories} dateLabel={fullDate(opened)} onBack={close} />
+        ) : (
+          <Skeleton className="h-96" />
+        )}
+      </div>
+    )
+  }
+
+  const filtering = search.trim() !== '' || activeCategory !== 'All'
+
   return (
-    <div className="animate-in">
+    <div ref={root} className="animate-in">
       <PageHeader
         title="Notes"
         description="Everything you have written or told Echo to remember."
@@ -158,44 +141,53 @@ export function NotesView({ uid }: { uid: string }) {
           <Alert variant="danger">{error || loadError}</Alert>
         </div>
       )}
-      <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
-        <Card className="self-start">
-          <div className="relative">
+      {notes !== null && notes.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
             <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-3 text-muted-foreground" />
             <Input aria-label="Search notes" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="Search notes" />
           </div>
-          <div className="mt-4 flex flex-col gap-1">
-            {notes === null ? (
-              [0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)
-            ) : visible.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {notes.length === 0 ? 'No notes yet. Create one or tell Echo something to remember.' : 'No notes match your search.'}
-              </p>
-            ) : (
-              visible.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => setSelectedId(n.id)}
-                  aria-current={selected?.id === n.id ? 'true' : undefined}
-                  className={`rounded-lg border p-3 text-left ${FOCUS_RING} ${selected?.id === n.id ? 'border-primary/40 bg-primary-soft' : 'border-transparent hover:bg-surface-2'}`}
-                >
-                  <p className="truncate text-sm font-medium text-foreground">{n.title || 'Untitled'}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {n.category} · {dateText(n)}
-                  </p>
-                </button>
-              ))
-            )}
-          </div>
-        </Card>
-        {selected ? (
-          <NoteEditor key={selected.id} uid={uid} note={selected} onDeleted={() => setSelectedId(null)} />
-        ) : notes === null ? (
-          <Skeleton className="h-96" />
-        ) : (
-          <EmptyState icon={FileText} title="No note selected" description="Select a note, or create a new one." />
-        )}
-      </div>
+          {categories.length > 1 && (
+            <div className="max-w-full overflow-x-auto">
+              <Segmented
+                ariaLabel="Filter by category"
+                value={activeCategory}
+                onChange={setCategory}
+                options={[{ value: 'All', label: 'All' }, ...categories.map((c) => ({ value: c, label: c }))]}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {notes === null ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-40" />
+          ))}
+        </div>
+      ) : notes.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No notes yet"
+          description="Create one, or tell Echo something to remember."
+          action={<Button icon={Plus} onClick={create} loading={creating}>New note</Button>}
+        />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No notes found"
+          description={filtering ? 'Nothing matches your search or filter.' : 'Nothing to show.'}
+          action={<Button variant="secondary" onClick={() => { setSearch(''); setCategory('All') }}>Clear filters</Button>}
+        />
+      ) : (
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((n) => (
+            <li key={n.id}>
+              <NoteCard note={n} onOpen={() => open(n.id)} />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

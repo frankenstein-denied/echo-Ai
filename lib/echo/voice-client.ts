@@ -84,3 +84,14 @@ export async function listVoices(user: Tok, opts: VoiceOpts = {}): Promise<{ voi
   const d = (await res.json().catch(() => ({}))) as { voices?: VoiceOption[]; default?: string }
   return { voices: Array.isArray(d.voices) ? d.voices : [], default: d.default ?? 'Kore' }
 }
+
+export type LiveSessionBody = { clientTime: string; timeZone: string; voice: string; context: unknown; snapshot?: string }
+export type LiveSession = { token: string; model: string; voice: string }
+
+// Mints a single-use ephemeral Live token on the server (the API key never reaches the browser).
+export async function requestLiveSession(user: Tok, body: LiveSessionBody, opts: VoiceOpts = {}): Promise<LiveSession> {
+  const res = await call(user, '/api/voice/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, opts, 15000)
+  const d = (await res.json().catch(() => ({}))) as Partial<LiveSession>
+  if (typeof d.token !== 'string' || typeof d.model !== 'string') throw new VoiceError('failed', 'Voice is unavailable right now.')
+  return { token: d.token, model: d.model, voice: typeof d.voice === 'string' ? d.voice : 'Kore' }
+}

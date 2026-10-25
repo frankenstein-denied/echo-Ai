@@ -111,12 +111,12 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
         <Card>
           <h2 className="text-base font-semibold text-foreground">Voice</h2>
           <div className="mt-1 divide-y divide-border">
-            {row('Enable voice', 'Show the microphone in the Diary.', <Switch checked={prefs.enabled} onChange={(v) => update({ enabled: v })} label="Enable voice" />)}
-            {row('Speak replies aloud', 'Echo reads each reply after you send a message.', <Switch checked={prefs.autoSpeak} onChange={(v) => update({ autoSpeak: v })} label="Speak replies aloud" />)}
+            {row('Enable voice', 'Show the Call button in the Diary.', <Switch checked={prefs.enabled} onChange={(v) => update({ enabled: v })} label="Enable voice" />)}
+            {row('Speak typed replies aloud', 'Echo reads each reply to a typed message. Calls always use voice.', <Switch checked={prefs.autoSpeak} onChange={(v) => update({ autoSpeak: v })} label="Speak typed replies aloud" />)}
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <div className="min-w-40">
-              <Select label="Voice" value={prefs.voice} onChange={(e) => update({ voice: e.target.value })} disabled={voicesError && !voices.length}>
+              <Select label="Voice (calls and spoken replies)" value={prefs.voice} onChange={(e) => update({ voice: e.target.value })} disabled={voicesError && !voices.length}>
                 {options.length ? options.map((v) => <option key={v.id} value={v.id}>{v.label}</option>) : <option value={prefs.voice}>{prefs.voice}</option>}
               </Select>
             </div>

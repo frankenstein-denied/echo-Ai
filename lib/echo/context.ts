@@ -7,6 +7,13 @@ const LABELS_MAX = 40
 const LABEL_LEN = 60
 const CHECK_IN_PREFIX = 'Check-in time:'
 
+/** Pull the check-in time ("Check-in time: HH:MM") out of the client-built profile summary. */
+export function extractCheckInTime(profile: string): string {
+  const m = /check-?in(?: time)?\s*[:=]\s*([01]?\d|2[0-3]):([0-5]\d)/i.exec(profile)
+  if (!m) return '09:00'
+  return `${m[1].padStart(2, '0')}:${m[2]}`
+}
+
 type ProfileInput = {
   preferredName?: string
   tone?: string

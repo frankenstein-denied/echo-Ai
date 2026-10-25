@@ -1,12 +1,8 @@
 import { Type } from '@google/genai'
 import type { EchoRequest } from './types'
 
-/** Pull the check-in time ("Check-in time: HH:MM") out of the client-built profile summary. */
-export function extractCheckInTime(profile: string): string {
-  const m = /check-?in(?: time)?\s*[:=]\s*([01]?\d|2[0-3]):([0-5]\d)/i.exec(profile)
-  if (!m) return '09:00'
-  return `${m[1].padStart(2, '0')}:${m[2]}`
-}
+// Lives in context.ts (no SDK import) so the browser can use it without pulling in @google/genai.
+export { extractCheckInTime } from './context'
 
 export const SYSTEM_INSTRUCTION = `You are Echo, a warm, concise AI diary companion. You read what the user types or says, decide what is worth saving, and reply.
 

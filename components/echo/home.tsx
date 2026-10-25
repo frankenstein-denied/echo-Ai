@@ -1,20 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
-import { Check, Send, Square, Volume2 } from 'lucide-react'
+import { Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Volume2 } from 'lucide-react'
 import { addPageMessage, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, saveReply, sendToEcho, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
-import { dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
+import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { buildContext } from '@/lib/echo/context'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
-import { Alert, Badge, Button, Card, IconButton, Orb, Skeleton } from './ui'
+import { Alert, Badge, Button, IconButton, Skeleton } from './ui'
 import type { NodeType } from '@/lib/echo/ui-classes'
-import { MicButton, type MicState } from './mic-button'
-import { GoalProgress, HealthToday, TodayReminders, useToday } from './home-panels'
+import { CallBar, useEchoCall, type CallTurn, type LateResult } from './call-panel'
+import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -37,7 +37,7 @@ function ActionBadges({ types, onNavigate }: { types: string[]; onNavigate: (v: 
   const shown = [...new Set(types)].filter((t) => LABEL_FOR[t])
   if (!shown.length) return null
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-2 flex flex-wrap gap-2">
       {shown.map((t) => (
         <button key={t} onClick={() => onNavigate(VIEW_FOR[t])} title={`Open ${VIEW_FOR[t]}`} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
           <Badge type={NODE_FOR[t]}>{LABEL_FOR[t]}</Badge>
@@ -50,7 +50,7 @@ function ActionBadges({ types, onNavigate }: { types: string[]; onNavigate: (v: 
 function Trace({ steps }: { steps: string[] }) {
   if (!steps.length) return null
   return (
-    <details className="mt-3">
+    <details className="mt-2">
       <summary className="cursor-pointer rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">AI trace · {steps.length} {steps.length === 1 ? 'step' : 'steps'}</summary>
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
         {steps.map((s, i) => (
@@ -64,8 +64,71 @@ function Trace({ steps }: { steps: string[] }) {
   )
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void }) {
+function EchoAvatar() {
+  return (
+    <div aria-hidden="true" className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+      <Sparkles size={16} />
+    </div>
+  )
+}
+
+const timeLabel = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+function UserBubble({ text, at }: { text: string; at?: Date | null }) {
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm text-foreground">{text}</div>
+      {at && <time className="px-1 text-xs text-subtle">{timeLabel(at)}</time>}
+    </div>
+  )
+}
+
+function EchoRow({ children, live = false }: { children: ReactNode; live?: boolean }) {
+  return (
+    <div className="flex max-w-[92%] items-start gap-3" aria-live={live ? 'polite' : undefined}>
+      <EchoAvatar />
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
+function EchoBubble({ children }: { children: ReactNode }) {
+  return <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-2.5 text-sm leading-6 text-foreground">{children}</div>
+}
+
+function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user: string; echo: string; saved: SavedItem[]; live?: boolean; onNavigate: (v: HomeView) => void }) {
+  const types = saved.map((s) => s.type)
+  return (
+    <>
+      {user && <UserBubble text={user} />}
+      {(echo || types.length > 0) && (
+        <EchoRow live={live}>
+          {echo && <EchoBubble>{echo}</EchoBubble>}
+          <ActionBadges types={types} onNavigate={onNavigate} />
+        </EchoRow>
+      )}
+    </>
+  )
+}
+
+const TODAY_KEY = 'echo.diary.todayCollapsed'
+
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string }) {
   const uid = user.uid
+  const [todayCollapsed, setTodayCollapsed] = useState(false)
+  const [todayDrawer, setTodayDrawer] = useState(false)
+  useEffect(() => {
+    try {
+      setTodayCollapsed(localStorage.getItem(TODAY_KEY) === '1')
+    } catch {}
+  }, [])
+  const toggleToday = () => {
+    const next = !todayCollapsed
+    setTodayCollapsed(next)
+    try {
+      localStorage.setItem(TODAY_KEY, next ? '1' : '0')
+    } catch {}
+  }
   const pageRef = useRef(pageId)
   useEffect(() => {
     if (pageId) pageRef.current = pageId
@@ -78,13 +141,14 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [error, setError] = useState<SendError | null>(null)
   const [extras, setExtras] = useState<Record<string, Extras>>({})
   const day = useToday()
-  const endRef = useRef<HTMLDivElement>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const scrollEnd = useCallback(() => {
+    const el = scroller.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [])
   const busy = useRef(false)
   const [prefs, setPrefs] = useState<VoicePrefs | null>(null) // null until read, so voice UI never flashes
   const prefsRef = useRef<VoicePrefs>(DEFAULT_VOICE_PREFS)
-  const [micState, setMicState] = useState<MicState>('idle')
-  const [hint, setHint] = useState<string | null>(null)
-  const [sttQuotaOff, setSttQuotaOff] = useState(false)
   const ttsQuotaOff = useRef(false)
   const [quotaNotice, setQuotaNotice] = useState(false)
   const queued = useRef<string | null>(null)
@@ -114,13 +178,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [])
   useEffect(() => stopAudio, [stopAudio])
 
-  // TTS quota: stop speaking replies. STT quota: mic can't start (an in-progress recording is never unmounted). One shared notice.
+  // TTS quota: stop speaking typed replies (calls are unaffected).
   const markTtsQuota = useCallback(() => {
     ttsQuotaOff.current = true
-    setQuotaNotice(true)
-  }, [])
-  const markSttQuota = useCallback(() => {
-    setSttQuotaOff(true)
     setQuotaNotice(true)
   }, [])
 
@@ -189,7 +249,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [uid])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    scrollEnd()
   }, [messages, thinking, error])
 
   const messagesRef = useRef<ChatMessage[]>([])
@@ -213,7 +273,6 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       busy.current = true
       setThinking(true)
       setError(null)
-      setHint(null)
       stopAudio()
       let userSaved = alreadySaved
       let pid = pageRef.current
@@ -284,6 +343,84 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     sendRef.current = send
   }, [send])
 
+  // Call turns: persisted in order (user, then Echo) to the open page, creating one if needed.
+  // A finished turn stays on screen as a pending bubble until its messages are written.
+  const [pendingTurns, setPendingTurns] = useState<(CallTurn & { key: number; at: number })[]>([])
+  const [callSaveError, setCallSaveError] = useState<string | null>(null)
+  const persistChain = useRef<Promise<void>>(Promise.resolve())
+  const turnKey = useRef(0)
+  // Writes that finish after their turn was handed off: badges are patched onto the saved reply, failures shown.
+  const turnMessage = useRef(new Map<number, string>())
+  const lateForTurn = useRef(new Map<number, SavedItem[]>())
+  const addLateSaved = useCallback((messageId: string, saved: SavedItem[]) => {
+    if (!saved.length) return
+    setExtras((x) => {
+      const e = x[messageId] ?? { trace: ['Voice call'], saved: [], failed: [] }
+      return { ...x, [messageId]: { ...e, saved: [...e.saved, ...saved] } }
+    })
+  }, [])
+  const onLateResult = useCallback(
+    (turnId: number, r: LateResult) => {
+      if (r.failed.length) {
+        const isMemory = (f: string) => f === '2nd Brain memories' || f === 'save_memories'
+        const other = r.failed.filter((f) => !isMemory(f))
+        setCallSaveError(other.length ? `Echo couldn't save: ${other.join(', ')}` : "Echo couldn't save to your 2nd Brain")
+      }
+      if (!r.saved.length) return
+      const mid = turnMessage.current.get(turnId)
+      if (mid) addLateSaved(mid, r.saved)
+      else {
+        lateForTurn.current.set(turnId, [...(lateForTurn.current.get(turnId) ?? []), ...r.saved])
+        setPendingTurns((p) => p.map((t) => (t.id === turnId ? { ...t, saved: [...t.saved, ...r.saved] } : t)))
+      }
+    },
+    [addLateSaved],
+  )
+  const persistCallTurn = useCallback(
+    (t: CallTurn) => {
+      const key = ++turnKey.current
+      setPendingTurns((p) => [...p, { ...t, key, at: Date.now() }])
+      persistChain.current = persistChain.current.then(async () => {
+        try {
+          let pid = pageRef.current
+          if (!pid) {
+            pid = await onEnsurePage()
+            pageRef.current = pid
+          }
+          if (t.userText) await addPageMessage(uid, pid, 'user', t.userText)
+          if (t.echoText) {
+            // Category from confirmed saves only (plus any confirmed late, before this write).
+            const confirmed = [...t.saved, ...(lateForTurn.current.get(t.id) ?? [])]
+            const id = await saveReply(uid, pid, t.echoText, deriveCategory(confirmed))
+            if (!id) throw new Error('reply not saved')
+            turnMessage.current.set(t.id, id)
+            const lateNow = lateForTurn.current.get(t.id) ?? []
+            lateForTurn.current.delete(t.id)
+            setExtras((x) => ({ ...x, [id]: { trace: ['Voice call'], saved: [...t.saved, ...lateNow], failed: t.failed } }))
+          }
+        } catch (e) {
+          console.error('Echo: could not save call turn', e)
+          setCallSaveError(isPermissionDenied(e) ? RULES_MESSAGE : 'Part of the call could not be saved to this page.')
+        } finally {
+          setPendingTurns((p) => p.filter((x) => x.key !== key))
+        }
+      })
+    },
+    [uid, onEnsurePage],
+  )
+  const getCallContext = useCallback(() => buildContext(profile, messagesRef.current, memoriesRef.current), [profile])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, onTurn: persistCallTurn, onLateResult })
+  // Keep the live call bubbles in view as they fill.
+  const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''
+  useEffect(() => {
+    if (liveKey || pendingTurns.length) scrollEnd()
+  }, [liveKey, pendingTurns.length, call.error])
+  const startCall = () => {
+    stopAudio()
+    setCallSaveError(null)
+    void call.start()
+  }
+
   // Retry only the reply write; actions were already applied for this send.
   const retryReply = useCallback(
     async (r: ReplyRetry) => {
@@ -306,122 +443,140 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
   const submit = () => {
     const t = text.trim()
-    if (!t || disabled || thinking || micState !== 'idle') return
+    if (!t || disabled || thinking || call.active) return
     setText('')
     void send(t)
   }
 
+  const status = call.active ? '' : speaking ? 'Echo is speaking...' : thinking ? 'Echo is thinking...' : ''
+
   return (
-    <div className="grid gap-5">
-      <div className="min-w-0">
-        <div className="flex flex-col items-center justify-center py-3 text-center">
-          <Orb thinking={thinking} listening={micState === 'recording'} speaking={speaking} />
-          <p role="status" className="mt-5 text-sm text-muted-foreground">{micState === 'recording' ? 'Listening...' : micState === 'transcribing' ? 'Transcribing...' : speaking ? 'Echo is speaking...' : thinking ? 'Echo is thinking...' : "What's on your mind?"}</p>
+    <div className="flex h-full min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+          <div className="min-w-0 flex-1">{header}</div>
+          {meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{meta}</span>}
+          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
         </div>
 
-        <div className="mb-5 flex max-h-[420px] flex-col gap-4 overflow-y-auto pr-1">
-          {listenError && <Alert variant="danger">{listenError}</Alert>}
-          {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
-          {messages?.length === 0 && !thinking && !error && <p className="text-center text-sm text-muted-foreground">Say anything. Echo will remember what matters.</p>}
-          {(messages ?? []).map((m) => {
-            if (m.role === 'user') {
-              return (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-lg whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary-soft px-4 py-3 text-sm text-foreground">{m.text}</div>
-                </div>
-              )
-            }
-            const ex = extras[m.id]
-            const types = ex ? ex.saved.map((s) => s.type) : m.category ? [m.category] : []
-            return (
-              <div key={m.id} className="max-w-xl">
-                <Card className="p-4">
-                  <p className="whitespace-pre-wrap text-sm leading-6">{m.text}</p>
-                  <ActionBadges types={types} onNavigate={onNavigate} />
-                  {ex?.failed.length ? <p className="mt-3 text-xs text-warning">Could not save: {ex.failed.join(', ')}</p> : null}
-                  {ex ? <Trace steps={ex.trace} /> : null}
-                </Card>
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6">
+            {listenError && <Alert variant="danger">{listenError}</Alert>}
+            {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
+            {messages?.length === 0 && !thinking && !error && !call.active && !pendingTurns.length && (
+              <div className="flex flex-col items-center py-12 text-center">
+                <EchoAvatar />
+                <p className="mt-4 text-base font-semibold text-foreground">What&apos;s on your mind?</p>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  {hint ? `${hint} ` : ''}Say anything. Echo will remember what matters.
+                </p>
               </div>
-            )
-          })}
-          {thinking && (
-            <div className="max-w-xl">
-              <Card className="p-4">
-                <p className="animate-pulse text-sm text-muted-foreground">Thinking...</p>
-              </Card>
-            </div>
-          )}
-          {error && (
-            <div className="max-w-xl">
-              <Card className="border-danger/40 p-4">
-                {error.reply && <p className="mb-2 whitespace-pre-wrap text-sm leading-6">{error.reply}</p>}
-                <Alert variant="danger">{error.message}</Alert>
+            )}
+            {(messages ?? []).map((m) => {
+              const at = m.createdAt?.toDate?.() ?? null
+              if (m.role === 'user') return <UserBubble key={m.id} text={m.text} at={at} />
+              const ex = extras[m.id]
+              const types = ex ? ex.saved.map((s) => s.type) : m.category ? [m.category] : []
+              return (
+                <EchoRow key={m.id}>
+                  <EchoBubble>{m.text}</EchoBubble>
+                  <ActionBadges types={types} onNavigate={onNavigate} />
+                  {ex?.failed.length ? <p className="mt-2 text-xs text-warning">Could not save: {ex.failed.join(', ')}</p> : null}
+                  {ex ? <Trace steps={ex.trace} /> : null}
+                  {at && <time className="mt-1 block px-1 text-xs text-subtle">{timeLabel(at)}</time>}
+                </EchoRow>
+              )
+            })}
+            {pendingTurns.map((t) => {
+              // Firestore shows a write locally before it is acknowledged; hide the parts already on the page.
+              const recent = (messages ?? []).slice(-6).filter((m) => (m.createdAt?.toMillis?.() ?? 0) >= t.at - 2000)
+              const has = (role: string, text: string) => !!text && recent.some((m) => m.role === role && m.text === text)
+              return <CallTurnBubbles key={t.key} user={has('user', t.userText) ? '' : t.userText} echo={has('assistant', t.echoText) ? '' : t.echoText} saved={has('assistant', t.echoText) ? [] : t.saved} onNavigate={onNavigate} />
+            })}
+            {call.live && <CallTurnBubbles user={call.live.user} echo={call.live.echo} saved={call.live.saved} live onNavigate={onNavigate} />}
+            {thinking && (
+              <EchoRow>
+                <EchoBubble>
+                  <span className="animate-pulse text-muted-foreground">Thinking...</span>
+                </EchoBubble>
+              </EchoRow>
+            )}
+            {error && (
+              <EchoRow>
+                {error.reply && <EchoBubble>{error.reply}</EchoBubble>}
+                <div className={error.reply ? 'mt-2' : ''}>
+                  <Alert variant="danger">{error.message}</Alert>
+                </div>
                 {error.trace ? <Trace steps={error.trace} /> : null}
                 <div className="mt-3">
                   <Button size="sm" onClick={() => (error.replyRetry ? void retryReply(error.replyRetry) : void send(error.text, error.userSaved))} disabled={thinking}>
                     Retry
                   </Button>
                 </div>
-              </Card>
-            </div>
-          )}
-          {queuedText && <p className="text-center text-xs text-muted-foreground">Queued, will send next: “{queuedText}”</p>}
-          {hint && <p className="text-center text-sm text-muted-foreground">{hint}</p>}
-          {quotaNotice && <Alert variant="warning">Echo&apos;s voice reached today&apos;s free limit — replies will stay as text.</Alert>}
-          <div ref={endRef} />
+              </EchoRow>
+            )}
+            {queuedText && <p className="text-center text-xs text-muted-foreground">Queued, will send next: “{queuedText}”</p>}
+            {call.error && (
+              <div className="grid gap-3">
+                <Alert variant={call.error.kind === 'quota' || call.error.kind === 'limit' ? 'warning' : 'danger'}>{call.error.message}</Alert>
+                <div className="flex gap-2">
+                  <Button size="sm" icon={Phone} onClick={startCall} disabled={disabled || thinking}>
+                    {call.error.kind === 'limit' ? 'Start new call' : 'Retry call'}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={call.clearError}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
+            {callSaveError && <Alert variant="warning">{callSaveError}</Alert>}
+            {quotaNotice && <Alert variant="warning">Echo&apos;s voice reached today&apos;s free limit — replies will stay as text.</Alert>}
+          </div>
         </div>
 
-        <Card className="p-3">
-          <div className="flex items-center gap-3">
-            <input
-              aria-label="Message Echo"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                  e.preventDefault()
-                  submit()
-                }
-              }}
-              maxLength={2000}
-              disabled={disabled}
-              placeholder="Tell Echo anything..."
-              className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-3 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            />
-            {tapToPlay && (
-              <Button variant="secondary" size="sm" icon={Volume2} onClick={() => void playAudio(tapToPlay)}>
-                Tap to play
-              </Button>
+        <div className="shrink-0 border-t border-border px-4 py-3">
+          <div className="mx-auto w-full max-w-[720px]">
+            {status && <p role="status" aria-live="polite" className="mb-2 text-xs text-muted-foreground">{status}</p>}
+            {call.active ? (
+              <CallBar phase={call.phase} muted={call.muted} startedAt={call.startedAt} onMute={call.toggleMute} onEnd={call.end} />
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
+                <input
+                  aria-label="Message Echo"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      submit()
+                    }
+                  }}
+                  maxLength={2000}
+                  disabled={disabled}
+                  placeholder="Tell Echo anything..."
+                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+                {tapToPlay && (
+                  <Button variant="secondary" size="sm" icon={Volume2} onClick={() => void playAudio(tapToPlay)}>
+                    Tap to play
+                  </Button>
+                )}
+                {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
+                {prefs?.enabled && <IconButton icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
+                <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || !text.trim()} />
+              </div>
             )}
-            {speaking && (
-              <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />
-            )}
-            {prefs?.enabled && (
-              <MicButton
-                user={user}
-                disabled={sttQuotaOff || disabled}
-                onStateChange={(s) => {
-                  setMicState(s)
-                  if (s === 'recording') {
-                    stopAudio()
-                    setHint(null)
-                  }
-                }}
-                onTranscript={(t) => void send(t)}
-                onEmpty={() => setHint("I didn't catch that. Try again?")}
-                onQuota={markSttQuota}
-              />
-            )}
-            <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || micState !== 'idle' || !text.trim()} />
           </div>
-        </Card>
+        </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-3">
-        <TodayReminders uid={uid} day={day} />
-        <HealthToday uid={uid} day={day} onNavigate={onNavigate} />
-        <GoalProgress uid={uid} onNavigate={onNavigate} />
-      </div>
+      {!todayCollapsed && (
+        <aside aria-label="Today" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border xl:block">
+          <TodayPanel uid={uid} day={day} onNavigate={onNavigate} />
+        </aside>
+      )}
+      {todayDrawer && <TodayDrawer uid={uid} day={day} onNavigate={onNavigate} onClose={() => setTodayDrawer(false)} />}
     </div>
   )
 }
