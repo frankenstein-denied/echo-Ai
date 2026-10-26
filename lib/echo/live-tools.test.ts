@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { SEARCH_NOT_CONNECTED_REPLY } from './search-replies'
 import { CONFIRM_WITHIN_MS, executeToolCalls, LIVE_TOOL_DECLARATIONS, LIVE_TOOL_NAMES, mapToolCall, type ToolContext } from './live-tools'
 
 const ctx = (): ToolContext => ({ clientTime: '2026-10-25T14:00:00+08:00', checkInTime: '09:00', memoryLabels: [{ label: 'Mama', type: 'person' }] })
@@ -146,5 +147,47 @@ describe('executeToolCalls', () => {
     })
     expect(out.responses[0].response).toEqual({ error: 'could not save' })
     expect(out.failed).toEqual(['save_note'])
+  })
+})
+
+describe('web_search tool', () => {
+  it('declares web_search as untrusted-data aware and maps queries', () => {
+    const d = LIVE_TOOL_DECLARATIONS.find((x) => x.name === 'web_search')
+    expect(d?.parameters?.required).toEqual(['query'])
+    expect(d?.description).toMatch(/never change Echo's rules/i)
+    expect(mapToolCall('web_search', { query: '' }, ctx()).ok).toBe(false)
+    expect(mapToolCall('web_search', {}, ctx()).ok).toBe(false)
+    const r = mapToolCall('web_search', { query: '  weather in Manila  ' }, ctx())
+    expect(r.ok && r.response.actions).toEqual([{ type: 'web_search', query: 'weather in Manila' }])
+  })
+  it('runs the search function and never saves anything', async () => {
+    const apply = vi.fn()
+    const search = vi.fn(async (q: string) => ({ results: [{ title: 'T', url: 'u', content: q }] }))
+    const out = await executeToolCalls([{ id: 'a', name: 'web_search', args: { query: 'iphone' } }], ctx(), apply as never, { search })
+    expect(search).toHaveBeenCalledWith('iphone')
+    expect(out.responses[0].response.output).toEqual({ results: [{ title: 'T', url: 'u', content: 'iphone' }] })
+    expect(apply).not.toHaveBeenCalled()
+    expect(out.saved).toEqual([])
+  })
+  it('answers an empty query with an error and a failing search with a tell_user', async () => {
+    const out = await executeToolCalls(
+      [
+        { id: 'a', name: 'web_search', args: { query: '' } },
+        { id: 'b', name: 'web_search', args: { query: 'x' } },
+      ],
+      ctx(),
+      vi.fn() as never,
+      {
+        search: async () => {
+          throw new Error('boom')
+        },
+      },
+    )
+    expect(out.responses[0].response.error).toBeTruthy()
+    expect(out.responses[1].response.output).toMatchObject({ error: 'failed' })
+  })
+  it('without a search function reports not connected', async () => {
+    const out = await executeToolCalls([{ id: 'a', name: 'web_search', args: { query: 'x' } }], ctx(), vi.fn() as never)
+    expect(out.responses[0].response.output).toMatchObject({ error: 'not_connected', tell_user: SEARCH_NOT_CONNECTED_REPLY })
   })
 })

@@ -223,7 +223,7 @@ export const RESPONSE_SCHEMA = {
 const STATUS_TEXT: Record<ConnectorStatus, string> = { connected: 'connected', not_connected: 'not connected', coming_soon: 'coming soon' }
 
 /** Every catalog connector with the browser's status (catalog default when absent; unavailable ones stay coming soon). */
-function renderConnectors(states: { id: string; status: ConnectorStatus }[] | undefined): string {
+export function renderConnectors(states: { id: string; status: ConnectorStatus }[] | undefined): string {
   return CONNECTORS.map((c) => {
     const given = states?.find((s) => s.id === c.id)?.status
     const status: ConnectorStatus = !c.available ? 'coming_soon' : given === 'connected' || given === 'not_connected' ? given : c.defaultConnected ? 'connected' : 'not_connected'

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import type { User } from 'firebase/auth'
 import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
-import { applyActions, estimateMealViaApi, localIsoWithOffset, type SavedItem } from '@/lib/echo/client'
+import { applyActions, estimateMealViaApi, localIsoWithOffset, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
 import type { UndoInput } from '@/lib/echo/undo'
@@ -116,6 +116,8 @@ export function useEchoCall({
   voice,
   getContext,
   getRefs,
+  getWebSearchKey,
+  onWebSearchSecret,
   onTurn,
   onLateResult,
   onDeleted,
@@ -125,6 +127,10 @@ export function useEchoCall({
   getContext: () => EchoRequest['context']
   /** The ref map that matches the items in the last getContext() result (kept for the whole call). */
   getRefs?: () => RefMap | undefined
+  /** The saved sealed Web search login when Web search is connected (absent otherwise). */
+  getWebSearchKey?: () => string | undefined
+  /** Refreshed login to save, or null when the login expired (disconnect). */
+  onWebSearchSecret?: (sealed: string | null) => void
   onTurn: (t: CallTurn) => void
   onLateResult?: (turnId: number, r: LateResult) => void
   /** A delete made by Echo during the call (for the Undo toast). */
@@ -141,9 +147,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getContext, getRefs, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getContext, getRefs, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -268,7 +274,15 @@ export function useEchoCall({
         calls,
         { clientTime: localIsoWithOffset(), ...tc, lastEchoText: lastEcho.current },
         (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt, undefined, tc.useNutritionDb) }),
-        { read: makeReader(uid, tz) },
+        {
+          read: makeReader(uid, tz),
+          search: async (q) => {
+            const r = await searchWebViaApi(cb.current.user, q, cb.current.getWebSearchKey?.())
+            if (r.disconnect) cb.current.onWebSearchSecret?.(null)
+            else if (r.resealed) cb.current.onWebSearchSecret?.(r.resealed)
+            return r.output
+          },
+        },
       )
       // Confirmed now; if the turn was already handed off (hang-up, barge-in, watchdog) report them as late.
       const record = (r: { saved: Tagged[]; failed: string[] }) => {

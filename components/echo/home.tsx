@@ -532,7 +532,13 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses)
   }, [profile, buildItems])
   const getCallRefs = useCallback(() => callRefs.current, [])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, onTurn: persistCallTurn, onLateResult, onDeleted: pushUndo })
+  const saveWebSearchSecret = useCallback(
+    (sealed: string | null) => {
+      void setConnectorSecret(uid, 'web-search', sealed).catch((e) => console.error('Echo: could not update the Web search login', e))
+    },
+    [uid],
+  )
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, onLateResult, onDeleted: pushUndo })
   useCallFlag(call.active)
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''

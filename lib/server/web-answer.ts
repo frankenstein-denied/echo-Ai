@@ -1,5 +1,6 @@
 import { ThinkingLevel, Type, type GoogleGenAI } from '@google/genai'
 import type { EchoResponse } from '@/lib/echo/types'
+import { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY, SEARCH_QUOTA_REPLY } from '@/lib/echo/search-replies'
 import { geminiModels, withModelFallback } from './gemini-fallback'
 import { tavilySearch, TavilyError, type WebResult } from './tavily'
 import { missingTavilyEnv, TavilyAuthError, withFreshTokens } from './tavily-oauth'
@@ -7,12 +8,7 @@ import { missingTavilyEnv, TavilyAuthError, withFreshTokens } from './tavily-oau
 // Web search for typed chat (and, through the shared limiter and replies, calls): one Tavily search per question,
 // then a second Gemini call writes the reply from the results. Never log the user's text, queries, results or tokens.
 
-export const SEARCH_NOT_CONNECTED_REPLY = "I'd need to search the web for that. Open Connectors and log in to Tavily under Web search (it's free), then ask me again."
-export const SEARCH_RECONNECT_REPLY = 'Your Tavily login expired. Log in again under Web search in Connectors.'
-export const SEARCH_QUOTA_REPLY = 'Your Tavily searches for this month are used up.'
-export const SEARCH_RATE_LIMITED_REPLY = "I've searched the web a lot this hour. Try again later."
-export const SEARCH_FAILED_REPLY = "I couldn't search the web just now. Try again in a moment."
-export const SEARCH_EMPTY_REPLY = "I searched the web but didn't find anything useful for that."
+export { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_QUOTA_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY }
 export const SEARCH_SOURCES_ONLY_REPLY = "I found some pages but couldn't write an answer just now. Here are the sources."
 
 export const SEARCH_LIMITS = { perHour: 20, windowMs: 3_600_000, sources: 5, reply: 1200 } as const

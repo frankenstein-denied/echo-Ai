@@ -27,6 +27,14 @@ import {
 } from '@/lib/firestore'
 import { addRef, removeRef, resolveRef, type RefKind, type RefMap, type RefSource } from './context'
 import type { EchoAction, EchoMealType, EchoNutrition, EchoRequest, EchoResponse } from './types'
+import {
+  SEARCH_FAILED_REPLY,
+  SEARCH_NOT_CONNECTED_REPLY,
+  SEARCH_QUOTA_REPLY,
+  SEARCH_RATE_LIMITED_REPLY,
+  SEARCH_RECONNECT_REPLY,
+  SEARCH_RESULT_INSTRUCTIONS,
+} from './search-replies'
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
@@ -276,6 +284,46 @@ export async function estimateMealViaApi(user: Pick<User, 'getIdToken'>, descrip
   const d = (await res.json()) as Partial<EchoNutrition>
   if (!Array.isArray(d.items) || typeof d.totalCalories !== 'number') throw new Error("couldn't estimate calories")
   return { items: d.items, totalCalories: d.totalCalories, estimated: true, grounded: d.grounded === true, ...(typeof d.assumptions === 'string' ? { assumptions: d.assumptions } : {}) }
+}
+
+const SEARCH_TELL: Record<string, string> = {
+  not_connected: SEARCH_NOT_CONNECTED_REPLY,
+  reconnect: SEARCH_RECONNECT_REPLY,
+  quota: SEARCH_QUOTA_REPLY,
+  rate_limited: SEARCH_RATE_LIMITED_REPLY,
+  failed: SEARCH_FAILED_REPLY,
+}
+
+export type WebSearchOutcome = {
+  /** The call tool result. */
+  output: Record<string, unknown>
+  /** Refreshed sealed tokens to save with setConnectorSecret. */
+  resealed?: string
+  /** The login is gone: disconnect (setConnectorSecret(uid, 'web-search', null)). */
+  disconnect?: boolean
+}
+
+/** Calls: web search through POST /api/search. Without a saved login nothing is fetched. Never logs the query. */
+export async function searchWebViaApi(user: Pick<User, 'getIdToken'>, query: string, sealed: string | undefined, fetchImpl: typeof fetch = fetch): Promise<WebSearchOutcome> {
+  const fail = (error: string): WebSearchOutcome => ({ output: { error, tell_user: SEARCH_TELL[error] ?? SEARCH_FAILED_REPLY } })
+  if (!sealed) return fail('not_connected')
+  try {
+    const token = await user.getIdToken()
+    const res = await fetchWithTimeout(
+      '/api/search',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ query, sealed }) },
+      15000,
+      fetchImpl,
+    )
+    const d = (await res.json().catch(() => ({}))) as { results?: unknown; error?: unknown; resealed?: unknown }
+    const resealed = typeof d.resealed === 'string' && d.resealed ? { resealed: d.resealed } : {}
+    if (typeof d.error === 'string') return { ...fail(d.error in SEARCH_TELL ? d.error : 'failed'), ...resealed, ...(d.error === 'reconnect' ? { disconnect: true } : {}) }
+    if (!res.ok || !Array.isArray(d.results)) return fail('failed')
+    if (!d.results.length) return { output: { results: [], instructions: 'Nothing useful was found. Say so briefly.' }, ...resealed }
+    return { output: { results: d.results, instructions: SEARCH_RESULT_INSTRUCTIONS }, ...resealed }
+  } catch {
+    return fail('failed')
+  }
 }
 
 const msOf = (t: unknown) => (t && typeof (t as Timestamp).toMillis === 'function' ? (t as Timestamp).toMillis() : 0)
