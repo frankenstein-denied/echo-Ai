@@ -257,11 +257,12 @@ service cloud.firestore {
       // ---------- memories (no updatedAt; doc id = <type>-<slug>; type and createdAt immutable) ----------
       match /memories/{id} {
         function validMemory(d) {
-          return d.keys().hasOnly(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt'])
+          return d.keys().hasOnly(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt', 'pages'])
             && d.keys().hasAll(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt'])
             && isString(d.label, 500)
             && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
             && d.links is list && d.links.size() <= 50
+            && (!('pages' in d) || (d.pages is list && d.pages.size() <= 50))
             && d.mentions is int && d.mentions >= 1
             && d.lastSeenAt == request.time
             && id.matches(d.type + '-.+');

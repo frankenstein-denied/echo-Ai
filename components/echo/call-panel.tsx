@@ -121,6 +121,7 @@ export function useEchoCall({
   onTurn,
   onLateResult,
   onDeleted,
+  getPageId,
 }: {
   user: User
   voice: string
@@ -135,6 +136,8 @@ export function useEchoCall({
   onLateResult?: (turnId: number, r: LateResult) => void
   /** A delete made by Echo during the call (for the Undo toast). */
   onDeleted?: (e: UndoInput) => void
+  /** The diary page the call writes to (created if needed); memories saved in the call record it. */
+  getPageId?: () => Promise<string | undefined>
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -147,9 +150,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -273,7 +276,7 @@ export function useEchoCall({
       const out = await executeToolCalls(
         calls,
         { clientTime: localIsoWithOffset(), ...tc, lastEchoText: lastEcho.current },
-        (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt, undefined, tc.useNutritionDb) }),
+        (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', getPageId: () => cb.current.getPageId?.() ?? Promise.resolve(undefined), onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt, undefined, tc.useNutritionDb) }),
         {
           read: makeReader(uid, tz),
           search: async (q) => {

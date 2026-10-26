@@ -492,17 +492,29 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [addLateSaved],
   )
+  // One in-flight page creation shared by the call's turns and its memory saves (never two pages).
+  const ensuring = useRef<Promise<string> | null>(null)
+  const ensureCallPage = useCallback(async (): Promise<string> => {
+    if (pageRef.current) return pageRef.current
+    if (!ensuring.current) {
+      ensuring.current = onEnsurePage()
+        .then((pid) => {
+          pageRef.current = pid
+          return pid
+        })
+        .finally(() => {
+          ensuring.current = null
+        })
+    }
+    return ensuring.current
+  }, [onEnsurePage])
   const persistCallTurn = useCallback(
     (t: CallTurn) => {
       const key = ++turnKey.current
       setPendingTurns((p) => [...p, { ...t, key, at: Date.now() }])
       persistChain.current = persistChain.current.then(async () => {
         try {
-          let pid = pageRef.current
-          if (!pid) {
-            pid = await onEnsurePage()
-            pageRef.current = pid
-          }
+          const pid = await ensureCallPage()
           if (t.userText) await addPageMessage(uid, pid, 'user', t.userText)
           if (t.echoText) {
             // Category from confirmed saves only (plus any confirmed late, before this write).
@@ -522,7 +534,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       })
     },
-    [uid, onEnsurePage],
+    [uid, ensureCallPage],
   )
   // The call keeps the ref map that matches the items sent in its session instruction.
   const callRefs = useRef<RefMap | undefined>(undefined)
@@ -538,7 +550,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid],
   )
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, onLateResult, onDeleted: pushUndo })
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo })
   useCallFlag(call.active)
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''

@@ -78,6 +78,10 @@ export type ApplyOptions = {
   /** Short ref -> doc id map for this request (typed send) or this call. New docs get refs; deleted ones lose theirs. */
   refs?: RefMap
   source?: 'chat' | 'call'
+  /** Diary page the memories are saved from (recorded on each memory's `pages`). */
+  pageId?: string
+  /** Calls: resolves the page id (creating the page if needed); only awaited when memories are saved. */
+  getPageId?: () => Promise<string | undefined>
   /** Called with the deleted doc's data so the UI can offer Undo. */
   onDeleted?: (e: UndoInput) => void
   /** Calls: estimate a meal that arrives without nutrition (POST /api/nutrition). */
@@ -262,7 +266,19 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
         break
     }
   }
-  if (res.memories.length) await run('memory', '2nd Brain memories', () => upsertMemories(uid, res.memories))
+  if (res.memories.length) {
+    await run('memory', '2nd Brain memories', async () => {
+      let pageId = opts.pageId
+      if (!pageId && opts.getPageId) {
+        try {
+          pageId = await opts.getPageId()
+        } catch (e) {
+          console.error('Echo: could not resolve the diary page for memories', e)
+        }
+      }
+      await upsertMemories(uid, res.memories, pageId)
+    })
+  }
   return { saved, failed }
 }
 
@@ -406,7 +422,7 @@ export async function saveReply(uid: string, pageId: string, reply: string, cate
 
 // Applies actions and memories, then saves the assistant message last.
 export async function applyEchoResponse(uid: string, pageId: string, res: EchoResponse, opts: ApplyOptions = {}): Promise<ApplyResult> {
-  const { saved, failed } = await applyActions(uid, res, opts)
+  const { saved, failed } = await applyActions(uid, res, { ...opts, pageId })
   const category = deriveCategory(saved)
   const reply = res.reply || fallbackReply(saved)
   let messageId: string | undefined

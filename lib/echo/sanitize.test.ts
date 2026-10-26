@@ -237,6 +237,11 @@ describe('memories, reply, trace', () => {
     expect(out.some((m) => m.label === 'Bad')).toBe(false)
   })
 
+  it('maps an incoming diary-type memory to topic (page nodes replace diary memories)', () => {
+    const out = sanitizeEchoResponse({ reply: 'x', actions: [], memories: [{ label: 'Rough day', type: 'diary', links: [] }], trace: [] }, NOW, '09:00', []).memories
+    expect(out).toEqual([{ label: 'Rough day', type: 'topic', linkIds: [] }])
+  })
+
   describe('link resolution', () => {
     const ctx = [
       { label: 'Alex', type: 'person', mentions: 2 },

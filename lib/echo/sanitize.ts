@@ -511,7 +511,8 @@ function sanitizeMemories(raw: unknown, context: KnownLabel[]): MemoryInput[] {
     if (!label || !MEMORY_TYPES.includes(m.type as MemoryType)) continue
     const slug = slugifyLabel(label)
     if (!slug) continue
-    let type = m.type as MemoryType
+    // Page nodes replace diary-type memories: an incoming 'diary' becomes a topic (old diary memories stay valid).
+    let type = (m.type === 'diary' ? 'topic' : m.type) as MemoryType
     let finalLabel = label
     // Same slug as exactly one existing memory (any type): reuse it instead of creating a duplicate node.
     if (!ctxIds.has(`${type}-${slug}`)) {

@@ -25,7 +25,7 @@ import { db } from '@/lib/firebase'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
-import { buildReciprocalUpdate, mergeLinks, planReciprocalLinks } from '@/lib/echo/links'
+import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
 import { validateMeal, type MealInput, type MealItem, type MealSource, type MealType, type MoodTag } from '@/lib/echo/health-helpers'
 
@@ -63,7 +63,7 @@ export type Routine = { title: string; cadence: string; confidence: number; crea
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
 export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
 export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string }
-export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp }
+export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp; pages?: string[] }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
 
@@ -343,8 +343,9 @@ export function memoryId(type: MemoryType, label: string): string {
 }
 
 // Creates each memory (mentions: 1) or bumps mentions and merges links, and adds reciprocal links
-// (B also lists A) to existing targets without touching their mentions. All reads happen before any write.
-export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promise<void> {
+// (B also lists A) to existing targets without touching their mentions. pageId (the diary page being written) is
+// recorded only on the memories mentioned in this save, never on reciprocal-only external targets. All reads happen before any write.
+export async function upsertMemories(uid: string, inputs: MemoryInput[], pageId?: string): Promise<void> {
   const byId = new Map<string, MemoryInput>()
   for (const m of inputs) {
     if (!slugifyLabel(m.label)) continue
@@ -370,9 +371,9 @@ export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promis
       const withBack = [...links, ...(reciprocal.get(e.id) ?? [])]
       if (snap.exists()) {
         const merged = mergeLinks(snap.data().links ?? [], withBack)
-        tx.update(e.ref, { mentions: increment(1), links: merged, lastSeenAt: serverTimestamp() } as never)
+        tx.update(e.ref, { mentions: increment(1), links: merged, lastSeenAt: serverTimestamp(), ...(pageId ? { pages: mergePages(snap.data().pages, pageId) } : {}) } as never)
       } else {
-        tx.set(e.ref, { label: e.m.label, type: e.m.type, links: mergeLinks([], withBack), mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
+        tx.set(e.ref, { label: e.m.label, type: e.m.type, links: mergeLinks([], withBack), mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp(), ...(pageId ? { pages: [pageId] } : {}) } as never)
       }
     })
     externals.forEach((e, i) => {

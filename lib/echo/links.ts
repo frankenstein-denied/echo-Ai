@@ -22,6 +22,11 @@ export function mergeLinks(existing: string[], add: string[], cap = MAX_MEMORY_L
   return [...new Set([...existing, ...add])].slice(-cap)
 }
 
+/** Diary page ids a memory was mentioned in: the page moves to the end, keeping the newest `cap`. */
+export function mergePages(existing: string[] | undefined, pageId: string, cap = MAX_MEMORY_LINKS): string[] {
+  return [...new Set([...(existing ?? []).filter((p) => p !== pageId), pageId])].slice(-cap)
+}
+
 /**
  * Fields for a reciprocal-only update of an existing memory doc (null when nothing to add).
  * Legacy docs written before `mentions` existed fail the rules' hasAll check, so they get mentions: 1;

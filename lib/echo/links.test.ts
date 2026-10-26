@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeLinks, planReciprocalLinks } from './links'
+import { mergeLinks, mergePages, planReciprocalLinks } from './links'
 
 describe('planReciprocalLinks', () => {
   it('adds the back link for every A -> B, including targets outside the response', () => {
@@ -40,5 +40,21 @@ describe('buildReciprocalUpdate', () => {
   })
   it('returns null when nothing new', () => {
     expect(buildReciprocalUpdate({ links: ['a'], mentions: 1 }, ['a'])).toBeNull()
+  })
+})
+
+describe('mergePages', () => {
+  it('starts a list from undefined', () => {
+    expect(mergePages(undefined, 'p1')).toEqual(['p1'])
+  })
+  it('moves an existing id to the end', () => {
+    expect(mergePages(['p1', 'p2', 'p3'], 'p1')).toEqual(['p2', 'p3', 'p1'])
+  })
+  it('caps at 50, dropping the oldest', () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `p${i}`)
+    const out = mergePages(ids, 'new')
+    expect(out).toHaveLength(50)
+    expect(out[0]).toBe('p1')
+    expect(out[49]).toBe('new')
   })
 })
