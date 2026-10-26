@@ -60,7 +60,7 @@ export type Meal = { date: string; mealType: MealType; description: string; item
 export type ReminderSource = 'chat' | 'routine' | 'manual'
 export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source: ReminderSource; createdAt: Timestamp; updatedAt: Timestamp }
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
-export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; createdAt: Timestamp }
+export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
 export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
 export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp }
@@ -211,10 +211,10 @@ export async function deleteDiaryPage(uid: string, pageId: string): Promise<void
 }
 
 // One batch: the message plus the page's preview, count and timestamps.
-export async function addPageMessage(uid: string, pageId: string, role: Message['role'], text: string, category?: EchoCategory): Promise<string> {
+export async function addPageMessage(uid: string, pageId: string, role: Message['role'], text: string, category?: EchoCategory, sources?: { title: string; url: string }[]): Promise<string> {
   const ref = doc(pageMessagesCol(uid, pageId))
   const batch = writeBatch(db)
-  batch.set(ref, { role, text, ...(category ? { category } : {}), createdAt: serverTimestamp() } as never)
+  batch.set(ref, { role, text, ...(category ? { category } : {}), ...(sources?.length ? { sources } : {}), createdAt: serverTimestamp() } as never)
   batch.update(doc(diaryPagesCol(uid), pageId), { preview: previewOf(text), messageCount: increment(1), updatedAt: serverTimestamp(), lastMessageAt: serverTimestamp() } as never)
   await batch.commit()
   return ref.id

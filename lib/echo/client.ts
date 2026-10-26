@@ -28,6 +28,7 @@ import {
 import { addRef, removeRef, resolveRef, type RefKind, type RefMap, type RefSource } from './context'
 import type { EchoAction, EchoMealType, EchoNutrition, EchoRequest, EchoResponse } from './types'
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
+import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
 
 export function localIsoWithOffset(d: Date = new Date()): string {
@@ -63,7 +64,7 @@ export async function sendToEcho(user: User, text: string, context: EchoRequest[
 
 /** A saved item for badges. op is absent for creations (older callers), kcal is set for meals. */
 export type SavedItem = { type: EchoCategory | 'memory'; label: string; op?: 'update' | 'delete'; ref?: string; kcal?: number }
-export type ApplyResult = { saved: SavedItem[]; failed: string[]; category: EchoCategory; reply: string; messageId?: string }
+export type ApplyResult = { saved: SavedItem[]; failed: string[]; category: EchoCategory; reply: string; messageId?: string; sources?: Source[] }
 
 export type ApplyOptions = {
   /** Short ref -> doc id map for this request (typed send) or this call. New docs get refs; deleted ones lose theirs. */
@@ -345,9 +346,10 @@ export function watchRefSource(uid: string, day: string, onData: (src: RefSource
 }
 
 // Saves the assistant message; returns its id or undefined on failure.
-export async function saveReply(uid: string, pageId: string, reply: string, category: EchoCategory): Promise<string | undefined> {
+export async function saveReply(uid: string, pageId: string, reply: string, category: EchoCategory, sources?: Source[]): Promise<string | undefined> {
   try {
-    return await addPageMessage(uid, pageId, 'assistant', reply, category)
+    const safe = sanitizeSources(sources)
+    return await addPageMessage(uid, pageId, 'assistant', reply, category, safe.length ? safe : undefined)
   } catch (e) {
     console.error('Echo: could not save reply', e)
     return undefined
@@ -361,10 +363,10 @@ export async function applyEchoResponse(uid: string, pageId: string, res: EchoRe
   const reply = res.reply || fallbackReply(saved)
   let messageId: string | undefined
   if (reply) {
-    messageId = await saveReply(uid, pageId, reply, category)
+    messageId = await saveReply(uid, pageId, reply, category, res.sources)
     if (!messageId) failed.push('reply')
   }
-  return { saved, failed, category, reply, messageId }
+  return { saved, failed, category, reply, messageId, sources: res.sources }
 }
 
 /** Web search: asks the server for Tavily's login URL (POST /api/connectors/web-search/start). */

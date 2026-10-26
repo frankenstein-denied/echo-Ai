@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { areaShares, debounce, filterNotes, lastSevenDays, parseSleepInput, parseTags, splitReminders, splitSleep, stepWater } from './view-helpers'
+import { areaShares, debounce, filterNotes, lastSevenDays, parseSleepInput, parseTags, safeSourceUrl, sanitizeSources, splitReminders, splitSleep, stepWater } from './view-helpers'
 
 describe('debounce', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -96,5 +96,20 @@ describe('health input helpers', () => {
     expect(stepWater(0, -1)).toBe(0)
     expect(stepWater(5, 1)).toBe(6)
     expect(stepWater(30, 1)).toBe(30)
+  })
+})
+
+describe('safeSourceUrl / sanitizeSources', () => {
+  it('accepts only http(s) urls and returns the normalized href', () => {
+    expect(safeSourceUrl('https://example.com')).toBe('https://example.com/')
+    expect(safeSourceUrl('http://a.org/x?y=1')).toBe('http://a.org/x?y=1')
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://a.org', 'not a url', '', '//a.org']) expect(safeSourceUrl(bad)).toBeNull()
+  })
+  it('drops unsafe sources, trims, caps lengths and count', () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({ title: `T${i}`, url: `https://a.org/${i}` }))
+    expect(sanitizeSources([{ title: ' Hi ', url: 'javascript:x' }, { title: 'x'.repeat(300), url: 'https://a.org' }])).toEqual([{ title: 'x'.repeat(200), url: 'https://a.org/' }])
+    expect(sanitizeSources(many)).toHaveLength(5)
+    expect(sanitizeSources([{ title: 'L', url: 'https://a.org/' + 'p'.repeat(600) }])).toEqual([])
+    expect(sanitizeSources(undefined)).toEqual([])
   })
 })

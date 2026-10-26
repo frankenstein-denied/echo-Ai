@@ -8,6 +8,7 @@ import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnect
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
+import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
@@ -24,7 +25,7 @@ export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors'
 
 type ChatMessage = Message & { id: string }
 type Extras = { trace: string[]; saved: SavedItem[]; failed: string[] }
-type ReplyRetry = { reply: string; category: EchoCategory; extras: Extras }
+type ReplyRetry = { reply: string; category: EchoCategory; extras: Extras; sources?: Source[] }
 type SendError = { text: string; userSaved: boolean; message: string; reply?: string; trace?: string[]; replyRetry?: ReplyRetry }
 
 const VIEW_FOR: Record<string, HomeView> = {
@@ -133,6 +134,22 @@ function EchoRow({ children, live = false }: { children: ReactNode; live?: boole
 
 function EchoBubble({ children }: { children: ReactNode }) {
   return <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-2.5 text-sm leading-6 text-foreground max-lg:px-3.5 max-lg:text-[15px] max-lg:leading-[22px]">{children}</div>
+}
+
+function SourceLinks({ sources }: { sources?: Source[] }) {
+  const links = sanitizeSources(sources)
+  if (!links.length) return null
+  return (
+    <ul className="mt-1.5 grid gap-0.5 px-1 text-xs text-subtle" aria-label="Sources">
+      {links.map((s) => (
+        <li key={s.url} className="min-w-0">
+          <a href={s.url} target="_blank" rel="noopener noreferrer" className="block max-w-full truncate hover:text-foreground hover:underline" title={s.title}>
+            {s.title}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user: string; echo: string; saved: SavedItem[]; live?: boolean; onNavigate?: (v: HomeView) => void }) {
@@ -418,7 +435,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
             message: 'Echo replied, but the reply could not be saved.',
             reply: applied.reply,
             trace: res.trace,
-            replyRetry: { reply: applied.reply, category: applied.category, extras: ex },
+            replyRetry: { reply: applied.reply, category: applied.category, extras: ex, sources: applied.sources },
           })
         } else if (applied.failed.length) {
           setError({ text: msg, userSaved, message: `Could not save: ${applied.failed.join(', ')}` })
@@ -537,7 +554,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       setThinking(true)
       setError(null)
       try {
-        const id = await saveReply(uid, page, r.reply, r.category)
+        const id = await saveReply(uid, page, r.reply, r.category, r.sources)
         if (id) setExtras((x) => ({ ...x, [id]: r.extras }))
         else setError({ text: '', userSaved: true, message: 'Echo replied, but the reply could not be saved.', reply: r.reply, trace: r.extras.trace, replyRetry: r })
       } finally {
@@ -594,6 +611,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               return (
                 <EchoRow key={m.id}>
                   <EchoBubble>{m.text}</EchoBubble>
+                  <SourceLinks sources={m.sources} />
                   <ActionBadges items={badgeItems} onNavigate={onNavigate} />
                   {ex?.failed.length ? <p className="mt-2 text-xs text-warning">Could not save: {ex.failed.join(', ')}</p> : null}
                   {ex ? <Trace steps={ex.trace} /> : null}

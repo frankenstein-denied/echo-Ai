@@ -99,3 +99,29 @@ export function parseSleepInput(hours: string, minutes: string): number | null {
 export function stepWater(current: number, delta: number): number {
   return Math.min(30, Math.max(0, current + delta))
 }
+
+export type Source = { title: string; url: string }
+
+/** The normalized href of an http(s) URL; anything else (javascript:, data:, relative, junk) is null. */
+export function safeSourceUrl(url: unknown): string | null {
+  if (typeof url !== 'string') return null
+  try {
+    const u = new URL(url.trim())
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
+/** At most 5 safe sources with trimmed titles (<= 200) and urls (<= 500); unsafe or over-long urls are dropped. */
+export function sanitizeSources(sources: readonly Source[] | undefined): Source[] {
+  const out: Source[] = []
+  for (const s of sources ?? []) {
+    const url = safeSourceUrl(s?.url)
+    if (!url || url.length > 500) continue
+    const title = (typeof s.title === 'string' ? s.title.trim() : '').slice(0, 200) || new URL(url).hostname
+    out.push({ title, url })
+    if (out.length === 5) break
+  }
+  return out
+}

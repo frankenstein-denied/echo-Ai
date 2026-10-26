@@ -16,6 +16,20 @@ service cloud.firestore {
     function isStringList(v) {
       return v is list && v.size() <= 100;
     }
+    // A web source on an Echo reply: exactly { title <= 200, url <= 500 }.
+    function isSource(v) {
+      return v is map && v.keys().hasOnly(['title', 'url']) && v.keys().hasAll(['title', 'url'])
+        && isString(v.title, 200) && isString(v.url, 500);
+    }
+    // At most 5 sources (rules have no loops, so each possible index is checked).
+    function validSources(l) {
+      return l is list && l.size() <= 5
+        && (l.size() < 1 || isSource(l[0]))
+        && (l.size() < 2 || isSource(l[1]))
+        && (l.size() < 3 || isSource(l[2]))
+        && (l.size() < 4 || isSource(l[3]))
+        && (l.size() < 5 || isSource(l[4]));
+    }
     function isNum(v, lo, hi) {
       return (v is int || v is float) && v >= lo && v <= hi;
     }
@@ -213,12 +227,13 @@ service cloud.firestore {
         // create-only + delete; migration copies keep their original createdAt (<= request.time)
         match /messages/{id} {
           function validPageMessage(d) {
-            return d.keys().hasOnly(['role', 'text', 'category', 'createdAt'])
+            return d.keys().hasOnly(['role', 'text', 'category', 'sources', 'createdAt'])
               && d.keys().hasAll(['role', 'text', 'createdAt'])
               && d.role in ['user', 'assistant']
               && isString(d.text, 20000)
               && d.createdAt is timestamp && d.createdAt <= request.time
-              && (!('category' in d) || d.category in ['note', 'goal', 'health', 'reminder', 'connector', 'general']);
+              && (!('category' in d) || d.category in ['note', 'goal', 'health', 'reminder', 'connector', 'general'])
+              && (!('sources' in d) || validSources(d.sources));
           }
           allow read, delete: if isOwner(uid);
           allow create: if isOwner(uid) && validPageMessage(request.resource.data);
