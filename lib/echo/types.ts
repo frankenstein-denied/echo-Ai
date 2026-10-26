@@ -36,6 +36,8 @@ export type EchoAction =
   | { type: 'meal_log'; description: string; mealType: EchoMealType; date: string; nutrition?: EchoNutrition }
   | { type: 'meal_update'; ref: string; description?: string; mealType?: EchoMealType; totalCalories?: number; nutrition?: EchoNutrition }
   | { type: 'meal_delete'; ref: string }
+  /** Resolved on the server (never reaches the browser): the reply is written from Tavily results. */
+  | { type: 'web_search'; query: string }
 
 export type EchoActionType = EchoAction['type']
 export const DELETE_ACTION_TYPES = ['reminder_delete', 'note_delete', 'goal_delete', 'meal_delete'] as const
@@ -89,4 +91,10 @@ export type EchoResponse = {
   memories: MemoryInput[]
   trace: string[]
   error?: boolean
+  /** Web search: the pages the reply was written from (at most 5). */
+  sources?: { title: string; url: string }[]
+  /** Web search: the Tavily login no longer works; the browser disconnects Web search. */
+  webSearchRevoked?: true
+  /** Web search: refreshed sealed tokens; the browser saves them to the connector doc. */
+  webSearchResealed?: string
 }

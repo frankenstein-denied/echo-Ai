@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveCategory, dropTrailingUser, fallbackReply, fetchWithTimeout } from './send-helpers'
+import { deriveCategory, dropTrailingUser, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 
 describe('deriveCategory', () => {
   it('uses first saved real action', () => {
@@ -52,5 +52,25 @@ describe('queueTranscript', () => {
   it('starts and joins', () => {
     expect(queueTranscript(null, ' hello ')).toBe('hello')
     expect(queueTranscript('hello', 'world')).toBe('hello world')
+  })
+})
+
+describe('readEchoResponse', () => {
+  it('keeps the web search fields the browser needs', () => {
+    const r = readEchoResponse({
+      reply: 'Hi',
+      actions: [],
+      memories: [],
+      trace: ['Searched the web'],
+      sources: [{ title: 'Apple', url: 'https://apple.com' }, { title: 7, url: 'x' }, 'junk'],
+      webSearchResealed: 'sealed-2',
+      webSearchRevoked: true,
+    })
+    expect(r).toEqual({ reply: 'Hi', actions: [], memories: [], trace: ['Searched the web'], sources: [{ title: 'Apple', url: 'https://apple.com' }], webSearchResealed: 'sealed-2', webSearchRevoked: true })
+  })
+
+  it('fills defaults and omits absent optional fields', () => {
+    expect(readEchoResponse({ error: true })).toEqual({ reply: '', actions: [], memories: [], trace: [], error: true })
+    expect(readEchoResponse(null)).toEqual({ reply: '', actions: [], memories: [], trace: [] })
   })
 })

@@ -1,4 +1,5 @@
 import type { EchoCategory } from '@/lib/firestore'
+import type { EchoResponse } from './types'
 
 export type SavedLike = { type: EchoCategory | 'memory'; label: string }
 
@@ -47,4 +48,22 @@ export async function fetchWithTimeout(
 export function queueTranscript(queued: string | null, next: string): string {
   const t = next.trim()
   return queued ? `${queued} ${t}`.trim() : t
+}
+
+/** The /api/echo body as the browser uses it: defaults for missing fields, web search fields only when well-formed. */
+export function readEchoResponse(raw: unknown): EchoResponse {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof EchoResponse, unknown>>
+  const sources = Array.isArray(d.sources)
+    ? d.sources.filter((s): s is { title: string; url: string } => !!s && typeof s === 'object' && typeof s.title === 'string' && typeof s.url === 'string').slice(0, 5).map(({ title, url }) => ({ title, url }))
+    : []
+  return {
+    reply: typeof d.reply === 'string' ? d.reply : '',
+    actions: Array.isArray(d.actions) ? d.actions : [],
+    memories: Array.isArray(d.memories) ? d.memories : [],
+    trace: Array.isArray(d.trace) ? d.trace : [],
+    ...(d.error ? { error: true } : {}),
+    ...(sources.length ? { sources } : {}),
+    ...(d.webSearchRevoked === true ? { webSearchRevoked: true as const } : {}),
+    ...(typeof d.webSearchResealed === 'string' && d.webSearchResealed ? { webSearchResealed: d.webSearchResealed } : {}),
+  }
 }

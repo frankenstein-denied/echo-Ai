@@ -24,6 +24,7 @@ export const LIMITS = {
   category: 40,
   provider: 40,
   request: 500,
+  searchQuery: 300,
   memoryLinks: 8,
   itemTitle: 100,
   milestones: 8,
@@ -348,6 +349,10 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
     }
     case 'general':
       return { type: 'general' }
+    case 'web_search': {
+      const query = str(a.query, LIMITS.searchQuery)
+      return query ? { type: 'web_search', query } : null
+    }
     case 'reminder_update': {
       const ref = knownRef(a.ref, 'reminder', opts.items)
       if (!ref) return null
@@ -589,8 +594,12 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
       if (s) actions.push(s)
     }
   }
-  const real = actions.filter((a) => a.type !== 'general')
-  const finalActions: EchoAction[] = real.length ? real : actions.slice(0, 1)
+  // A web search stands alone (only memories may come with it): search answers never save items.
+  const searches = actions.filter((a) => a.type === 'web_search')
+  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search')
+  // A pending delete confirmation wins over a search, so the question reaches the user.
+  const real = saving.length || confirmations.length ? saving : searches.slice(0, 1)
+  const finalActions: EchoAction[] = real.length ? real : actions.filter((a) => a.type === 'general').slice(0, 1)
   const trace = Array.isArray(obj.trace)
     ? obj.trace.map((t) => str(t, LIMITS.traceLine)).filter(Boolean).slice(0, LIMITS.trace)
     : []

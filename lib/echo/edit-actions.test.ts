@@ -109,6 +109,11 @@ describe('delete confirmation', () => {
     expect(out.reply).toBe('Delete the reminder "Stretch"?')
     expect(out.trace).toContain(DELETE_CONFIRM_TRACE)
   })
+  it('a pending confirmation wins over a web search', () => {
+    const out = run([{ type: 'reminder_delete', ref: 'r2' }, { type: 'web_search', query: 'stretching tips' }], { items, recentMessages: [{ role: 'user', text: 'delete the stretch reminder' }] }, 'Ok')
+    expect(out.actions).toEqual([])
+    expect(out.reply).toBe('Delete the reminder "Stretch"?')
+  })
   it('accepts the delete after Echo asked about that item', () => {
     const out = run([{ type: 'reminder_delete', ref: 'r2' }], asked, 'Done, deleted.')
     expect(out.actions).toEqual([{ type: 'reminder_delete', ref: 'r2' }])

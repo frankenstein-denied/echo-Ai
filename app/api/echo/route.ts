@@ -7,12 +7,15 @@ import { geminiModels, withModelFallback } from '@/lib/server/gemini-fallback'
 import { isConnected, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { estimateNutrition, looksLikeMeal, resolveMeals, withSpeculative } from '@/lib/server/nutrition'
 import { verifyUser } from '@/lib/server/verify-user'
+import { answerFromWeb, resolveWebSearch } from '@/lib/server/web-answer'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
 // Per model attempt; with the default two-model chain the worst case stays under maxDuration.
 const GEMINI_ATTEMPT_TIMEOUT_MS = 9000
+// A web search (Tavily + the answer call) must finish by this long after the request started (maxDuration is 30 s).
+const REQUEST_BUDGET_MS = 27000
 
 const FALLBACK: EchoResponse = {
   reply: "I couldn't think that through just now — try again?",
@@ -45,7 +48,8 @@ export async function POST(req: Request) {
   const contents = buildUserContents(parsed)
   const t0 = Date.now()
   // Missing connectors context means Nutrition is connected; null skips the USDA database.
-  const lookup = parsed.context.connectors && !isConnected(parsed.context.connectors as { id: ConnectorId; status: ConnectorStatus }[], 'nutrition') ? null : undefined
+  const connectors = parsed.context.connectors as { id: ConnectorId; status: ConnectorStatus }[] | undefined
+  const lookup = connectors && !isConnected(connectors, 'nutrition') ? null : undefined
   const caloriesEnabled = parsed.context.items?.caloriesEnabled !== false
   // Likely a meal: start the calorie estimate now, in parallel with classification.
   const speculative = caloriesEnabled && looksLikeMeal(parsed.text) ? estimateNutrition(ai, { description: parsed.text }, { lookup }).catch(() => null) : null
@@ -70,12 +74,24 @@ export async function POST(req: Request) {
       recentMessages: parsed.context.recentMessages,
     })
     const t1 = Date.now()
+    // Web search stands alone (sanitize guarantees it): search when connected, otherwise teach.
+    const deadline = t0 + REQUEST_BUDGET_MS
+    const webConnected = !connectors || isConnected(connectors, 'web-search')
+    const searched = await resolveWebSearch(sanitized, {
+      uid: user.uid,
+      sealed: webConnected ? parsed.webSearchKey : undefined,
+      question: parsed.text,
+      clientTime: parsed.clientTime,
+      profile: parsed.context.profile,
+      deadline,
+      answer: (q, results, ctx) => answerFromWeb(ai, q, results, ctx, { deadline }),
+    })
     // Meals: calories are estimated after classification (USDA food database when it matches) and the total leads the reply.
-    const mealCount = sanitized.actions.filter((a) => a.type === 'meal_log').length
+    const mealCount = searched.actions.filter((a) => a.type === 'meal_log').length
     const estimate = withSpeculative((description, mealType) => estimateNutrition(ai, { description, mealType }, { lookup }), speculative, mealCount)
-    const out = await resolveMeals(sanitized, caloriesEnabled, estimate)
+    const out = await resolveMeals(searched, caloriesEnabled, estimate)
     if (!out.reply) out.reply = 'Got it.'
-    if (process.env.NODE_ENV !== 'production') console.info(`[echo] answered by ${model} in ${t1 - t0} ms${out !== sanitized ? `, meals +${Date.now() - t1} ms` : ''}`)
+    if (process.env.NODE_ENV !== 'production') console.info(`[echo] answered by ${model} in ${t1 - t0} ms${out !== sanitized ? `, then +${Date.now() - t1} ms` : ''}`)
     return NextResponse.json(out)
   } catch (err) {
     // Never log the user's text; only the failure kind.

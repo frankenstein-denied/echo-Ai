@@ -27,7 +27,7 @@ import {
 } from '@/lib/firestore'
 import { addRef, removeRef, resolveRef, type RefKind, type RefMap, type RefSource } from './context'
 import type { EchoAction, EchoMealType, EchoNutrition, EchoRequest, EchoResponse } from './types'
-import { deriveCategory, fallbackReply, fetchWithTimeout } from './send-helpers'
+import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
 
 export function localIsoWithOffset(d: Date = new Date()): string {
@@ -47,20 +47,18 @@ export async function sendToEcho(user: User, text: string, context: EchoRequest[
     context,
     ...(webSearchKey ? { webSearchKey } : {}),
   }
-  const res = await fetchWithTimeout('/api/echo', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  })
+  // A web search answer can take most of the route's 30 s, so wait a little longer than that.
+  const res = await fetchWithTimeout(
+    '/api/echo',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    },
+    32000,
+  )
   if (!res.ok) throw new Error(res.status === 401 ? 'Please sign in again.' : `Echo is unavailable (${res.status}).`)
-  const data = (await res.json()) as Partial<EchoResponse>
-  return {
-    reply: typeof data.reply === 'string' ? data.reply : '',
-    actions: Array.isArray(data.actions) ? data.actions : [],
-    memories: Array.isArray(data.memories) ? data.memories : [],
-    trace: Array.isArray(data.trace) ? data.trace : [],
-    ...(data.error ? { error: true } : {}),
-  }
+  return readEchoResponse(await res.json())
 }
 
 /** A saved item for badges. op is absent for creations (older callers), kcal is set for meals. */
@@ -251,6 +249,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
         break
       }
       default:
+        // web_search is resolved on the server; it and unknown types save nothing.
         break
     }
   }

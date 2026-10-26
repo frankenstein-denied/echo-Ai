@@ -362,3 +362,38 @@ describe('extractCheckInTime', () => {
     expect(extractCheckInTime('Check-in time: 7:30')).toBe('07:30')
   })
 })
+
+describe('web_search action', () => {
+  it('keeps a lone web_search with its trimmed query', () => {
+    const out = resp([{ type: 'web_search', query: '  latest iPhone  ' }])
+    expect(out.actions).toEqual([{ type: 'web_search', query: 'latest iPhone' }])
+  })
+
+  it('drops a web_search with an empty query', () => {
+    expect(resp([{ type: 'web_search', query: '   ' }]).actions).toEqual([])
+    expect(resp([{ type: 'web_search' }]).actions).toEqual([])
+  })
+
+  it('cuts the query to 300 characters', () => {
+    const out = resp([{ type: 'web_search', query: 'q'.repeat(400) }])
+    expect(out.actions).toEqual([{ type: 'web_search', query: 'q'.repeat(300) }])
+  })
+
+  it('drops web_search mixed with other actions and keeps the others (search answers never save items)', () => {
+    const out = resp([
+      { type: 'web_search', query: 'weather' },
+      { type: 'note', title: 'Idea', body: 'Write more', category: 'Personal', tags: [] },
+    ])
+    expect(out.actions.map((a) => a.type)).toEqual(['note'])
+  })
+
+  it('keeps only one web_search, with memories', () => {
+    const out = sanitizeEchoResponse(
+      { reply: '', actions: [{ type: 'web_search', query: 'a' }, { type: 'web_search', query: 'b' }, { type: 'general' }], memories: [{ label: 'Phones', type: 'topic', links: [] }], trace: [] },
+      NOW,
+      '09:00',
+    )
+    expect(out.actions).toEqual([{ type: 'web_search', query: 'a' }])
+    expect(out.memories.map((m) => m.label)).toEqual(['Phones'])
+  })
+})

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
@@ -399,6 +399,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           return
         }
         const res = await echoP
+        // Web search login: keep refreshed tokens, or disconnect when Tavily no longer accepts the login.
+        if (res.webSearchRevoked) void setConnectorSecret(uid, 'web-search', null).catch((e) => console.error('Echo: could not disconnect Web search', e))
+        else if (res.webSearchResealed) void setConnectorSecret(uid, 'web-search', res.webSearchResealed).catch((e) => console.error('Echo: could not save the Web search login', e))
         if (res.error) {
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
