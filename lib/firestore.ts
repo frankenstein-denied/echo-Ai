@@ -18,6 +18,7 @@ import {
   Timestamp,
   updateDoc,
   writeBatch,
+  arrayRemove,
   type CollectionReference,
   type DocumentReference,
 } from 'firebase/firestore'
@@ -25,7 +26,7 @@ import { db } from '@/lib/firebase'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
-import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks } from '@/lib/echo/links'
+import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks, splitImpact } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
 import { validateMeal, type MealInput, type MealItem, type MealSource, type MealType, type MoodTag } from '@/lib/echo/health-helpers'
 
@@ -201,12 +202,63 @@ export async function deleteDiaryPage(uid: string, pageId: string): Promise<void
   await deleteDoc(doc(diaryPagesCol(uid), pageId))
   for (let round = 0; round < 5; round++) {
     const snap = await getDocs(pageMessagesCol(uid, pageId))
-    if (snap.empty) return
+    if (snap.empty) break
     for (const refs of chunk(snap.docs.map((d) => d.ref), BATCH_MAX)) {
       const batch = writeBatch(db)
       for (const r of refs) batch.delete(r)
       await batch.commit()
     }
+  }
+  await cleanPageMemories(uid, pageId)
+}
+
+async function loadPageMemories(uid: string, pageId: string) {
+  const snap = await getDocs(query(memoriesCol(uid), where('pages', 'array-contains', pageId)))
+  const byId = new Map(snap.docs.map((d) => [d.id, d.data()]))
+  return { byId, ...splitImpact(snap.docs.map((d) => ({ id: d.id, pages: d.data().pages })), pageId) }
+}
+
+// Memories this page created or mentioned: ids that would be deleted (only this page) and ids that stay (also elsewhere).
+export async function pageMemoryImpact(uid: string, pageId: string): Promise<{ exclusive: string[]; shared: string[] }> {
+  const { exclusive, shared } = await loadPageMemories(uid, pageId)
+  return { exclusive, shared }
+}
+
+// Deletes the memories that came only from the page, drops the page from shared ones, and removes the deleted
+// ids from the links of neighbours that still exist. Every update keeps the memory rules' shape (lastSeenAt = now).
+async function cleanPageMemories(uid: string, pageId: string): Promise<void> {
+  const { byId, exclusive, shared } = await loadPageMemories(uid, pageId)
+  if (!exclusive.length && !shared.length) return
+  const gone = new Set(exclusive)
+  const updates = new Map<string, Record<string, unknown>>()
+  for (const id of shared) {
+    const links = (byId.get(id)?.links ?? []).filter((l) => !gone.has(l))
+    updates.set(id, { pages: arrayRemove(pageId), lastSeenAt: serverTimestamp(), ...(links.length !== (byId.get(id)?.links ?? []).length ? { links } : {}) })
+  }
+  const neighbourIds = new Set<string>()
+  for (const id of exclusive) for (const l of byId.get(id)?.links ?? []) if (!gone.has(l) && !updates.has(l)) neighbourIds.add(l)
+  const neighbours = await Promise.all([...neighbourIds].map((id) => getDoc(doc(memoriesCol(uid), id))))
+  for (const n of neighbours) {
+    if (!n.exists()) continue
+    const data = n.data()
+    const links = Array.isArray(data.links) ? data.links : []
+    const kept = links.filter((l) => !gone.has(l))
+    if (kept.length === links.length) continue
+    updates.set(n.id, { links: kept, lastSeenAt: serverTimestamp(), ...(typeof data.mentions !== 'number' || data.mentions < 1 ? { mentions: 1 } : {}) })
+  }
+  type Op = { kind: 'delete'; id: string } | { kind: 'update'; id: string; data: Record<string, unknown> }
+  const ops: Op[] = [
+    ...exclusive.map((id): Op => ({ kind: 'delete', id })),
+    ...[...updates].map(([id, data]): Op => ({ kind: 'update', id, data })),
+  ]
+  for (const part of chunk(ops, BATCH_MAX)) {
+    const batch = writeBatch(db)
+    for (const op of part) {
+      const ref = doc(memoriesCol(uid), op.id)
+      if (op.kind === 'delete') batch.delete(ref)
+      else batch.update(ref, op.data as never)
+    }
+    await batch.commit()
   }
 }
 

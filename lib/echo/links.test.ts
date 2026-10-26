@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeLinks, mergePages, planReciprocalLinks } from './links'
+import { mergeLinks, mergePages, pageDeleteBody, planReciprocalLinks, splitImpact } from './links'
 
 describe('planReciprocalLinks', () => {
   it('adds the back link for every A -> B, including targets outside the response', () => {
@@ -56,5 +56,35 @@ describe('mergePages', () => {
     expect(out).toHaveLength(50)
     expect(out[0]).toBe('p1')
     expect(out[49]).toBe('new')
+  })
+})
+
+describe('splitImpact', () => {
+  it('splits memories by whether the page is their only source', () => {
+    const r = splitImpact(
+      [
+        { id: 'a', pages: ['p1'] },
+        { id: 'b', pages: ['p1', 'p2'] },
+        { id: 'c' },
+        { id: 'd', pages: ['p2'] },
+      ],
+      'p1',
+    )
+    expect(r).toEqual({ exclusive: ['a'], shared: ['b'] })
+  })
+})
+
+describe('pageDeleteBody', () => {
+  it('says nothing is removed for 0', () => {
+    expect(pageDeleteBody(0)).toBe('This conversation and its messages will be deleted. Nothing will be removed from your 2nd Brain. Notes, reminders, goals, health logs and meals stay.')
+  })
+  it('singular and plural', () => {
+    expect(pageDeleteBody(1)).toContain('along with 1 2nd Brain node that came only from it.')
+    expect(pageDeleteBody(3)).toContain('along with 3 2nd Brain nodes that came only from it.')
+    expect(pageDeleteBody(3)).toContain('Nodes also mentioned in other conversations stay. Notes, reminders, goals, health logs and meals stay.')
+  })
+  it('has a generic form when the count is unknown', () => {
+    expect(pageDeleteBody(null)).toContain('2nd Brain nodes that came only from it')
+    expect(pageDeleteBody(null)).not.toMatch(/along with \d/)
   })
 })

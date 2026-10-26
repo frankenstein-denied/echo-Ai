@@ -6,7 +6,7 @@ import { deleteNote, updateNote } from '@/lib/firestore'
 import { debounce, parseTags, type Debounced } from '@/lib/echo/view-helpers'
 import { categoryOptions } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { Alert, Badge, Button, IconButton, Input, Select } from './ui'
+import { Alert, Badge, Button, ConfirmDialog, IconButton, Input, Select } from './ui'
 import { Sheet, SheetItem } from './sheet'
 
 export type EditableNote = { id: string; title: string; body: string; category: string; tags: string[] }
@@ -21,6 +21,7 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
   const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [error, setError] = useState('')
   const [actions, setActions] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const touched = useRef(new Set<string>())
   const saver = useRef<Debounced<Fields> | null>(null)
 
@@ -64,9 +65,8 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
     saver.current?.(t, b, tg, c)
   }
 
-  // The mobile actions sheet is itself the confirmation step.
-  const remove = async (confirmed = false) => {
-    if (!confirmed && !window.confirm('Delete this note? This cannot be undone.')) return
+  const remove = async () => {
+    setConfirming(false)
     saver.current?.cancel()
     try {
       await deleteNote(uid, note.id)
@@ -90,7 +90,7 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
             <StatusIcon size={14} aria-hidden="true" className={status === 'saving' ? 'animate-spin' : ''} />
             {status === 'saving' ? 'Saving...' : status === 'error' ? 'Not saved' : 'Saved'}
           </span>
-          <Button variant="danger" size="sm" icon={Trash2} onClick={() => void remove()} className="max-lg:hidden">Delete</Button>
+          <Button variant="danger" size="sm" icon={Trash2} onClick={() => setConfirming(true)} className="max-lg:hidden">Delete</Button>
           <IconButton icon={MoreHorizontal} label="Note actions" className="lg:hidden" aria-haspopup="dialog" aria-expanded={actions} onClick={() => setActions(true)} />
         </div>
       </div>
@@ -101,10 +101,11 @@ export function NoteEditor({ uid, note, categories, dateLabel, onBack }: { uid: 
           tone="danger"
           onClick={() => {
             setActions(false)
-            void remove(true)
+            setConfirming(true)
           }}
         />
       </Sheet>
+      {confirming && <ConfirmDialog title={`Delete “${title.trim() || 'Untitled'}”?`} body="This can't be undone." confirmLabel="Delete" onCancel={() => setConfirming(false)} onConfirm={() => void remove()} />}
       <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface p-6 sm:p-8 max-lg:rounded-none max-lg:border-0 max-lg:bg-background max-lg:px-4 max-lg:pb-8 max-lg:pt-5">
         <input
           aria-label="Note title"

@@ -5,7 +5,7 @@ import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Plus, Target, Trash2, X } from 'lucide-react'
 import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/firestore'
 import { areaShares, debounce, type Debounced } from '@/lib/echo/view-helpers'
-import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, Select, Skeleton } from './ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Select, Skeleton } from './ui'
 import { useIsMobile } from './use-mobile'
 
 type GoalRow = Goal & { id: string }
@@ -20,6 +20,7 @@ function dayOfYear(now: Date): number {
 function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError: (m: string) => void }) {
   const [progress, setProgress] = useState(Math.round(goal.progress))
   const [text, setText] = useState('')
+  const [confirming, setConfirming] = useState(false)
   // Touch layouts: the whole row (label) toggles the milestone; desktop: only the checkbox does.
   const HitRow = useIsMobile() ? 'label' : 'div'
   const saver = useRef<Debounced<[number]> | null>(null)
@@ -43,7 +44,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
   }
 
   const remove = async () => {
-    if (!window.confirm(`Delete the goal "${goal.title}"?`)) return
+    setConfirming(false)
     saver.current?.cancel()
     try {
       await deleteGoal(uid, goal.id)
@@ -56,8 +57,9 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
     <Card className="flex flex-col">
       <div className="flex items-center justify-between">
         <Badge>{goal.category}</Badge>
-        <IconButton icon={Trash2} label="Delete goal" size="sm" onClick={remove} />
+        <IconButton icon={Trash2} label="Delete goal" size="sm" onClick={() => setConfirming(true)} />
       </div>
+      {confirming && <ConfirmDialog title={`Delete “${goal.title}”?`} body="This can't be undone." confirmLabel="Delete" onCancel={() => setConfirming(false)} onConfirm={() => void remove()} />}
       <h2 className="mt-4 text-base font-semibold text-foreground">{goal.title}</h2>
       {goal.targetDate && <p className="mt-1 text-xs text-muted-foreground">Target {goal.targetDate}</p>}
       <div className="mt-4">

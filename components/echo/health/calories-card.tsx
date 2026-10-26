@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2, Undo2, Utensils } from 'lucide-react'
 import { deleteMeal, type MealDoc } from '@/lib/firestore'
 import { goalProgress, groupByMealType, itemsTotal, MEAL_TYPE_LABELS, type MealType } from '@/lib/echo/health-helpers'
-import { Alert, Badge, Button, Card, IconButton } from '../ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, IconButton } from '../ui'
 import { MealDialog } from './meal-editor'
 
 const UNDO_MS = 10000
@@ -16,6 +16,7 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
   const [adding, setAdding] = useState(false)
   const [pending, setPending] = useState<Pending[]>([])
   const [error, setError] = useState('')
+  const [confirm, setConfirm] = useState<MealDoc | null>(null)
   const pendingRef = useRef<Pending[]>([])
   const uidRef = useRef(uid)
   uidRef.current = uid
@@ -37,6 +38,7 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
   )
 
   const remove = (meal: MealDoc) => {
+    setConfirm(null)
     setError('')
     const timer = setTimeout(async () => {
       sync(pendingRef.current.filter((p) => p.meal.id !== meal.id))
@@ -147,7 +149,7 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
                     <span className="shrink-0 pt-0.5 text-sm font-medium tabular-nums text-foreground">{m.totalCalories} kcal</span>
                     <div className="-my-1 flex shrink-0">
                       <IconButton icon={Pencil} size="sm" label={`Edit ${m.description}`} onClick={() => setEditing(m)} />
-                      <IconButton icon={Trash2} size="sm" label={`Delete ${m.description}`} onClick={() => remove(m)} />
+                      <IconButton icon={Trash2} size="sm" label={`Delete ${m.description}`} onClick={() => setConfirm(m)} />
                     </div>
                   </li>
                 ))}
@@ -160,6 +162,7 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
 
       <MealDialog uid={uid} day={day} defaultType={nextType} open={adding} onClose={() => setAdding(false)} />
       <MealDialog uid={uid} day={day} meal={editing ?? undefined} open={editing !== null} onClose={() => setEditing(null)} />
+      {confirm && <ConfirmDialog title={`Delete “${confirm.description}”?`} body="You can undo for a few seconds." confirmLabel="Delete" onCancel={() => setConfirm(null)} onConfirm={() => remove(confirm)} />}
     </Card>
   )
 }

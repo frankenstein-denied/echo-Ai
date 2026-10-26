@@ -5,10 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import type { User } from 'firebase/auth'
 import { limit, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { ArrowLeft, BookOpen, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
-import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
+import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, pageMemoryImpact, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
 import { filterPages, isPermissionDenied, normalizeTitle, relativeTime, RULES_MESSAGE, sortPages, TITLE_MAX } from '@/lib/echo/diary'
+import { pageDeleteBody } from '@/lib/echo/links'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { Alert, Button, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
+import { Alert, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
 import { MobileTitleBar } from './mobile-tabbar'
 import { Sheet, SheetItem } from './sheet'
@@ -25,58 +26,6 @@ function greeting(d: Date): string {
   if (h >= 5 && h < 12) return 'Good morning'
   if (h >= 12 && h < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-function ConfirmDelete({ title, busy, error, onCancel, onConfirm }: { title: string; busy: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null
-    ref.current?.querySelector<HTMLElement>('button')?.focus()
-    return () => prev?.focus()
-  }, [])
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape' && !busy) {
-      e.stopPropagation()
-      onCancel()
-    }
-    if (e.key === 'Tab' && ref.current) {
-      const items = Array.from(ref.current.querySelectorAll<HTMLElement>('button:not([disabled])'))
-      if (!items.length) return
-      const first = items[0]
-      const last = items[items.length - 1]
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-  }
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden="true" className="absolute inset-0 bg-background/80" onClick={busy ? undefined : onCancel} />
-      <div ref={ref} role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-desc" className="relative w-full max-w-md rounded-xl border border-border-strong bg-surface p-6">
-        <h2 id="del-title" className="text-base font-semibold text-foreground">Delete &ldquo;{title}&rdquo;?</h2>
-        <p id="del-desc" className="mt-2 text-sm text-muted-foreground">
-          This page and all its messages will be deleted. Notes, reminders, goals, health logs and memories Echo saved from it stay.
-        </p>
-        {error && (
-          <div className="mt-3">
-            <Alert variant="danger">{error}</Alert>
-          </div>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="danger" icon={Trash2} onClick={onConfirm} loading={busy}>
-            Delete page
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function RowMenu({ title, onRename, onDelete }: { title: string; onRename: () => void; onDelete: () => void }) {
@@ -281,6 +230,8 @@ export function DiaryView({
   const [del, setDel] = useState<Page | null>(null)
   const [delBusy, setDelBusy] = useState(false)
   const [delError, setDelError] = useState<string | null>(null)
+  // nodes the delete would remove: undefined = still counting, null = counting failed
+  const [delCount, setDelCount] = useState<number | null | undefined>(undefined)
   const [creating, setCreating] = useState(false)
   const [, tick] = useState(0)
   const [collapsed, setCollapsed] = useState(false) // page list collapsed to an icon rail (desktop)
@@ -398,6 +349,20 @@ export function DiaryView({
     setSel((s) => ({ id, key: s.key }))
     return id
   }, [uid])
+
+  const delId = del?.id
+  useEffect(() => {
+    if (!delId) return
+    let live = true
+    setDelCount(undefined)
+    pageMemoryImpact(uid, delId).then(
+      (r) => live && setDelCount(r.exclusive.length),
+      () => live && setDelCount(null),
+    )
+    return () => {
+      live = false
+    }
+  }, [uid, delId])
 
   const confirmDelete = async () => {
     if (!del) return
@@ -552,7 +517,7 @@ export function DiaryView({
           </div>
         </div>
       )}
-      {del && <ConfirmDelete title={del.title} busy={delBusy} error={delError} onCancel={() => setDel(null)} onConfirm={() => void confirmDelete()} />}
+      {del && <ConfirmDialog title={`Delete \u201c${del.title}\u201d?`} body={delCount === undefined ? 'Checking your 2nd Brain\u2026' : pageDeleteBody(delCount)} confirmLabel="Delete page" busy={delBusy} error={delError} onCancel={() => setDel(null)} onConfirm={() => void confirmDelete()} />}
     </div>
   )
 }

@@ -40,3 +40,23 @@ export function buildReciprocalUpdate(data: { links?: unknown; mentions?: unknow
   if (typeof data.mentions !== 'number' || data.mentions < 1) out.mentions = 1
   return out
 }
+
+/** Memories that came only from `pageId` (deleted with it) vs also from other pages (kept). Memories without `pages` are neither. */
+export function splitImpact(memories: { id: string; pages?: string[] }[], pageId: string): { exclusive: string[]; shared: string[] } {
+  const exclusive: string[] = []
+  const shared: string[] = []
+  for (const m of memories) {
+    if (!m.pages?.includes(pageId)) continue
+    if (m.pages.every((p) => p === pageId)) exclusive.push(m.id)
+    else shared.push(m.id)
+  }
+  return { exclusive, shared }
+}
+
+/** Body copy of the delete-page dialog. `n` is the number of 2nd Brain nodes only this page made (null = unknown). */
+export function pageDeleteBody(n: number | null): string {
+  const tail = 'Notes, reminders, goals, health logs and meals stay.'
+  if (n === 0) return `This conversation and its messages will be deleted. Nothing will be removed from your 2nd Brain. ${tail}`
+  const lead = n === null ? 'along with any 2nd Brain nodes that came only from it.' : `along with ${n} 2nd Brain node${n === 1 ? '' : 's'} that came only from it.`
+  return `This conversation and its messages will be deleted, ${lead} Nodes also mentioned in other conversations stay. ${tail}`
+}

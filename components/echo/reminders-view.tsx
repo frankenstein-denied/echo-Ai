@@ -5,7 +5,7 @@ import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Bell, Plus, Trash2 } from 'lucide-react'
 import { addReminder, deleteReminder, remindersCol, routinesCol, setReminderDone, type Reminder, type Routine } from '@/lib/firestore'
 import { splitReminders } from '@/lib/echo/view-helpers'
-import { Alert, Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, Skeleton } from './ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Skeleton } from './ui'
 import { useIsMobile } from './use-mobile'
 
 type ReminderRow = Reminder & { id: string; dueMs: number }
@@ -30,6 +30,7 @@ export function RemindersView({ uid }: { uid: string }) {
   const [title, setTitle] = useState('')
   const [due, setDue] = useState(defaultDueValue)
   const [adding, setAdding] = useState(false)
+  const [confirm, setConfirm] = useState<ReminderRow | null>(null)
   // Touch layouts: the whole row (label) toggles done; desktop: only the checkbox does.
   const HitRow = useIsMobile() ? 'label' : 'div'
 
@@ -82,7 +83,7 @@ export function RemindersView({ uid }: { uid: string }) {
   }
 
   const remove = (r: ReminderRow) => {
-    if (!window.confirm(`Delete the reminder "${r.title}"?`)) return
+    setConfirm(null)
     run(() => deleteReminder(uid, r.id), 'Could not delete the reminder.')
   }
 
@@ -102,7 +103,7 @@ export function RemindersView({ uid }: { uid: string }) {
       <span className="max-sm:hidden">
         <Badge variant="neutral">{SOURCE_LABEL[r.source] ?? r.source}</Badge>
       </span>
-      <IconButton icon={Trash2} label={`Delete reminder: ${r.title}`} size="sm" onClick={() => remove(r)} />
+      <IconButton icon={Trash2} label={`Delete reminder: ${r.title}`} size="sm" onClick={() => setConfirm(r)} />
     </div>
   )
 
@@ -165,6 +166,7 @@ export function RemindersView({ uid }: { uid: string }) {
           )}
         </Card>
       </div>
+      {confirm && <ConfirmDialog title={`Delete “${confirm.title}”?`} body="This can't be undone." confirmLabel="Delete" onCancel={() => setConfirm(null)} onConfirm={() => remove(confirm)} />}
     </div>
   )
 }
