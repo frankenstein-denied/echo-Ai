@@ -27,11 +27,14 @@ export const CONNECTORS: readonly ConnectorDef[] = [
 
 export type ConnectorState = { id: ConnectorId; name: string; status: ConnectorStatus }
 
-export function connectorStatuses(docs: { id: string; connected?: boolean }[]): ConnectorState[] {
+// A sign-in connector only counts as connected when its saved login is present: a doc that says connected but has
+// no `sealed` (e.g. a half-finished login) would show "Connected" while Echo can't use it.
+export function connectorStatuses(docs: { id: string; connected?: boolean; sealed?: unknown }[]): ConnectorState[] {
   const byId = new Map(docs.map((d) => [d.id, d]))
   return CONNECTORS.map((c) => {
     const doc = byId.get(c.id)
-    const connected = doc && typeof doc.connected === 'boolean' ? doc.connected : c.defaultConnected
+    const flag = doc && typeof doc.connected === 'boolean' ? doc.connected : c.defaultConnected
+    const connected = flag && (c.kind === 'builtin' || (typeof doc?.sealed === 'string' && doc.sealed.length > 0))
     const status: ConnectorStatus = !c.available ? 'coming_soon' : connected ? 'connected' : 'not_connected'
     return { id: c.id, name: c.name, status }
   })

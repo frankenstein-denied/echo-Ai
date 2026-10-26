@@ -41,7 +41,7 @@ export function ConnectorsView({
   const [docs, setDocs] = useState<{ id: string; connected?: boolean; sealed?: string }[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<ConnectorId | null>(null)
 
   useEffect(() => {
     return onSnapshot(
@@ -59,18 +59,18 @@ export function ConnectorsView({
 
   const statuses = useMemo(() => (docs ? connectorStatuses(docs) : []), [docs])
 
-  async function run(action: () => Promise<void>) {
-    setBusy(true)
+  async function run(id: ConnectorId, action: () => Promise<void>) {
+    setBusy(id)
     setActionError('')
     try {
       await action()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Could not update the connector.')
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
-  const toggle = (id: ConnectorId, name: string, connected: boolean) => run(() => setConnectorConnected(uid, id, name, connected))
+  const toggle = (id: ConnectorId, name: string, connected: boolean) => run(id, () => setConnectorConnected(uid, id, name, connected))
   const webSealed = docs?.find((d) => d.id === 'web-search')?.sealed
 
   return (
@@ -109,17 +109,17 @@ export function ConnectorsView({
                 <h2 className="mt-4 text-base font-semibold text-foreground">{c.name}</h2>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description}</p>
                 {c.id === 'nutrition' ? (
-                  <Button variant={status === 'connected' ? 'secondary' : 'primary'} loading={busy} onClick={() => toggle(c.id, c.name, status !== 'connected')} className="mt-4 w-full">
+                  <Button variant={status === 'connected' ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, status !== 'connected')} className="mt-4 w-full">
                     {status === 'connected' ? 'Disconnect' : 'Connect'}
                   </Button>
                 ) : c.id === 'web-search' ? (
                   status === 'connected' ? (
-                    <Button variant="secondary" loading={busy} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(() => onTavilyDisconnect(webSealed))} className="mt-4 w-full">
+                    <Button variant="secondary" loading={busy === c.id} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(c.id, () => onTavilyDisconnect(webSealed))} className="mt-4 w-full">
                       Disconnect
                     </Button>
                   ) : (
                     <>
-                      <Button variant="primary" loading={busy} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(onTavilyLogin)} className="mt-4 w-full">
+                      <Button variant="primary" loading={busy === c.id} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(c.id, onTavilyLogin)} className="mt-4 w-full">
                         Log in with Tavily
                       </Button>
                       <p className="mt-2 text-xs text-muted-foreground">Opens Tavily&apos;s login. Searches use your own Tavily account (free: 1,000 a month).</p>

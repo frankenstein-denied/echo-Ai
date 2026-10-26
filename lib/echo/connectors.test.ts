@@ -11,7 +11,7 @@ describe('connectorStatuses', () => {
   })
   it('lets a doc override an available connector', () => {
     expect(status([{ id: 'nutrition', connected: false }], 'nutrition')).toBe('not_connected')
-    expect(status([{ id: 'web-search', connected: true }], 'web-search')).toBe('connected')
+    expect(status([{ id: 'web-search', connected: true, sealed: 'v1.x.y' }], 'web-search')).toBe('connected')
   })
   it('keeps unavailable connectors coming soon even if a doc says connected', () => {
     expect(status([{ id: 'spotify', connected: true }], 'spotify')).toBe('coming_soon')
@@ -29,5 +29,13 @@ describe('isConnected', () => {
     expect(isConnected(s, 'nutrition')).toBe(true)
     expect(isConnected(s, 'web-search')).toBe(false)
     expect(isConnected(s, 'gmail')).toBe(false)
+  })
+
+  it('counts web search as connected only with a saved login', () => {
+    const web = (docs: { id: string; connected?: boolean; sealed?: unknown }[]) => connectorStatuses(docs).find((c) => c.id === 'web-search')?.status
+    expect(web([{ id: 'web-search', connected: true }])).toBe('not_connected')
+    expect(web([{ id: 'web-search', connected: true, sealed: '' }])).toBe('not_connected')
+    expect(web([{ id: 'web-search', connected: true, sealed: 'v1.x.y' }])).toBe('connected')
+    expect(connectorStatuses([{ id: 'nutrition', connected: true }]).find((c) => c.id === 'nutrition')?.status).toBe('connected')
   })
 })
