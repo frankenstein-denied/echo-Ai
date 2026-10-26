@@ -136,7 +136,7 @@ export function Landing() {
       <main id="main" tabIndex={-1} className="focus:outline-none">
         <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 max-md:gap-8 max-md:px-4 max-md:py-8 lg:grid-cols-2 lg:items-center lg:py-24">
           <div className="landing-fade">
-            <h1 id="hero-title" className="text-4xl font-semibold leading-tight text-foreground md:text-5xl">A diary that listens and remembers.</h1>
+            <h1 id="hero-title" className="text-4xl font-semibold leading-tight text-foreground md:text-5xl">A diary that speaks back.</h1>
             <p className="mt-4 max-w-xl text-base text-muted-foreground">Talk or type about your day. Echo turns it into notes, reminders, goals and health check-ins, and keeps it all connected for you.</p>
             <div className="mt-8 flex flex-wrap gap-3 max-md:mt-6 max-md:grid max-md:grid-cols-2">
               <Button onClick={() => openAuth('signup')}>Get started</Button>
