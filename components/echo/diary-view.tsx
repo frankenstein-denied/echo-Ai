@@ -254,7 +254,20 @@ function TitleEditor({ title, editing, setEditing, onSave }: { title: string; ed
   )
 }
 
-export function DiaryView({ user, profile, onNavigate }: { user: User; profile: UserProfile; onNavigate: (v: HomeView) => void }) {
+export function DiaryView({
+  user,
+  profile,
+  onNavigate,
+  openPageId,
+  onOpenPageHandled,
+}: {
+  user: User
+  profile: UserProfile
+  onNavigate: (v: HomeView) => void
+  /** A page to open once (e.g. from the 2nd Brain); cleared through onOpenPageHandled. */
+  openPageId?: string | null
+  onOpenPageHandled?: () => void
+}) {
   const uid = user.uid
   const [ready, setReady] = useState(false) // migration finished (or failed)
   const [rulesError, setRulesError] = useState(false)
@@ -320,6 +333,17 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
     const id = setInterval(() => tick((n) => n + 1), 60000)
     return () => clearInterval(id)
   }, [])
+
+  // Open a page requested from elsewhere (once the list has loaded), then clear the request.
+  useEffect(() => {
+    if (!openPageId || pages === null) return
+    if (pages.some((p) => p.id === openPageId)) {
+      setSel((s) => ({ id: openPageId, key: s.key + 1 }))
+      setEditing(false)
+      setMobileOpen(true)
+    }
+    onOpenPageHandled?.()
+  }, [openPageId, pages, onOpenPageHandled])
 
   // Land on the most recently updated page once.
   useEffect(() => {

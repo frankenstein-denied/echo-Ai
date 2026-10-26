@@ -116,6 +116,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const [view, setView] = useState<View>('Diary')
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
+  const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
   const days = daysWithEcho(profile)
   useMobileViewportSync()
@@ -170,6 +171,14 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     // A new page starts at the top (the mobile layout scrolls the document).
     window.scrollTo({ top: 0 })
   }, [])
+  const openDiaryPage = useCallback(
+    (pageId: string) => {
+      setPendingPageId(pageId)
+      navigate('Diary')
+    },
+    [navigate],
+  )
+  const clearPendingPage = useCallback(() => setPendingPageId(null), [])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   return (
@@ -180,7 +189,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           {/* Diary draws its own full-height mobile header (list / page bar). */}
           {view !== 'Diary' && <MobileTitleBar title={view} />}
           {!user ? null : view === 'Diary' ? (
-            <DiaryView user={user} profile={profile} onNavigate={navigate} />
+            <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} />
           ) : view === 'Notes' ? (
             <NotesView uid={user.uid} />
           ) : view === 'Goals' ? (
@@ -192,7 +201,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           ) : view === 'Connectors' ? (
             <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
-            <BrainView uid={user.uid} />
+            <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
           ) : (
             <SettingsView user={user} profile={profile} signOut={signOut} />
           )}

@@ -40,4 +40,39 @@ describe('graph', () => {
     expect(relativeTime(0)).toBe('unknown')
     expect(relativeTime(1000, 1000 + 3 * 3600000)).toBe('3 h ago')
   })
+
+  describe('diary page nodes', () => {
+    const mems = [
+      { id: 'person-mama', label: 'Mama', type: 'person', pages: ['p1', 'p2'] },
+      { id: 'topic-thesis', label: 'Thesis', type: 'topic', pages: ['p1', 'gone'] },
+      { id: 'goal-run', label: 'Run', type: 'goal' },
+    ]
+    const pages = [
+      { id: 'p1', title: 'Monday chat', lastMessageMs: 900 },
+      { id: 'p2', title: '  ' },
+      { id: 'p3', title: 'Empty page' },
+    ]
+    it('adds a diary node per page with linked memories, with edges', () => {
+      const g = buildGraph(mems, pages)
+      const n = g.nodes.find((x) => x.id === 'page-p1')!
+      expect(n.type).toBe('diary')
+      expect(n.label).toBe('Monday chat')
+      expect(n.mentions).toBe(2)
+      expect(n.lastSeenMs).toBe(900)
+      expect(neighbours(g, 'page-p1').sort()).toEqual(['person-mama', 'topic-thesis'])
+      expect(g.nodes.find((x) => x.id === 'page-p2')!.label).toBe('Untitled page')
+    })
+    it('omits pages with no memories and ignores missing page ids', () => {
+      const g = buildGraph(mems, pages)
+      expect(g.nodes.find((x) => x.id === 'page-p3')).toBeUndefined()
+      expect(g.nodes.find((x) => x.id === 'page-gone')).toBeUndefined()
+      expect(g.edges.some((e) => e.source.includes('gone') || e.target.includes('gone'))).toBe(false)
+      expect(() => buildGraph(mems)).not.toThrow()
+      expect(buildGraph(mems).nodes).toHaveLength(3)
+    })
+    it('keeps old diary-type memories', () => {
+      const g = buildGraph(docs, pages)
+      expect(g.nodes.find((n) => n.id === 'diary-x')!.type).toBe('diary')
+    })
+  })
 })

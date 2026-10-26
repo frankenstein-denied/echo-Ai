@@ -11,6 +11,7 @@ export type MemoryDoc = {
   mentions?: number
   createdMs?: number
   lastSeenMs?: number
+  pages?: string[]
 }
 
 export type GraphNode = { id: string; label: string; type: GraphNodeType; mentions: number; lastSeenMs: number; radius: number }
@@ -26,7 +27,12 @@ export function nodeRadius(mentions: number): number {
 
 const isType = (t: unknown): t is GraphNodeType => NODE_TYPES.includes(t as GraphNodeType)
 
-export function buildGraph(docs: MemoryDoc[]): Graph {
+export type PageDoc = { id: string; title: string; lastMessageMs?: number }
+
+export const PAGE_PREFIX = 'page-'
+export const isPageNodeId = (id: string) => id.startsWith(PAGE_PREFIX)
+
+export function buildGraph(docs: MemoryDoc[], pages: PageDoc[] = []): Graph {
   const nodes: GraphNode[] = []
   const ids = new Set<string>()
   for (const d of docs) {
@@ -53,6 +59,23 @@ export function buildGraph(docs: MemoryDoc[]): Graph {
       seen.add(k)
       edges.push({ source: d.id, target: l })
     }
+  }
+  const pageById = new Map(pages.map((p) => [p.id, p]))
+  const linked = new Map<string, string[]>()
+  for (const d of docs) {
+    if (!ids.has(d.id)) continue
+    for (const pid of new Set(d.pages ?? [])) {
+      if (!pageById.has(pid)) continue
+      linked.set(pid, [...(linked.get(pid) ?? []), d.id])
+    }
+  }
+  for (const [pid, memIds] of linked) {
+    const p = pageById.get(pid)!
+    const id = PAGE_PREFIX + pid
+    if (ids.has(id)) continue
+    ids.add(id)
+    nodes.push({ id, label: p.title?.trim() || 'Untitled page', type: 'diary', mentions: memIds.length, lastSeenMs: p.lastMessageMs ?? 0, radius: nodeRadius(memIds.length) })
+    for (const m of memIds) edges.push({ source: id, target: m })
   }
   return { nodes, edges }
 }

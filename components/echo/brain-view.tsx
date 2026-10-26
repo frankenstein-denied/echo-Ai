@@ -1,14 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { onSnapshot } from 'firebase/firestore'
+import { limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
-import { Brain, Maximize2, Minus, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
-import { memoriesCol } from '@/lib/firestore'
+import { BookOpen, Brain, Maximize2, Minus, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { diaryPagesCol, memoriesCol, pageMessagesCol, type Message } from '@/lib/firestore'
 import {
   buildGraph,
   edgeKey,
   filterGraph,
+  isPageNodeId,
+  PAGE_PREFIX,
   neighbours,
   NODE_TYPES,
   relativeTime,
@@ -17,6 +19,7 @@ import {
   type GraphNode,
   type GraphNodeType,
   type MemoryDoc,
+  type PageDoc,
 } from '@/lib/echo/graph'
 import { Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, RadioGroup, Skeleton } from './ui'
 import { Sheet } from './sheet'
@@ -33,7 +36,7 @@ const TYPE_LABEL: Record<GraphNodeType, string> = {
   goal: 'Goals',
   health: 'Health',
   task: 'Tasks',
-  diary: 'Diary',
+  diary: 'Diary pages',
   connector: 'Connectors',
 }
 const typeColor = (t: GraphNodeType) => `var(--color-node-${t})`
@@ -41,8 +44,46 @@ const MAX_TICKS = 400
 const MIN_K = 0.2
 const MAX_K = 4
 
-export function BrainView({ uid }: { uid: string }) {
+/** Read-only transcript (last 50 messages) of one diary page. */
+function PageTranscript({ uid, pageId }: { uid: string; pageId: string }) {
+  const [msgs, setMsgs] = useState<(Message & { id: string })[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setMsgs(null)
+    setFailed(false)
+    const q = query(pageMessagesCol(uid, pageId), orderBy('createdAt'), limitToLast(50))
+    return onSnapshot(
+      q,
+      (snap) => setMsgs(snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id }))),
+      () => setFailed(true),
+    )
+  }, [uid, pageId])
+  return (
+    <div>
+      <h3 className="mb-1 text-sm font-medium text-foreground">Conversation</h3>
+      {failed ? (
+        <p className="text-sm text-danger">Could not load this conversation.</p>
+      ) : msgs === null ? (
+        <Skeleton className="h-24 w-full" />
+      ) : msgs.length ? (
+        <ol aria-label="Conversation (read only)" className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border border-border bg-surface-2 p-2">
+          {msgs.map((m) => (
+            <li key={m.id} className="min-w-0 text-sm">
+              <span className="text-xs font-medium text-muted-foreground">{m.role === 'user' ? 'You' : 'Echo'}</span>
+              <p className="whitespace-pre-wrap break-words text-foreground">{m.text}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted-foreground">No messages on this page.</p>
+      )}
+    </div>
+  )
+}
+
+export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (pageId: string) => void }) {
   const [docs, setDocs] = useState<MemoryDoc[] | null>(null)
+  const [pageDocs, setPageDocs] = useState<PageDoc[]>([])
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<'all' | GraphNodeType>('all')
   const [search, setSearch] = useState('')
@@ -78,7 +119,7 @@ export function BrainView({ uid }: { uid: string }) {
         setDocs(
           snap.docs.map((s) => {
             const d = s.data({ serverTimestamps: 'estimate' })
-            return { id: s.id, label: d.label, type: d.type, links: d.links, mentions: d.mentions, createdMs: d.createdAt?.toMillis?.(), lastSeenMs: d.lastSeenAt?.toMillis?.() }
+            return { id: s.id, label: d.label, type: d.type, links: d.links, mentions: d.mentions, createdMs: d.createdAt?.toMillis?.(), lastSeenMs: d.lastSeenAt?.toMillis?.(), pages: Array.isArray(d.pages) ? d.pages : undefined }
           }),
         )
         setError('')
@@ -87,7 +128,15 @@ export function BrainView({ uid }: { uid: string }) {
     )
   }, [uid])
 
-  const graph = useMemo(() => buildGraph(docs ?? []), [docs])
+  useEffect(() => {
+    return onSnapshot(
+      diaryPagesCol(uid),
+      (snap) => setPageDocs(snap.docs.map((s) => ({ id: s.id, title: s.data().title, lastMessageMs: s.data({ serverTimestamps: 'estimate' }).lastMessageAt?.toMillis?.() }))),
+      () => setPageDocs([]),
+    )
+  }, [uid])
+
+  const graph = useMemo(() => buildGraph(docs ?? [], pageDocs), [docs, pageDocs])
   const counts = useMemo(() => typeCounts(graph), [graph])
   const { visible, edges: litEdges } = useMemo(() => filterGraph(graph, filter), [graph, filter])
   const matches = useMemo(() => new Set(searchNodes(graph.nodes, search).map((n) => n.id)), [graph, search])
@@ -393,6 +442,7 @@ export function BrainView({ uid }: { uid: string }) {
   const selected = selectedId ? byId.get(selectedId) ?? null : null
   const connected = selected ? neighbours(graph, selected.id).map((id) => byId.get(id)).filter((n): n is GraphNode => !!n) : []
   const selNeighbours = new Set(connected.map((c) => c.id))
+  const isPage = !!selected && isPageNodeId(selected.id)
   const searching = search.trim().length > 0
 
   const header = <PageHeader title="2nd Brain" description="Everything Echo remembers about you, and how it connects." />
@@ -449,11 +499,11 @@ export function BrainView({ uid }: { uid: string }) {
       )}
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <div>
-          <dt className="text-xs text-muted-foreground">Mentions</dt>
+          <dt className="text-xs text-muted-foreground">{isPage ? 'Memories' : 'Mentions'}</dt>
           <dd className="text-foreground">{selected.mentions}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Last seen</dt>
+          <dt className="text-xs text-muted-foreground">{isPage ? 'Last message' : 'Last seen'}</dt>
           <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
         </div>
       </dl>
@@ -483,6 +533,17 @@ export function BrainView({ uid }: { uid: string }) {
           <p className="text-sm text-muted-foreground">No connections yet.</p>
         )}
       </div>
+      {isPage && (
+        <>
+          <p className="text-xs text-muted-foreground">{selected.lastSeenMs ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(selected.lastSeenMs) : 'No date'}</p>
+          <PageTranscript uid={uid} pageId={selected.id.slice(PAGE_PREFIX.length)} />
+          {onOpenPage && (
+            <Button icon={BookOpen} onClick={() => onOpenPage(selected.id.slice(PAGE_PREFIX.length))}>
+              Open in Diary
+            </Button>
+          )}
+        </>
+      )}
     </>
   ) : null
   const filterLabel = filter === 'all' ? 'All' : TYPE_LABEL[filter]
