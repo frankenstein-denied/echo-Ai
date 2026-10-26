@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import type { User } from 'firebase/auth'
 import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
-import { applyActions, localIsoWithOffset, type SavedItem } from '@/lib/echo/client'
+import { applyActions, estimateMealViaApi, localIsoWithOffset, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
-import { extractCheckInTime } from '@/lib/echo/context'
+import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
+import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
@@ -91,6 +92,7 @@ const newTurn = (): Turn => ({
 })
 type Tagged = SavedItem & { callId?: string }
 const notCancelled = (t: Turn) => (x: Tagged) => !x.callId || !t.cancelled.has(x.callId)
+const untag = ({ callId: _c, ...rest }: Tagged): SavedItem => rest
 
 type Resources = {
   session: Session | null
@@ -113,14 +115,20 @@ export function useEchoCall({
   user,
   voice,
   getContext,
+  getRefs,
   onTurn,
   onLateResult,
+  onDeleted,
 }: {
   user: User
   voice: string
   getContext: () => EchoRequest['context']
+  /** The ref map that matches the items in the last getContext() result (kept for the whole call). */
+  getRefs?: () => RefMap | undefined
   onTurn: (t: CallTurn) => void
   onLateResult?: (turnId: number, r: LateResult) => void
+  /** A delete made by Echo during the call (for the Undo toast). */
+  onDeleted?: (e: UndoInput) => void
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -133,14 +141,16 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, getContext, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getContext, getRefs, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, getContext, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getContext, getRefs, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
-  const toolCtx = useRef<{ checkInTime: string; memoryLabels: { label: string; type: string }[] }>({ checkInTime: '09:00', memoryLabels: [] })
+  const toolCtx = useRef<{ checkInTime: string; memoryLabels: { label: string; type: string }[]; refs?: RefMap; caloriesEnabled: boolean }>({ checkInTime: '09:00', memoryLabels: [], caloriesEnabled: true })
   const lastLive = useRef('')
+  // What Echo said last (a delete must follow Echo's confirmation question).
+  const lastEcho = useRef('')
 
   const now = () => res.current.ctx?.currentTime ?? 0
 
@@ -163,7 +173,8 @@ export function useEchoCall({
     const userText = t.user.trim()
     lastLive.current = ''
     setLive(null)
-    const saved = (t.saved as Tagged[]).filter(notCancelled(t)).map(({ type, label }) => ({ type, label }))
+    const saved = (t.saved as Tagged[]).filter(notCancelled(t)).map(untag)
+    if (echoText) lastEcho.current = echoText
     if (userText || echoText) cb.current.onTurn({ id: t.id, userText, echoText, saved, failed: t.failed })
   }
 
@@ -252,7 +263,13 @@ export function useEchoCall({
       const [{ executeToolCalls }, { makeReader }] = await Promise.all([import('@/lib/echo/live-tools'), import('@/lib/echo/live-data')])
       const uid = cb.current.user.uid
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-      const out = await executeToolCalls(calls, { clientTime: localIsoWithOffset(), ...toolCtx.current }, (r) => applyActions(uid, r), { read: makeReader(uid, tz) })
+      const tc = toolCtx.current
+      const out = await executeToolCalls(
+        calls,
+        { clientTime: localIsoWithOffset(), ...tc, lastEchoText: lastEcho.current },
+        (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt) }),
+        { read: makeReader(uid, tz) },
+      )
       // Confirmed now; if the turn was already handed off (hang-up, barge-in, watchdog) report them as late.
       const record = (r: { saved: Tagged[]; failed: string[] }) => {
         const ok = r.saved.filter(notCancelled(t))
@@ -260,7 +277,7 @@ export function useEchoCall({
           t.saved.push(...ok)
           t.failed.push(...r.failed)
         } else if (ok.length || r.failed.length) {
-          cb.current.onLateResult?.(t.id, { saved: ok.map(({ type, label }) => ({ type, label })), failed: r.failed })
+          cb.current.onLateResult?.(t.id, { saved: ok.map(untag), failed: r.failed })
         }
       }
       record(out as { saved: Tagged[]; failed: string[] })
@@ -383,7 +400,13 @@ export function useEchoCall({
       return
     }
     const context = cb.current.getContext()
-    toolCtx.current = { checkInTime: extractCheckInTime(context.profile), memoryLabels: context.memoryLabels.map((m) => ({ label: m.label, type: m.type })) }
+    lastEcho.current = ''
+    toolCtx.current = {
+      checkInTime: extractCheckInTime(context.profile),
+      memoryLabels: context.memoryLabels.map((m) => ({ label: m.label, type: m.type })),
+      refs: cb.current.getRefs?.(),
+      caloriesEnabled: context.items?.caloriesEnabled !== false,
+    }
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     try {
       const [stream, sess, genai] = await Promise.all([
@@ -429,6 +452,11 @@ export function useEchoCall({
       r.tick = setInterval(tick, TICK_MS)
       setStartedAt(Date.now())
       setPhase('listening')
+      // Echo speaks first: a hidden text kickoff (no input transcription, so no user bubble); the greeting
+      // arrives as a normal model turn and is saved as an assistant message.
+      try {
+        session.sendRealtimeInput({ text: greetingKickoff(localIsoWithOffset()) })
+      } catch {}
     } catch (e) {
       if (id !== callId.current) return
       const mic = (e as { mic?: unknown })?.mic

@@ -1,16 +1,36 @@
 import { Type, type FunctionDeclaration } from '@google/genai'
+import { refsAsItems, type RefMap } from './context'
 import { READ_TOOL_NAMES, type ReadToolName } from './live-read'
-import { sanitizeEchoResponse } from './sanitize'
+import { confirmQuestion, DELETE_CONFIRM_TRACE, sanitizeEchoResponse } from './sanitize'
 import type { EchoAction, EchoMemoryLabel, EchoResponse, MemoryInput } from './types'
 
 // Function tools for Echo calls. They mirror the router's EchoAction variants plus memories;
 // connectors have no tool (Echo says verbally that they are not available yet).
 
 const MEMORY_TYPE_ENUM = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
+const MOOD_TAG_ENUM = ['great', 'happy', 'okay', 'tired', 'sad', 'anxious', 'angry']
+const MEAL_TYPE_ENUM = ['breakfast', 'lunch', 'dinner', 'snack']
+const ref = (kind: string, example: string) => s(`ref of the ${kind} from YOUR ITEMS (or a ref returned by a save in this call), e.g. ${example}`)
+const DELETE_DESC = 'Only after the user confirmed in their latest reply to your question naming the item (e.g. "Delete the reminder \'Stretch\'?"). Never in the same turn they first ask.'
 const s = (description: string) => ({ type: Type.STRING, description })
 const int = (description: string) => ({ type: Type.INTEGER, description })
 
-export const WRITE_TOOL_NAMES = ['save_note', 'add_goal', 'log_health', 'add_reminder', 'save_memories'] as const
+export const WRITE_TOOL_NAMES = [
+  'save_note',
+  'add_goal',
+  'log_health',
+  'add_reminder',
+  'save_memories',
+  'log_meal',
+  'update_reminder',
+  'delete_reminder',
+  'update_note',
+  'delete_note',
+  'update_goal',
+  'delete_goal',
+  'update_meal',
+  'delete_meal',
+] as const
 export const LIVE_TOOL_NAMES = [...WRITE_TOOL_NAMES, ...READ_TOOL_NAMES] as const
 export type LiveToolName = (typeof WRITE_TOOL_NAMES)[number]
 
@@ -53,6 +73,7 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         sleepMinutes: int('minutes slept (6 hours = 360)'),
         waterGlasses: int('glasses of water'),
         energy: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+        moodTag: { type: Type.STRING, enum: MOOD_TAG_ENUM, description: 'the closest feeling; the score is derived from it' },
       },
     },
   },
@@ -99,6 +120,59 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['memories'],
     },
   },
+  {
+    name: 'log_meal',
+    description: 'Log food or drink the user had. Calories and macros are estimated automatically; the result has totalCalories and mealType to say back.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        description: s('what they ate, with quantities, in their words, e.g. two eggs and toast'),
+        mealType: { type: Type.STRING, enum: MEAL_TYPE_ENUM, description: 'from their words or the time of day' },
+      },
+      required: ['description'],
+    },
+  },
+  {
+    name: 'update_reminder',
+    description: 'Change an existing reminder: mark done, rename or move it.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: { ref: ref('reminder', 'r1'), done: { type: Type.BOOLEAN }, title: s('new title'), dueAt: s('new local ISO 8601 time with the user\'s UTC offset') },
+      required: ['ref'],
+    },
+  },
+  { name: 'delete_reminder', description: `Delete a reminder. ${DELETE_DESC}`, parameters: { type: Type.OBJECT, properties: { ref: ref('reminder', 'r1') }, required: ['ref'] } },
+  {
+    name: 'update_note',
+    description: 'Change an existing note: add text to the end (append), rename it, or replace its text (body) only when asked to rewrite it.',
+    parameters: { type: Type.OBJECT, properties: { ref: ref('note', 'n1'), title: s('new title'), body: s('replacement text'), append: s('text to add at the end') }, required: ['ref'] },
+  },
+  { name: 'delete_note', description: `Delete a note. ${DELETE_DESC}`, parameters: { type: Type.OBJECT, properties: { ref: ref('note', 'n1') }, required: ['ref'] } },
+  {
+    name: 'update_goal',
+    description: 'Change an existing goal: progress (0-100), title, or mark a milestone done/undone (adds it when it is new).',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ref: ref('goal', 'g1'),
+        progress: int('0-100'),
+        title: s('new title'),
+        milestoneDone: { type: Type.OBJECT, properties: { text: s('milestone text'), done: { type: Type.BOOLEAN } }, required: ['text', 'done'] },
+      },
+      required: ['ref'],
+    },
+  },
+  { name: 'delete_goal', description: `Delete a goal. ${DELETE_DESC}`, parameters: { type: Type.OBJECT, properties: { ref: ref('goal', 'g1') }, required: ['ref'] } },
+  {
+    name: 'update_meal',
+    description: "Correct a logged meal. A new description is re-estimated; give totalCalories only when the user states a number.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { ref: ref('meal', 'm1'), description: s('corrected food'), mealType: { type: Type.STRING, enum: MEAL_TYPE_ENUM }, totalCalories: int('kcal stated by the user') },
+      required: ['ref'],
+    },
+  },
+  { name: 'delete_meal', description: `Delete a logged meal. ${DELETE_DESC}`, parameters: { type: Type.OBJECT, properties: { ref: ref('meal', 'm1') }, required: ['ref'] } },
   // Read tools: run in the browser with the user's own Firestore access; compact results (~2 KB max).
   {
     name: 'get_goals',
@@ -131,7 +205,20 @@ const ACTION_TYPE: Record<Exclude<LiveToolName, 'save_memories'>, EchoAction['ty
   add_goal: 'goal',
   log_health: 'health',
   add_reminder: 'reminder',
+  log_meal: 'meal_log',
+  update_reminder: 'reminder_update',
+  delete_reminder: 'reminder_delete',
+  update_note: 'note_update',
+  delete_note: 'note_delete',
+  update_goal: 'goal_update',
+  delete_goal: 'goal_delete',
+  update_meal: 'meal_update',
+  delete_meal: 'meal_delete',
 }
+
+/** Meal tools wait for the calorie estimate (~2-6 s) so Echo can say the total. */
+export const MEAL_TOOLS: readonly string[] = ['log_meal', 'update_meal']
+export const MEAL_CONFIRM_WITHIN_MS = 10000
 
 export type ToolContext = {
   /** The user's local time right now (ISO with offset), used to resolve reminder times. */
@@ -140,6 +227,12 @@ export type ToolContext = {
   checkInTime: string
   /** Known memory labels for link resolution (grows as the call saves memories). */
   memoryLabels: Pick<EchoMemoryLabel, 'label' | 'type'>[]
+  /** Short ref -> doc id map for this call (refs from YOUR ITEMS plus items saved during the call). */
+  refs?: RefMap
+  /** Calorie tracking switch (absent means on). */
+  caloriesEnabled?: boolean
+  /** What Echo said in its previous turn: a delete needs that to have been the confirmation question. */
+  lastEchoText?: string
 }
 
 export type MappedTool = { ok: true; response: EchoResponse } | { ok: false; error: string }
@@ -154,17 +247,34 @@ export function mapToolCall(name: string | undefined, args: unknown, ctx: ToolCo
   }
   const type = name && name in ACTION_TYPE ? ACTION_TYPE[name as keyof typeof ACTION_TYPE] : null
   if (!type) return { ok: false, error: `unknown tool ${String(name)}` }
-  const res = sanitizeEchoResponse({ actions: [{ ...a, type }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels)
+  const caloriesOn = ctx.caloriesEnabled !== false
+  if ((type === 'meal_log' || type === 'meal_update') && !caloriesOn) return { ok: false, error: 'calorie tracking is off; tell the user they can turn it on in Settings' }
+  const items = ctx.refs ? refsAsItems(ctx.refs, caloriesOn) : undefined
+  const recentMessages = ctx.lastEchoText ? [{ role: 'assistant' as const, text: ctx.lastEchoText }] : []
+  const res = sanitizeEchoResponse({ actions: [{ ...a, type }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels, { items, recentMessages, looseConfirm: true })
   const action = res.actions.find((x) => x.type === type)
   if (!action) {
-    const why = type === 'reminder' ? 'could not tell when to remind' : type === 'health' ? 'no valid measurement' : 'missing required fields'
+    if (res.trace.includes(DELETE_CONFIRM_TRACE)) {
+      const kind = type.replace('_delete', '') as 'reminder' | 'note' | 'goal' | 'meal'
+      const title = ctx.refs?.entries[String(a.ref).trim().toLowerCase()]?.title ?? ''
+      return { ok: false, error: `not deleted yet: first ask the user "${confirmQuestion(kind, title)}" and call this again only after they say yes` }
+    }
+    const hasRef = 'ref' in a && type !== 'meal_log'
+    const why =
+      type === 'reminder'
+        ? 'could not tell when to remind'
+        : type === 'health'
+          ? 'no valid measurement'
+          : hasRef && !(items && Object.values(items).some((l) => Array.isArray(l) && l.some((x) => (x as { ref: string }).ref === String(a.ref).trim().toLowerCase())))
+            ? 'unknown ref: use a ref from YOUR ITEMS or one returned by a save in this call'
+            : 'missing required fields'
     return { ok: false, error: why }
   }
   return { ok: true, response: { reply: '', actions: [action], memories: [], trace: [] } }
 }
 
 export type ToolCallLike = { id?: string; name?: string; args?: unknown }
-export type SavedLike = { type: EchoAction['type'] | 'memory'; label: string }
+export type SavedLike = { type: string; label: string; op?: 'update' | 'delete'; ref?: string; kcal?: number }
 export type ApplyFn = (res: EchoResponse) => Promise<{ saved: SavedLike[]; failed: string[] }>
 export type ReadFn = (name: ReadToolName, args: Record<string, unknown>) => Promise<unknown[]>
 export type ToolFunctionResponse = { id?: string; name?: string; response: { output?: Record<string, unknown>; error?: string } }
@@ -175,13 +285,33 @@ function describe(action: EchoAction | undefined, memories: MemoryInput[]): Reco
     case 'reminder':
       return { saved: 'reminder', title: action.title, dueAt: action.dueAt }
     case 'health':
+    case 'health_update':
       return { saved: 'health', ...action }
     case 'note':
     case 'goal':
       return { saved: action.type, title: action.title }
+    case 'meal_log':
+      return { saved: 'meal', description: action.description, mealType: action.mealType }
+    case 'reminder_update':
+    case 'note_update':
+    case 'goal_update':
+    case 'meal_update':
+      return { updated: action.type.replace('_update', ''), ...action, type: undefined }
+    case 'reminder_delete':
+    case 'note_delete':
+    case 'goal_delete':
+    case 'meal_delete':
+      return { deleted: action.type.replace('_delete', ''), ref: action.ref, undo: 'the user can tap Undo for 10 seconds' }
     default:
       return { saved: action.type }
   }
+}
+
+/** Facts only known after the write (the new item's ref, the estimated calories). */
+function outcome(saved: SavedLike[]): Record<string, unknown> {
+  const first = saved.find((x) => x.type !== 'memory')
+  if (!first) return {}
+  return { ...(first.ref ? { ref: first.ref } : {}), ...(first.kcal !== undefined ? { totalCalories: first.kcal } : {}) }
 }
 
 export type TaggedSaved = SavedLike & { callId?: string }
@@ -249,7 +379,8 @@ export async function executeToolCalls(
       }
       const write = safeApply(mapped.response, call.name ?? 'tool', call.id)
       let timer: ReturnType<typeof setTimeout> | undefined
-      const r = await Promise.race([write, new Promise<null>((res) => (timer = setTimeout(() => res(null), confirmWithinMs)))])
+      const windowMs = MEAL_TOOLS.includes(call.name ?? '') ? Math.max(confirmWithinMs, MEAL_CONFIRM_WITHIN_MS) : confirmWithinMs
+      const r = await Promise.race([write, new Promise<null>((res) => (timer = setTimeout(() => res(null), windowMs)))])
       clearTimeout(timer)
       const what = describe(actions[0], memories)
       if (!r) {
@@ -258,11 +389,16 @@ export async function executeToolCalls(
       }
       saved.push(...r.saved)
       failed.push(...r.failed)
-      if (r.failed.length || !r.saved.length) return { id: call.id, name: call.name, response: { error: 'could not save' } }
+      if (r.failed.length || !r.saved.length) {
+        // Failures carry a short reason ("reminder: couldn't find that reminder"); never raw ids or data.
+        const why = r.failed[0]?.split(': ').slice(1).join(': ') ?? ''
+        const known = /^(couldn't|that \w+ no longer exists|invalid time|calorie)/i.test(why)
+        return { id: call.id, name: call.name, response: { error: known ? `could not save: ${why}` : 'could not save' } }
+      }
       for (const m of memories) {
         if (!ctx.memoryLabels.some((k) => k.label === m.label && k.type === m.type)) ctx.memoryLabels.push({ label: m.label, type: m.type })
       }
-      return { id: call.id, name: call.name, response: { output: { ok: true, ...what } } }
+      return { id: call.id, name: call.name, response: { output: { ok: true, ...what, ...outcome(r.saved) } } }
     }),
   )
   for (const j of memoryJobs) late.push(safeApply(j.res, j.name, j.callId))

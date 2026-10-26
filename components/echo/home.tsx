@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
-import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Volume2 } from 'lucide-react'
+import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
-import { applyEchoResponse, saveReply, sendToEcho, type SavedItem } from '@/lib/echo/client'
+import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
-import { buildContext } from '@/lib/echo/context'
+import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
+import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
 import { Alert, Badge, Button, IconButton, Skeleton } from './ui'
@@ -35,15 +36,50 @@ const VIEW_FOR: Record<string, HomeView> = {
 const NODE_FOR: Record<string, NodeType> = { note: 'diary', goal: 'goal', health: 'health', reminder: 'task', connector: 'connector' }
 const LABEL_FOR: Record<string, string> = { note: 'Note', goal: 'Goal', health: 'Health', reminder: 'Reminder', connector: 'Connector' }
 
-function ActionBadges({ types, onNavigate }: { types: string[]; onNavigate: (v: HomeView) => void }) {
-  const shown = [...new Set(types)].filter((t) => LABEL_FOR[t])
+type BadgeItem = Pick<SavedItem, 'op' | 'kcal'> & { type: string }
+
+/** Badge text: "Reminder", "Reminder updated", "Note deleted", "Meal · 540 kcal". */
+export function badgeLabel(i: BadgeItem): string {
+  const base = i.kcal !== undefined ? 'Meal' : LABEL_FOR[i.type]
+  const verb = i.op === 'update' ? ' updated' : i.op === 'delete' ? ' deleted' : ''
+  return `${base}${verb}${i.kcal !== undefined && i.op !== 'delete' ? ` · ${i.kcal.toLocaleString('en-US')} kcal` : ''}`
+}
+
+function ActionBadges({ items, onNavigate }: { items: BadgeItem[]; onNavigate: (v: HomeView) => void }) {
+  const seen = new Set<string>()
+  const shown = items.filter((i) => {
+    if (!LABEL_FOR[i.type]) return false
+    const label = badgeLabel(i)
+    // Meals are listed one by one (each has its own total); other kinds collapse to one badge per label.
+    const key = i.kcal !== undefined ? `${label}#${seen.size}` : label
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
   if (!shown.length) return null
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      {shown.map((t) => (
-        <button key={t} onClick={() => onNavigate(VIEW_FOR[t])} title={`Open ${VIEW_FOR[t]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <Badge type={NODE_FOR[t]}>{LABEL_FOR[t]}</Badge>
+      {shown.map((i, n) => (
+        <button key={`${badgeLabel(i)}-${n}`} onClick={() => onNavigate(VIEW_FOR[i.type])} title={`Open ${VIEW_FOR[i.type]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <Badge type={NODE_FOR[i.type]}>{badgeLabel(i)}</Badge>
         </button>
+      ))}
+    </div>
+  )
+}
+
+/** Undo toasts for deletes Echo made (10 s each). */
+function UndoToasts({ entries, onUndo }: { entries: UndoEntry[]; onUndo: (key: number) => void }) {
+  if (!entries.length) return null
+  return (
+    <div className="mb-2 grid gap-2">
+      {entries.map((e) => (
+        <div key={e.key} role="status" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground">
+          <span className="min-w-0 truncate">{undoLabel(e)}</span>
+          <Button variant="ghost" size="sm" icon={Undo2} onClick={() => onUndo(e.key)} className="max-lg:h-11">
+            Undo
+          </Button>
+        </div>
       ))}
     </div>
   )
@@ -99,14 +135,13 @@ function EchoBubble({ children }: { children: ReactNode }) {
 }
 
 function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user: string; echo: string; saved: SavedItem[]; live?: boolean; onNavigate?: (v: HomeView) => void }) {
-  const types = saved.map((s) => s.type)
   return (
     <>
       {user && <UserBubble text={user} />}
-      {(echo || types.length > 0) && (
+      {(echo || saved.length > 0) && (
         <EchoRow live={live}>
           {echo && <EchoBubble>{echo}</EchoBubble>}
-          {onNavigate ? <ActionBadges types={types} onNavigate={onNavigate} /> : null}
+          {onNavigate ? <ActionBadges items={saved} onNavigate={onNavigate} /> : null}
         </EchoRow>
       )}
     </>
@@ -263,6 +298,43 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     memoriesRef.current = memories
   }, [messages, memories])
 
+  // Short-ref lists of the user's items (open reminders, goals, notes, today's health/meals) so Echo can edit them.
+  const refSource = useRef<RefSource | null>(null)
+  useEffect(() => watchRefSource(uid, day, (src) => (refSource.current = src)), [uid, day])
+  const buildItems = useCallback((): { items: ReturnType<typeof buildItemsContext>['items']; refs: RefMap } | undefined => {
+    const src = refSource.current
+    if (!src) return undefined
+    return buildItemsContext(src, Date.now(), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  }, [])
+
+  // Undo for deletes Echo makes: the doc is recreated with the same id and fields (see lib/echo/undo.ts).
+  const undoStore = useRef(createUndoStore())
+  const [undos, setUndos] = useState<UndoEntry[]>([])
+  const [undoError, setUndoError] = useState<string | null>(null)
+  useEffect(() => undoStore.current.subscribe(setUndos), [])
+  useEffect(() => {
+    if (!undos.length) return
+    const t = setInterval(() => undoStore.current.expire(), 500)
+    return () => clearInterval(t)
+  }, [undos.length])
+  const pushUndo = useCallback((e: UndoInput) => {
+    setUndoError(null)
+    undoStore.current.push(e)
+  }, [])
+  const undoDelete = useCallback(
+    async (key: number) => {
+      const e = undoStore.current.take(key)
+      if (!e) return
+      try {
+        await restoreDeleted(uid, e)
+      } catch (err) {
+        console.error('Echo: could not undo delete', err)
+        setUndoError(isPermissionDenied(err) ? RULES_MESSAGE : `Couldn't restore the ${e.kind} "${e.title}".`)
+      }
+    },
+    [uid],
+  )
+
   // Shared send path (typed text now; voice transcripts later).
   const send = useCallback(
     async (raw: string, alreadySaved = false) => {
@@ -296,7 +368,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         const page = pid
         // Write the user message and call the router in parallel.
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
-        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current))
+        const built = buildItems()
+        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items))
         echoP.catch(() => undefined)
         try {
           await userP
@@ -311,7 +384,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
         }
-        const applied = await applyEchoResponse(uid, page, res)
+        const applied = await applyEchoResponse(uid, page, res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
         void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
@@ -341,7 +414,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, pushUndo],
   )
   useEffect(() => {
     sendRef.current = send
@@ -412,8 +485,15 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid, onEnsurePage],
   )
-  const getCallContext = useCallback(() => buildContext(profile, messagesRef.current, memoriesRef.current), [profile])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, onTurn: persistCallTurn, onLateResult })
+  // The call keeps the ref map that matches the items sent in its session instruction.
+  const callRefs = useRef<RefMap | undefined>(undefined)
+  const getCallContext = useCallback(() => {
+    const built = buildItems()
+    callRefs.current = built?.refs
+    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items)
+  }, [profile, buildItems])
+  const getCallRefs = useCallback(() => callRefs.current, [])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, onTurn: persistCallTurn, onLateResult, onDeleted: pushUndo })
   useCallFlag(call.active)
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''
@@ -488,11 +568,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               const at = m.createdAt?.toDate?.() ?? null
               if (m.role === 'user') return <UserBubble key={m.id} text={m.text} at={at} />
               const ex = extras[m.id]
-              const types = ex ? ex.saved.map((s) => s.type) : m.category ? [m.category] : []
+              const badgeItems: BadgeItem[] = ex ? ex.saved : m.category ? [{ type: m.category }] : []
               return (
                 <EchoRow key={m.id}>
                   <EchoBubble>{m.text}</EchoBubble>
-                  <ActionBadges types={types} onNavigate={onNavigate} />
+                  <ActionBadges items={badgeItems} onNavigate={onNavigate} />
                   {ex?.failed.length ? <p className="mt-2 text-xs text-warning">Could not save: {ex.failed.join(', ')}</p> : null}
                   {ex ? <Trace steps={ex.trace} /> : null}
                   {at && <time className="mt-1 block px-1 text-xs text-subtle">{timeLabel(at)}</time>}
@@ -548,6 +628,12 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
         <div className="shrink-0 border-t border-border px-4 py-3 max-lg:px-3 max-lg:py-2 max-lg:pb-[max(0.5rem,calc(env(safe-area-inset-bottom)-var(--tabbar-h)-var(--kb)+0.5rem))]">
           <div className="mx-auto w-full max-w-[720px]">
+            <UndoToasts entries={undos} onUndo={(k) => void undoDelete(k)} />
+            {undoError && (
+              <div className="mb-2">
+                <Alert variant="warning">{undoError}</Alert>
+              </div>
+            )}
             {status && <p role="status" aria-live="polite" className="mb-2 text-xs text-muted-foreground">{status}</p>}
             {call.active ? (
               // Below lg the full-screen CallScreen takes over.
@@ -614,8 +700,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           onClosed={() => callBtnRef.current?.focus({ preventScroll: true })}
           scrollKey={`${liveKey}|${pendingTurns.length}|${callMessages.length}`}
           alerts={
-            callSaveError || quotaNotice ? (
+            callSaveError || quotaNotice || undos.length ? (
               <>
+                <UndoToasts entries={undos} onUndo={(k) => void undoDelete(k)} />
                 {callSaveError && <Alert variant="warning">{callSaveError}</Alert>}
                 {quotaNotice && <Alert variant="warning">Echo&apos;s voice reached today&apos;s free limit — replies will stay as text.</Alert>}
               </>
