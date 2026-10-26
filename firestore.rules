@@ -228,10 +228,11 @@ service cloud.firestore {
       // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
       match /connectors/{provider} {
         function validConnector(d) {
-          return d.keys().hasOnly(['name', 'connected', 'updatedAt'])
+          return d.keys().hasOnly(['name', 'connected', 'updatedAt', 'sealed'])
             && d.keys().hasAll(['name', 'connected', 'updatedAt'])
             && isString(d.name, 100)
             && d.connected is bool
+            && (!('sealed' in d) || isString(d.sealed, 8192))
             && d.updatedAt == request.time;
         }
         allow read, delete: if isOwner(uid);

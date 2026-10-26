@@ -61,7 +61,7 @@ export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source:
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; createdAt: Timestamp }
 export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
-export type Connector = { name: string; connected: boolean; updatedAt: Timestamp }
+export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
@@ -134,9 +134,9 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
   dueAt.setHours(Number.isFinite(hh) ? hh : 20, Number.isFinite(mm) ? mm : 30, 0, 0)
   batch.set(doc(remindersCol(uid)), { title: 'Daily check-in', dueAt: Timestamp.fromDate(dueAt), done: false, source: 'routine', createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
   batch.set(doc(routinesCol(uid)), { title: 'Daily check-in', cadence: 'Daily', confidence: 0.5, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
-  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['spotify', 'Spotify'], ['weather', 'Weather']]
+  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['spotify', 'Spotify'], ['weather', 'Weather'], ['nutrition', 'Nutrition (USDA)'], ['web-search', 'Web search (Tavily)']]
   for (const [id, name] of connectors) {
-    batch.set(doc(connectorsCol(uid), id), { name, connected: false, updatedAt: serverTimestamp() } as never)
+    batch.set(doc(connectorsCol(uid), id), { name, connected: id === 'nutrition', updatedAt: serverTimestamp() } as never)
   }
   const welcome = `Nice to meet you, ${answers.preferredName || 'friend'}. What's on your mind?`
   const pageRef = doc(diaryPagesCol(uid))
@@ -150,6 +150,10 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
     batch.set(doc(memoriesCol(uid), id), { label, type: 'person', links: [], mentions: 1, createdAt: serverTimestamp(), lastSeenAt: serverTimestamp() } as never)
   }
   await batch.commit()
+}
+
+export async function setConnectorConnected(uid: string, id: string, name: string, connected: boolean): Promise<void> {
+  await setDoc(doc(connectorsCol(uid), id), { name, connected, updatedAt: serverTimestamp() } as never)
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {
