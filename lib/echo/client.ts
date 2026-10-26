@@ -376,6 +376,18 @@ export async function startTavilyLogin(user: Pick<User, 'getIdToken'>, fetchImpl
   return d.url
 }
 
+/** Web search: whether a login handed back in the URL fragment opens for this user (POST .../verify gives 204). */
+export async function verifyTavilyLogin(user: Pick<User, 'getIdToken'>, sealed: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  const token = await user.getIdToken()
+  const res = await fetchWithTimeout(
+    '/api/connectors/web-search/verify',
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ sealed }) },
+    15000,
+    fetchImpl,
+  )
+  return res.status === 204
+}
+
 /** Web search: revokes the Tavily login (best effort; the caller clears the saved connector either way). */
 export async function revokeTavilyLogin(user: Pick<User, 'getIdToken'>, sealed: string, fetchImpl: typeof fetch = fetch): Promise<void> {
   const token = await user.getIdToken()

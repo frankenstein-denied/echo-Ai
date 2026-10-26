@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { open, seal } from './sealed'
 import { authorizeUrl, exchangeCode, missingTavilyEnv, redirectUriFor, refreshTokens, revoke, STATE_AAD, TavilyAuthError, withFreshTokens, type TavilyTokens } from './tavily-oauth'
 
-const SECRET = 'test-secret-0123456789abcdef0123456789abcdef'
+const SECRET = Buffer.alloc(32, 7).toString('base64')
+const NONCE = 'browser-nonce'
 const REDIRECT = 'http://localhost:3000/api/connectors/web-search/callback'
 
 type Call = { url: string; body: URLSearchParams }
@@ -15,6 +16,14 @@ function fakeFetch(status: number, body: unknown) {
   }) as unknown as typeof fetch
   return { f, calls }
 }
+
+/** A fetch that never answers until its signal aborts. */
+const hang = (async (_url: string, init: RequestInit) =>
+  new Promise<Response>((_, reject) => {
+    const signal = init.signal!
+    if (signal.aborted) reject(signal.reason)
+    signal.addEventListener('abort', () => reject(signal.reason))
+  })) as unknown as typeof fetch
 
 beforeEach(() => {
   vi.stubEnv('CONNECTOR_SECRET', SECRET)
@@ -37,6 +46,8 @@ describe('redirectUriFor', () => {
 describe('missingTavilyEnv', () => {
   it('names the first missing variable', () => {
     expect(missingTavilyEnv()).toBeNull()
+    vi.stubEnv('CONNECTOR_SECRET', 'too-short')
+    expect(missingTavilyEnv()).toBe('CONNECTOR_SECRET')
     vi.stubEnv('CONNECTOR_SECRET', '')
     expect(missingTavilyEnv()).toBe('CONNECTOR_SECRET')
     vi.stubEnv('TAVILY_CLIENT_ID', '')
@@ -46,7 +57,7 @@ describe('missingTavilyEnv', () => {
 
 describe('authorizeUrl', () => {
   it('builds a PKCE S256 URL with the scopes, redirect and a sealed state', () => {
-    const u = new URL(authorizeUrl('uid-1', REDIRECT))
+    const u = new URL(authorizeUrl('uid-1', REDIRECT, NONCE))
     expect(u.origin + u.pathname).toBe('https://mcp.tavily.com/authorize')
     const p = u.searchParams
     expect(p.get('response_type')).toBe('code')
@@ -55,8 +66,9 @@ describe('authorizeUrl', () => {
     expect(p.get('scope')).toBe('openid offline_access')
     expect(p.get('code_challenge_method')).toBe('S256')
     expect(p.has('resource')).toBe(false)
-    const state = open<{ uid: string; verifier: string; redirectUri: string; expiresAt: number }>(p.get('state')!, STATE_AAD, SECRET)!
+    const state = open<{ uid: string; verifier: string; redirectUri: string; nonce: string; expiresAt: number }>(p.get('state')!, STATE_AAD, SECRET)!
     expect(state.uid).toBe('uid-1')
+    expect(state.nonce).toBe(NONCE)
     expect(state.redirectUri).toBe(REDIRECT)
     expect(state.expiresAt).toBeGreaterThan(Date.now() + 9 * 60_000)
     expect(p.get('code_challenge')).toBe(createHash('sha256').update(state.verifier).digest('base64url'))
@@ -64,7 +76,7 @@ describe('authorizeUrl', () => {
 
   it('throws without a client id', () => {
     vi.stubEnv('TAVILY_CLIENT_ID', '')
-    expect(() => authorizeUrl('uid-1', REDIRECT)).toThrow(/TAVILY_CLIENT_ID/)
+    expect(() => authorizeUrl('uid-1', REDIRECT, NONCE)).toThrow(/TAVILY_CLIENT_ID/)
   })
 })
 
@@ -72,11 +84,11 @@ describe('exchangeCode', () => {
   const tokenBody = { access_token: 'acc', refresh_token: 'ref', expires_in: 86400, token_type: 'Bearer' }
 
   it('posts grant_type=authorization_code with the verifier and returns the uid and tokens', async () => {
-    const state = new URL(authorizeUrl('uid-1', REDIRECT)).searchParams.get('state')!
+    const state = new URL(authorizeUrl('uid-1', REDIRECT, NONCE)).searchParams.get('state')!
     const { verifier } = open<{ verifier: string }>(state, STATE_AAD, SECRET)!
     const { f, calls } = fakeFetch(200, tokenBody)
     const before = Date.now()
-    const out = await exchangeCode('the-code', state, REDIRECT, f)
+    const out = await exchangeCode('the-code', state, REDIRECT, NONCE, f)
     expect(out.uid).toBe('uid-1')
     expect(out.tokens.access).toBe('acc')
     expect(out.tokens.refresh).toBe('ref')
@@ -92,23 +104,39 @@ describe('exchangeCode', () => {
   })
 
   it('rejects an expired state with expired_state and does not call Tavily', async () => {
-    const state = seal({ uid: 'uid-1', verifier: 'v', redirectUri: REDIRECT, expiresAt: Date.now() - 1 }, STATE_AAD, SECRET)
+    const state = seal({ uid: 'uid-1', verifier: 'v', redirectUri: REDIRECT, nonce: NONCE, expiresAt: Date.now() - 1 }, STATE_AAD, SECRET)
     const { f, calls } = fakeFetch(200, tokenBody)
-    await expect(exchangeCode('c', state, REDIRECT, f)).rejects.toMatchObject({ kind: 'expired_state' })
+    await expect(exchangeCode('c', state, REDIRECT, NONCE, f)).rejects.toMatchObject({ kind: 'expired_state' })
     expect(calls).toHaveLength(0)
   })
 
   it('rejects a tampered state or a different redirect with denied', async () => {
     const { f } = fakeFetch(200, tokenBody)
-    await expect(exchangeCode('c', 'v1.junk.junk', REDIRECT, f)).rejects.toMatchObject({ kind: 'denied' })
-    const state = new URL(authorizeUrl('uid-1', REDIRECT)).searchParams.get('state')!
-    await expect(exchangeCode('c', state, 'https://echo-ai-blue.vercel.app/api/connectors/web-search/callback', f)).rejects.toMatchObject({ kind: 'denied' })
+    await expect(exchangeCode('c', 'v1.junk.junk', REDIRECT, NONCE, f)).rejects.toMatchObject({ kind: 'denied' })
+    const state = new URL(authorizeUrl('uid-1', REDIRECT, NONCE)).searchParams.get('state')!
+    await expect(exchangeCode('c', state, 'https://echo-ai-blue.vercel.app/api/connectors/web-search/callback', NONCE, f)).rejects.toMatchObject({ kind: 'denied' })
+  })
+
+  it('rejects a missing or different browser nonce with denied and does not call Tavily', async () => {
+    const state = new URL(authorizeUrl('uid-1', REDIRECT, NONCE)).searchParams.get('state')!
+    const { f, calls } = fakeFetch(200, tokenBody)
+    await expect(exchangeCode('c', state, REDIRECT, 'other-nonce', f)).rejects.toMatchObject({ kind: 'denied' })
+    await expect(exchangeCode('c', state, REDIRECT, '', f)).rejects.toMatchObject({ kind: 'denied' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('times out a hung token request as refused', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => AbortSignal.abort())
+    const state = new URL(authorizeUrl('uid-1', REDIRECT, NONCE)).searchParams.get('state')!
+    await expect(exchangeCode('c', state, REDIRECT, NONCE, hang)).rejects.toMatchObject({ kind: 'refused' })
+    expect(timeout).toHaveBeenCalledWith(8000)
+    timeout.mockRestore()
   })
 
   it('maps a refused token request to refused', async () => {
-    const state = new URL(authorizeUrl('uid-1', REDIRECT)).searchParams.get('state')!
+    const state = new URL(authorizeUrl('uid-1', REDIRECT, NONCE)).searchParams.get('state')!
     const { f } = fakeFetch(400, { error: 'invalid_grant' })
-    const err = await exchangeCode('c', state, REDIRECT, f).catch((e) => e)
+    const err = await exchangeCode('c', state, REDIRECT, NONCE, f).catch((e) => e)
     expect(err).toBeInstanceOf(TavilyAuthError)
     expect(err.kind).toBe('refused')
   })
@@ -172,6 +200,11 @@ describe('revoke', () => {
       throw new Error('network')
     }) as unknown as typeof fetch
     await expect(revoke({ access: 'a', refresh: 'r', expiresAt: 0 }, boom)).resolves.toBeUndefined()
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => AbortSignal.abort())
+    await expect(revoke({ access: 'a', refresh: 'r', expiresAt: 0 }, hang)).resolves.toBeUndefined()
+    expect(timeout).toHaveBeenCalledWith(8000)
+    expect(warn).toHaveBeenLastCalledWith('[tavily] revoke failed or timed out')
+    timeout.mockRestore()
     warn.mockRestore()
   })
 })

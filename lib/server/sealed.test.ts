@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { open, seal } from './sealed'
+import { open, seal, validSecret } from './sealed'
 
-const SECRET = 'test-secret-0123456789abcdef0123456789abcdef'
+const SECRET = Buffer.alloc(32, 7).toString('base64')
+const OTHER = Buffer.alloc(32, 9).toString('base64')
 
 describe('seal / open', () => {
   it('round trips JSON for the same uid', () => {
@@ -32,11 +33,21 @@ describe('seal / open', () => {
     const sealed = seal({ a: 1 }, 'uid-1', SECRET)
     expect(open(sealed.replace(/^v1/, 'v2'), 'uid-1', SECRET)).toBeNull()
     expect(open('not-sealed', 'uid-1', SECRET)).toBeNull()
-    expect(open(sealed, 'uid-1', 'other-secret')).toBeNull()
+    expect(open(sealed, 'uid-1', OTHER)).toBeNull()
     expect(open(sealed, 'uid-1', '')).toBeNull()
   })
 
   it('seal throws without a secret', () => {
     expect(() => seal({ a: 1 }, 'uid-1', '')).toThrow(/CONNECTOR_SECRET/)
+  })
+
+  it('requires CONNECTOR_SECRET to be base64 of exactly 32 bytes', () => {
+    expect(validSecret(SECRET)).toBe(true)
+    const sealed = seal({ a: 1 }, 'uid-1', SECRET)
+    for (const bad of [Buffer.alloc(16, 1).toString('base64'), Buffer.alloc(33, 1).toString('base64'), 'not base64 at all!', 'test-secret-0123456789abcdef0123456789abcdef']) {
+      expect(validSecret(bad)).toBe(false)
+      expect(() => seal({ a: 1 }, 'uid-1', bad)).toThrow(/CONNECTOR_SECRET/)
+      expect(open(sealed, 'uid-1', bad)).toBeNull()
+    }
   })
 })

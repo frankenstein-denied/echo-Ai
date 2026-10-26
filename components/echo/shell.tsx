@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, Network, PanelLeftClose, PanelLeftOpen, Settings, Target, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
-import { revokeTavilyLogin, startTavilyLogin } from '@/lib/echo/client'
+import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { EchoMark, IconButton } from './ui'
 import { DiaryView } from './diary-view'
@@ -134,10 +134,16 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     window.history.replaceState(null, '', url.pathname)
     if (NAV.some((n) => n.name === v)) setView(v as View)
     if (sealed) {
-      setConnectorSecret(user.uid, 'web-search', sealed).then(
-        () => setConnectorNotice({ variant: 'success', text: 'Web search connected' }),
-        () => setConnectorNotice({ variant: 'danger', text: "Couldn't save the Web search login. Try again." }),
-      )
+      // Only save a value the server confirms opens for this account (a crafted link must not replace a login).
+      verifyTavilyLogin(user, sealed)
+        .then(async (ok) => {
+          if (!ok) return setConnectorNotice(TAVILY_NOTICES.failed)
+          await setConnectorSecret(user.uid, 'web-search', sealed)
+          setConnectorNotice({ variant: 'success', text: 'Web search connected' })
+        })
+        .catch(() => setConnectorNotice({ variant: 'danger', text: "Couldn't save the Web search login. Try again." }))
+    } else if (url.hash.startsWith('#web-search=')) {
+      setConnectorNotice(TAVILY_NOTICES.failed)
     } else if (outcome) {
       setConnectorNotice(TAVILY_NOTICES[outcome] ?? TAVILY_NOTICES.failed)
     }

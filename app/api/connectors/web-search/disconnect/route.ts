@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const missing = missingTavilyEnv()
   if (missing) {
-    console.error(`[web-search] ${missing} is not set`)
+    console.error(`[web-search] ${missing} is not set or invalid`)
     return NextResponse.json({ error: 'failed' }, { status: 500 })
   }
   // A value that doesn't open for this uid has nothing we can revoke.
