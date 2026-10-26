@@ -366,3 +366,24 @@ export async function applyEchoResponse(uid: string, pageId: string, res: EchoRe
   }
   return { saved, failed, category, reply, messageId }
 }
+
+/** Web search: asks the server for Tavily's login URL (POST /api/connectors/web-search/start). */
+export async function startTavilyLogin(user: Pick<User, 'getIdToken'>, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const token = await user.getIdToken()
+  const res = await fetchWithTimeout('/api/connectors/web-search/start', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }, 15000, fetchImpl)
+  const d = res.ok ? ((await res.json().catch(() => null)) as { url?: unknown } | null) : null
+  if (typeof d?.url !== 'string') throw new Error(res.status === 401 ? 'Please sign in again.' : "Couldn't start the Tavily login. Try again.")
+  return d.url
+}
+
+/** Web search: revokes the Tavily login (best effort; the caller clears the saved connector either way). */
+export async function revokeTavilyLogin(user: Pick<User, 'getIdToken'>, sealed: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const token = await user.getIdToken()
+  const res = await fetchWithTimeout(
+    '/api/connectors/web-search/disconnect',
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ sealed }) },
+    15000,
+    fetchImpl,
+  )
+  if (!res.ok) throw new Error(`disconnect failed (${res.status})`)
+}

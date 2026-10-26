@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { slugifyLabel } from '@/lib/echo/sanitize'
+import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
 import { buildReciprocalUpdate, mergeLinks, planReciprocalLinks } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
@@ -154,6 +155,12 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
 
 export async function setConnectorConnected(uid: string, id: string, name: string, connected: boolean): Promise<void> {
   await setDoc(doc(connectorsCol(uid), id), { name, connected, updatedAt: serverTimestamp() } as never)
+}
+
+/** Web search login: saves the sealed tokens (connected) or, with null, disconnects and drops them. Replaces the doc. */
+export async function setConnectorSecret(uid: string, id: ConnectorId, sealed: string | null): Promise<void> {
+  const name = CONNECTORS.find((c) => c.id === id)?.name ?? id
+  await setDoc(doc(connectorsCol(uid), id), (sealed ? { name, connected: true, sealed, updatedAt: serverTimestamp() } : { name, connected: false, updatedAt: serverTimestamp() }) as never)
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {

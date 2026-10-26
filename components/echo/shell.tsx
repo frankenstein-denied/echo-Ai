@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, Network, PanelLeftClose, PanelLeftOpen, Settings, Target, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import type { UserProfile } from '@/lib/firestore'
+import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
+import { revokeTavilyLogin, startTavilyLogin } from '@/lib/echo/client'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { EchoMark, IconButton } from './ui'
 import { DiaryView } from './diary-view'
@@ -12,7 +13,7 @@ import { NotesView } from './notes-view'
 import { GoalsView } from './goals-view'
 import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
-import { ConnectorsView } from './connectors-view'
+import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
 import { useMobileViewportSync } from './use-mobile'
@@ -98,6 +99,12 @@ function Sidebar({ view, setView, collapsed, setCollapsed, days }: { view: View;
 const DIARY_MAIN = 'lg:h-dvh lg:p-0'
 const DEFAULT_MAIN = 'mx-auto max-w-[1500px]'
 
+const TAVILY_NOTICES: Record<string, ConnectorNotice> = {
+  cancelled: { variant: 'warning', text: 'Tavily login was cancelled.' },
+  expired: { variant: 'warning', text: 'That login took too long. Try again.' },
+  failed: { variant: 'danger', text: "Couldn't connect Web search. Try again." },
+}
+
 function daysWithEcho(profile: UserProfile): number | null {
   const created = profile.createdAt?.toDate?.()
   if (!created) return null
@@ -109,8 +116,47 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const [view, setView] = useState<View>('Diary')
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
+  const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
   const days = daysWithEcho(profile)
   useMobileViewportSync()
+
+  // Once after sign-in: honour ?view=, save a Tavily login handed back in #web-search=<sealed> (the only place the
+  // sealed tokens reach the browser), show ?tavily=<outcome>, then clear the URL.
+  const urlHandled = useRef(false)
+  useEffect(() => {
+    if (!user || urlHandled.current) return
+    urlHandled.current = true
+    const url = new URL(window.location.href)
+    const v = url.searchParams.get('view')
+    const outcome = url.searchParams.get('tavily')
+    const sealed = /^#web-search=([A-Za-z0-9._-]{1,8192})$/.exec(url.hash)?.[1]
+    if (!v && !outcome && !url.hash.startsWith('#web-search=')) return
+    window.history.replaceState(null, '', url.pathname)
+    if (NAV.some((n) => n.name === v)) setView(v as View)
+    if (sealed) {
+      setConnectorSecret(user.uid, 'web-search', sealed).then(
+        () => setConnectorNotice({ variant: 'success', text: 'Web search connected' }),
+        () => setConnectorNotice({ variant: 'danger', text: "Couldn't save the Web search login. Try again." }),
+      )
+    } else if (outcome) {
+      setConnectorNotice(TAVILY_NOTICES[outcome] ?? TAVILY_NOTICES.failed)
+    }
+  }, [user])
+
+  const tavilyLogin = useCallback(async () => {
+    if (!user) return
+    window.location.assign(await startTavilyLogin(user))
+  }, [user])
+  const tavilyDisconnect = useCallback(
+    async (sealed?: string) => {
+      if (!user) return
+      setConnectorNotice(null)
+      // Revoking at Tavily is best effort; the saved login is cleared either way.
+      if (sealed) await revokeTavilyLogin(user, sealed).catch(() => console.warn('Echo: Tavily revoke failed'))
+      await setConnectorSecret(user.uid, 'web-search', null)
+    },
+    [user],
+  )
 
   const navigate = useCallback((v: View) => {
     setView(v)
@@ -138,7 +184,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           ) : view === 'Reminders' ? (
             <RemindersView uid={user.uid} />
           ) : view === 'Connectors' ? (
-            <ConnectorsView uid={user.uid} />
+            <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
             <BrainView uid={user.uid} />
           ) : (
