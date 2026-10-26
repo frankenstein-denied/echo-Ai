@@ -118,11 +118,22 @@ additional authenticated data) the user's Tavily tokens and the login `state`. F
 ever hold the encrypted form, so a leaked database copy can't be used to search on someone's Tavily account, and
 one user's sealed tokens don't work for another account. Spotify and Google logins will reuse it later.
 
-**Needs proving first (spike, Task 0):** Tavily accepts a web redirect URI from dynamic registration; the token
-lifetime and refresh work; the search tool's exact name and arguments; searches are billed to the logged-in
-user's account (Tavily's docs say the user's `mcp_auth_default` / `default` key is used for the login, but don't
-state billing outright). If the spike fails, fall back to one owner key in `TAVILY_API_KEY` with a per-user daily
-cap, and come back to the user before building.
+**Proven in the spike (Task 0, 2026-10-26):**
+- Registration: `POST https://mcp.tavily.com/register` returned 201 for a public client with both redirect URIs
+  (client id in env `TAVILY_CLIENT_ID`). Tavily's login runs on `auth.tavily.com` and redirects back to our URI.
+- Do **not** send a `resource` parameter on authorize (with it, Tavily's login page errored and returned
+  `access_denied`); without it login works.
+- Token exchange (`grant_type=authorization_code`, PKCE verifier, form-encoded) returns `access_token` (~400
+  chars), `refresh_token` (~430 chars), `expires_in: 86400` (24 h).
+- MCP over Streamable HTTP (`initialize` → `notifications/initialized` → `tools/call`, `mcp-session-id` header,
+  responses as SSE `data:` lines) works with `Authorization: Bearer <access token>`. Server `tavily-mcp` 4.1.0.
+- Search tool: **`tavily_search`** with `{ query, max_results, search_depth: 'basic', topic: 'general' }`; the result
+  is one text content item holding JSON `{ query, answer, results: [{ url, title, content, score }] }`. Other tools
+  (`tavily_extract`, `tavily_crawl`, `tavily_map`, `tavily_research`) are never called.
+- Billing: the logged-in user's Tavily usage went up by the spike's 3 searches — searches use **their** account.
+- **Refresh is broken on Tavily's side today:** `grant_type=refresh_token` returned HTTP 500 with or without
+  `scope`/`resource`. Echo still implements refresh (it will start working when Tavily fixes it); when refresh
+  fails, Web search disconnects and Echo asks the user to log in again — so today users re-login about once a day.
 
 ### Search order inside Echo
 
