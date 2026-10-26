@@ -1,3 +1,4 @@
+import type { ConnectorStatus } from './connectors'
 export type EchoCategory = 'note' | 'goal' | 'health' | 'reminder' | 'connector' | 'general'
 
 export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector' | 'interest' | 'topic'
@@ -75,7 +76,11 @@ export type EchoRequest = {
     recentMessages: EchoRequestMessage[]
     memoryLabels: EchoMemoryLabel[]
     items?: EchoItemsContext
+    /** Connector states from the browser; absent means defaults (Nutrition connected). */
+    connectors?: { id: string; status: ConnectorStatus }[]
   }
+  /** Sealed Tavily tokens from the Web search connector doc; sent only when Web search is connected. */
+  webSearchKey?: string
 }
 
 export type EchoResponse = {

@@ -1,3 +1,4 @@
+import type { ConnectorStatus } from './connectors'
 import type { EchoItemsContext, EchoMealType, EchoRequest } from './types'
 
 const PROFILE_MAX = 1500
@@ -50,7 +51,7 @@ export function buildProfileSummary(profile: ProfileInput): string {
   return lines.join('\n').slice(0, PROFILE_MAX)
 }
 
-export function buildContext(profile: ProfileInput, messages: MessageInput[], memories: MemoryInputLike[], items?: EchoItemsContext): EchoRequest['context'] {
+export function buildContext(profile: ProfileInput, messages: MessageInput[], memories: MemoryInputLike[], items?: EchoItemsContext, connectors?: { id: string; status: ConnectorStatus }[]): EchoRequest['context'] {
   const recentMessages = messages
     .filter((m) => m.text.trim())
     .slice(-RECENT_MAX)
@@ -60,7 +61,7 @@ export function buildContext(profile: ProfileInput, messages: MessageInput[], me
     .sort((a, b) => (b.mentions ?? 1) - (a.mentions ?? 1) || (b.lastSeenAt?.toMillis() ?? 0) - (a.lastSeenAt?.toMillis() ?? 0))
     .slice(0, LABELS_MAX)
     .map((m) => ({ label: m.label.trim().slice(0, LABEL_LEN), type: m.type, mentions: m.mentions ?? 1 }))
-  return { profile: buildProfileSummary(profile), recentMessages, memoryLabels, ...(items ? { items } : {}) }
+  return { profile: buildProfileSummary(profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors: connectors.map(({ id, status }) => ({ id, status })) } : {}) }
 }
 
 // ---------- short refs for existing items (typed chat context and the call instruction) ----------

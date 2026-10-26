@@ -77,7 +77,7 @@ export function shapeNutrition(raw: unknown, grounded: boolean): EchoNutrition |
   return { items, totalCalories, estimated: true, grounded, ...(assumptions ? { assumptions } : {}) }
 }
 
-export type NutritionRequest = { description: string; mealType?: EchoMealType }
+export type NutritionRequest = { description: string; mealType?: EchoMealType; useDatabase?: boolean }
 
 /** Validate a POST /api/nutrition body. */
 export function parseNutritionRequest(body: unknown): NutritionRequest | { error: string } {
@@ -86,7 +86,7 @@ export function parseNutritionRequest(body: unknown): NutritionRequest | { error
   const description = typeof b.description === 'string' ? b.description.replace(/\s+/g, ' ').trim() : ''
   if (!description) return { error: 'description is required' }
   if (description.length > DESCRIPTION_MAX) return { error: `description must be at most ${DESCRIPTION_MAX} characters` }
-  return { description, ...(isMealType(b.mealType) ? { mealType: b.mealType } : {}) }
+  return { description, ...(isMealType(b.mealType) ? { mealType: b.mealType } : {}), ...(b.useDatabase === false ? { useDatabase: false } : {}) }
 }
 
 export class NutritionError extends Error {
@@ -214,7 +214,7 @@ export async function applyFoodDb(raw: unknown, lookup: Lookup): Promise<{ raw: 
  * Estimate a meal: Gemini itemises it (fast model chain with a response schema), then the food database supplies
  * the numbers. Throws NutritionError('quota') when every model attempt hit a 429, else NutritionError('failed').
  */
-export async function estimateNutrition(ai: GoogleGenAI, req: NutritionRequest, opts: { models?: string[]; lookup?: Lookup } = {}): Promise<EchoNutrition> {
+export async function estimateNutrition(ai: GoogleGenAI, req: NutritionRequest, opts: { models?: string[]; lookup?: Lookup | null } = {}): Promise<EchoNutrition> {
   const models = opts.models ?? geminiModels(process.env.GEMINI_NUTRITION_MODEL ?? process.env.GEMINI_MODEL)
   const contents = buildNutritionPrompt(req.description, req.mealType)
   let raw: unknown
@@ -242,6 +242,7 @@ export async function estimateNutrition(ai: GoogleGenAI, req: NutritionRequest, 
     if (e instanceof FallbackError && e.allQuota) throw new NutritionError('quota')
     throw new NutritionError('failed')
   }
-  const db = await applyFoodDb(raw, opts.lookup ?? ((q) => lookupFood(q)))
+  // lookup: null means the Nutrition connector is off, so the numbers stay the model's own estimate.
+  const db = opts.lookup === null ? { raw, matched: 0 } : await applyFoodDb(raw, opts.lookup ?? ((q) => lookupFood(q)))
   return shapeNutrition(db.raw, db.matched > 0) ?? (shapeNutrition(raw, false) as EchoNutrition)
 }

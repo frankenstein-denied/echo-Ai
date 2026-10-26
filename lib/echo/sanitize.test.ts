@@ -14,6 +14,35 @@ describe('parseEchoRequest', () => {
     if (!('error' in r)) expect(r.context).toEqual({ profile: '', recentMessages: [], memoryLabels: [] })
   })
 
+  it('keeps valid connectors and drops unknown ids and statuses', () => {
+    const connectors = [
+      { id: 'nutrition', status: 'connected' },
+      { id: 'web-search', status: 'not_connected' },
+      { id: 'evil', status: 'connected' },
+      { id: 'weather', status: 'hacked' },
+      'junk',
+    ]
+    const r = parseEchoRequest({ ...base, context: { connectors } })
+    if ('error' in r) throw new Error(r.error)
+    expect(r.context.connectors).toEqual([
+      { id: 'nutrition', status: 'connected' },
+      { id: 'web-search', status: 'not_connected' },
+    ])
+    const many = Array.from({ length: 30 }, () => ({ id: 'nutrition', status: 'connected' }))
+    const m = parseEchoRequest({ ...base, context: { connectors: many } })
+    if (!('error' in m)) expect(m.context.connectors).toHaveLength(10)
+  })
+
+  it('accepts webSearchKey up to 8192 chars and ignores other values', () => {
+    const ok = parseEchoRequest({ ...base, webSearchKey: 'k'.repeat(8192) })
+    if (!('error' in ok)) expect(ok.webSearchKey).toHaveLength(8192)
+    for (const bad of ['k'.repeat(8193), 5, '']) {
+      const r = parseEchoRequest({ ...base, webSearchKey: bad })
+      expect('error' in r).toBe(false)
+      if (!('error' in r)) expect(r.webSearchKey).toBeUndefined()
+    }
+  })
+
   it('rejects bad bodies', () => {
     expect(parseEchoRequest(null)).toHaveProperty('error')
     expect(parseEchoRequest([])).toHaveProperty('error')

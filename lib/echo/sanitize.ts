@@ -1,7 +1,10 @@
+import { CONNECTORS, type ConnectorStatus } from './connectors'
 import { isMealType, isMoodTag, MOOD_SCORES } from './health-helpers'
 import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoRequest, EchoRequestMessage, EchoResponse, MemoryInput, MemoryType } from './types'
 
 export const LIMITS = {
+  connectors: 10,
+  webSearchKey: 8192,
   text: 2000,
   profile: 1500,
   recentMessages: 10,
@@ -135,7 +138,23 @@ export function parseEchoContext(raw: unknown): EchoRequest['context'] {
     }
   }
   const items = parseItemsContext(ctx.items)
-  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}) }
+  const connectors = parseConnectors(ctx.connectors)
+  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors } : {}) }
+}
+
+const CONNECTOR_STATUSES: readonly string[] = ['connected', 'not_connected', 'coming_soon']
+
+/** Keep at most 10 connector states with a known id and status; undefined when the field is absent. */
+function parseConnectors(raw: unknown): { id: string; status: ConnectorStatus }[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: { id: string; status: ConnectorStatus }[] = []
+  for (const c of raw) {
+    if (out.length >= LIMITS.connectors) break
+    if (!isObj(c) || typeof c.id !== 'string' || typeof c.status !== 'string') continue
+    if (!CONNECTORS.some((d) => d.id === c.id) || !CONNECTOR_STATUSES.includes(c.status)) continue
+    out.push({ id: c.id, status: c.status as ConnectorStatus })
+  }
+  return out
 }
 
 const REF_RE: Record<'reminders' | 'goals' | 'notes' | 'meals', RegExp> = { reminders: /^r\d{1,3}$/, goals: /^g\d{1,3}$/, notes: /^n\d{1,3}$/, meals: /^m\d{1,3}$/ }
@@ -202,11 +221,13 @@ export function parseEchoRequest(body: unknown): EchoRequest | { error: string }
     return { error: 'timeZone is required' }
   }
   const context = parseEchoContext(body.context)
+  const webSearchKey = typeof body.webSearchKey === 'string' && body.webSearchKey.length <= LIMITS.webSearchKey ? body.webSearchKey : ''
   return {
     text,
     clientTime: body.clientTime,
     timeZone: body.timeZone.trim(),
     context,
+    ...(webSearchKey ? { webSearchKey } : {}),
   }
 }
 

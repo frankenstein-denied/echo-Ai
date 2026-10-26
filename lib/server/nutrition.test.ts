@@ -88,6 +88,11 @@ describe('estimateNutrition', () => {
     const { ai } = fakeAi(async () => ok(answer))
     expect(await estimateNutrition(ai, { description: 'eggs' }, { models: ['m1'], lookup: noDb })).toMatchObject({ grounded: false, totalCalories: 223 })
   })
+  it('skips the database when lookup is null', async () => {
+    const { ai } = fakeAi(async () => ok({ items: [{ name: 'Egg', quantity: '2 large', grams: 100, lookup: 'Egg, whole, fried', calories: 180 }], assumptions: 'x' }))
+    const n = await estimateNutrition(ai, { description: 'two fried eggs' }, { models: ['m1'], lookup: null })
+    expect(n).toMatchObject({ grounded: false, totalCalories: 180 })
+  })
   it('moves along the chain on unusable output and reports quota when every model is rate-limited', async () => {
     const { ai } = fakeAi(async (req) => (req.model === 'a' ? { text: '{"items":[]}' } : ok(answer)))
     expect((await estimateNutrition(ai, { description: 'eggs' }, { models: ['a', 'b'], lookup: noDb })).totalCalories).toBe(223)

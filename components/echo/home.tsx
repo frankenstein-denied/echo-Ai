@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
+import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -287,6 +288,24 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     )
   }, [uid])
 
+  // Connector states and the sealed Web search tokens, kept in refs for the request and call paths.
+  const connectorsRef = useRef<{ statuses: ConnectorState[]; sealed: string }>({ statuses: connectorStatuses([]), sealed: '' })
+  useEffect(() => {
+    return onSnapshot(
+      connectorsCol(uid),
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+        const web = docs.find((d) => d.id === 'web-search')
+        connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '' }
+      },
+      (e) => console.error('connectors listener', e),
+    )
+  }, [uid])
+  const webSearchKey = () => {
+    const { statuses, sealed } = connectorsRef.current
+    return isConnected(statuses, 'web-search') && sealed ? sealed : undefined
+  }
+
   useEffect(() => {
     scrollEnd()
   }, [messages, thinking, error])
@@ -369,7 +388,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         // Write the user message and call the router in parallel.
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
         const built = buildItems()
-        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items))
+        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items, connectorsRef.current.statuses), webSearchKey())
         echoP.catch(() => undefined)
         try {
           await userP
@@ -490,7 +509,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const getCallContext = useCallback(() => {
     const built = buildItems()
     callRefs.current = built?.refs
-    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items)
+    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses)
   }, [profile, buildItems])
   const getCallRefs = useCallback(() => callRefs.current, [])
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, onTurn: persistCallTurn, onLateResult, onDeleted: pushUndo })

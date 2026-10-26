@@ -4,6 +4,7 @@ import { buildUserContents, extractCheckInTime, RESPONSE_SCHEMA, SYSTEM_INSTRUCT
 import { parseEchoRequest, sanitizeEchoResponse } from '@/lib/echo/sanitize'
 import type { EchoResponse } from '@/lib/echo/types'
 import { geminiModels, withModelFallback } from '@/lib/server/gemini-fallback'
+import { isConnected, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { estimateNutrition, looksLikeMeal, resolveMeals, withSpeculative } from '@/lib/server/nutrition'
 import { verifyUser } from '@/lib/server/verify-user'
 
@@ -43,9 +44,11 @@ export async function POST(req: Request) {
   const ai = new GoogleGenAI({ apiKey })
   const contents = buildUserContents(parsed)
   const t0 = Date.now()
+  // Missing connectors context means Nutrition is connected; null skips the USDA database.
+  const lookup = parsed.context.connectors && !isConnected(parsed.context.connectors as { id: ConnectorId; status: ConnectorStatus }[], 'nutrition') ? null : undefined
   const caloriesEnabled = parsed.context.items?.caloriesEnabled !== false
   // Likely a meal: start the calorie estimate now, in parallel with classification.
-  const speculative = caloriesEnabled && looksLikeMeal(parsed.text) ? estimateNutrition(ai, { description: parsed.text }).catch(() => null) : null
+  const speculative = caloriesEnabled && looksLikeMeal(parsed.text) ? estimateNutrition(ai, { description: parsed.text }, { lookup }).catch(() => null) : null
   try {
     const { value: raw, model } = await withModelFallback(geminiModels(process.env.GEMINI_MODEL), GEMINI_ATTEMPT_TIMEOUT_MS, async (model, signal) => {
       const result = await ai.models.generateContent({
@@ -69,7 +72,7 @@ export async function POST(req: Request) {
     const t1 = Date.now()
     // Meals: calories are estimated after classification (USDA food database when it matches) and the total leads the reply.
     const mealCount = sanitized.actions.filter((a) => a.type === 'meal_log').length
-    const estimate = withSpeculative((description, mealType) => estimateNutrition(ai, { description, mealType }), speculative, mealCount)
+    const estimate = withSpeculative((description, mealType) => estimateNutrition(ai, { description, mealType }, { lookup }), speculative, mealCount)
     const out = await resolveMeals(sanitized, caloriesEnabled, estimate)
     if (!out.reply) out.reply = 'Got it.'
     if (process.env.NODE_ENV !== 'production') console.info(`[echo] answered by ${model} in ${t1 - t0} ms${out !== sanitized ? `, meals +${Date.now() - t1} ms` : ''}`)

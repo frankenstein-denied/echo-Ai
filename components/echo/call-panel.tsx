@@ -147,7 +147,7 @@ export function useEchoCall({
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
-  const toolCtx = useRef<{ checkInTime: string; memoryLabels: { label: string; type: string }[]; refs?: RefMap; caloriesEnabled: boolean }>({ checkInTime: '09:00', memoryLabels: [], caloriesEnabled: true })
+  const toolCtx = useRef<{ checkInTime: string; memoryLabels: { label: string; type: string }[]; refs?: RefMap; caloriesEnabled: boolean; useNutritionDb: boolean }>({ checkInTime: '09:00', memoryLabels: [], caloriesEnabled: true, useNutritionDb: true })
   const lastLive = useRef('')
   // What Echo said last (a delete must follow Echo's confirmation question).
   const lastEcho = useRef('')
@@ -267,7 +267,7 @@ export function useEchoCall({
       const out = await executeToolCalls(
         calls,
         { clientTime: localIsoWithOffset(), ...tc, lastEchoText: lastEcho.current },
-        (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt) }),
+        (r) => applyActions(uid, r, { refs: tc.refs, source: 'call', onDeleted: (e) => cb.current.onDeleted?.(e), estimateMeal: (d, mt) => estimateMealViaApi(cb.current.user, d, mt, undefined, tc.useNutritionDb) }),
         { read: makeReader(uid, tz) },
       )
       // Confirmed now; if the turn was already handed off (hang-up, barge-in, watchdog) report them as late.
@@ -406,6 +406,7 @@ export function useEchoCall({
       memoryLabels: context.memoryLabels.map((m) => ({ label: m.label, type: m.type })),
       refs: cb.current.getRefs?.(),
       caloriesEnabled: context.items?.caloriesEnabled !== false,
+      useNutritionDb: !context.connectors || context.connectors.some((c) => c.id === 'nutrition' && c.status === 'connected'),
     }
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     try {

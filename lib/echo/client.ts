@@ -38,13 +38,14 @@ export function localIsoWithOffset(d: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
 }
 
-export async function sendToEcho(user: User, text: string, context: EchoRequest['context']): Promise<EchoResponse> {
+export async function sendToEcho(user: User, text: string, context: EchoRequest['context'], webSearchKey?: string): Promise<EchoResponse> {
   const token = await user.getIdToken()
   const body: EchoRequest = {
     text,
     clientTime: localIsoWithOffset(),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     context,
+    ...(webSearchKey ? { webSearchKey } : {}),
   }
   const res = await fetchWithTimeout('/api/echo', {
     method: 'POST',
@@ -263,11 +264,11 @@ export async function restoreDeleted(uid: string, e: Pick<UndoEntry, 'kind' | 'd
 }
 
 /** Calls: calorie estimate for a described meal via POST /api/nutrition (friendly errors). */
-export async function estimateMealViaApi(user: Pick<User, 'getIdToken'>, description: string, mealType?: EchoMealType, fetchImpl: typeof fetch = fetch): Promise<EchoNutrition> {
+export async function estimateMealViaApi(user: Pick<User, 'getIdToken'>, description: string, mealType?: EchoMealType, fetchImpl: typeof fetch = fetch, useDatabase = true): Promise<EchoNutrition> {
   const token = await user.getIdToken()
   const res = await fetchWithTimeout(
     '/api/nutrition',
-    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ description, mealType }) },
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ description, mealType, useDatabase }) },
     15000,
     fetchImpl,
   )

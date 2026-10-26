@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'failed' }, { status: 502 })
   }
   try {
-    const out = await estimateNutrition(new GoogleGenAI({ apiKey }), parsed)
+    const out = await estimateNutrition(new GoogleGenAI({ apiKey }), parsed, { lookup: parsed.useDatabase === false ? null : undefined })
     return NextResponse.json(out, { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     // Never log the food description; only the failure kind.
