@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { lookupFood } from './food-db'
 import type { GoogleGenAI } from '@google/genai'
+
+vi.mock('./food-db', () => ({ lookupFood: vi.fn(async () => null) }))
 import { applyFoodDb, estimateNutrition, looksLikeMeal, MEAL_FAILED_TRACE, MEAL_OFF_REPLY, mealLine, parseJsonLoose, parseNutritionRequest, resolveMeals, shapeNutrition, withSpeculative } from './nutrition'
 import type { EchoNutrition, EchoResponse } from '@/lib/echo/types'
 
@@ -88,10 +91,16 @@ describe('estimateNutrition', () => {
     const { ai } = fakeAi(async () => ok(answer))
     expect(await estimateNutrition(ai, { description: 'eggs' }, { models: ['m1'], lookup: noDb })).toMatchObject({ grounded: false, totalCalories: 223 })
   })
-  it('skips the database when lookup is null', async () => {
-    const { ai } = fakeAi(async () => ok({ items: [{ name: 'Egg', quantity: '2 large', grams: 100, lookup: 'Egg, whole, fried', calories: 180 }], assumptions: 'x' }))
+  it('skips the database when lookup is null and uses it by default', async () => {
+    const item = { name: 'Egg', quantity: '2 large', grams: 100, lookup: 'Egg, whole, fried', calories: 180 }
+    const spy = vi.mocked(lookupFood)
+    spy.mockClear()
+    const { ai } = fakeAi(async () => ok({ items: [item], assumptions: 'x' }))
     const n = await estimateNutrition(ai, { description: 'two fried eggs' }, { models: ['m1'], lookup: null })
     expect(n).toMatchObject({ grounded: false, totalCalories: 180 })
+    expect(spy).toHaveBeenCalledTimes(0)
+    await estimateNutrition(ai, { description: 'two fried eggs' }, { models: ['m1'] })
+    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
   it('moves along the chain on unusable output and reports quota when every model is rate-limited', async () => {
     const { ai } = fakeAi(async (req) => (req.model === 'a' ? { text: '{"items":[]}' } : ok(answer)))
