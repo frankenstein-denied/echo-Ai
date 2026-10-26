@@ -11,14 +11,22 @@ const req = (connectors?: EchoRequest['context']['connectors']): EchoRequest => 
 })
 
 describe('SYSTEM_INSTRUCTION search order and teaching', () => {
-  it('has a SEARCH ORDER section with the three steps in order', () => {
+  it('has a SEARCH ORDER section with the four steps in order', () => {
     expect(SYSTEM_INSTRUCTION).toContain('SEARCH ORDER')
     const i1 = SYSTEM_INSTRUCTION.indexOf("1. Echo's knowledge")
-    const i2 = SYSTEM_INSTRUCTION.indexOf('2. Connectors')
-    const i3 = SYSTEM_INSTRUCTION.indexOf('3. Web search')
+    const i2 = SYSTEM_INSTRUCTION.indexOf('2. Your own knowledge')
+    const i3 = SYSTEM_INSTRUCTION.indexOf('3. Connectors')
+    const i4 = SYSTEM_INSTRUCTION.indexOf('4. Honest answer')
     expect(i1).toBeGreaterThan(SYSTEM_INSTRUCTION.indexOf('SEARCH ORDER'))
     expect(i2).toBeGreaterThan(i1)
     expect(i3).toBeGreaterThan(i2)
+    expect(i4).toBeGreaterThan(i3)
+  })
+
+  it('is a companion that never guesses, especially about itself', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('virtual companion')
+    expect(SYSTEM_INSTRUCTION).toContain('never guess')
+    expect(SYSTEM_INSTRUCTION).toContain('"About Echo"')
   })
 
   it("never searches the web for the user's own data or the app", () => {

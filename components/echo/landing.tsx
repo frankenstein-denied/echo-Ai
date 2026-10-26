@@ -128,7 +128,7 @@ export function Landing() {
           </nav>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => openAuth('signin')}>Sign in</Button>
-            <Button size="sm" onClick={() => openAuth('signup')}>Get started</Button>
+            <Button size="sm" onClick={() => openAuth('signup')}>Start talking to Echo</Button>
           </div>
         </div>
       </header>
@@ -137,9 +137,9 @@ export function Landing() {
         <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 max-md:gap-8 max-md:px-4 max-md:py-8 lg:grid-cols-2 lg:items-center lg:py-24">
           <div className="landing-fade">
             <h1 id="hero-title" className="text-4xl font-semibold leading-tight text-foreground md:text-5xl">A diary that speaks back.</h1>
-            <p className="mt-4 max-w-xl text-base text-muted-foreground">Talk or type about your day. Echo turns it into notes, reminders, goals and health check-ins, and keeps it all connected for you.</p>
+            <p className="mt-4 max-w-xl text-base text-muted-foreground">Echo is your virtual companion. Call it like a friend, tell it about your day, and it remembers your life for you: notes, reminders, goals and how you feel.</p>
             <div className="mt-8 flex flex-wrap gap-3 max-md:mt-6 max-md:grid max-md:grid-cols-2">
-              <Button onClick={() => openAuth('signup')}>Get started</Button>
+              <Button onClick={() => openAuth('signup')}>Start talking to Echo</Button>
               <Button variant="secondary" onClick={() => openAuth('signin')}>Sign in</Button>
             </div>
             {/* Mobile only; renders nothing when installed or not installable. */}

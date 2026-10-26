@@ -168,6 +168,13 @@ function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user
 
 const TODAY_KEY = 'echo.diary.todayCollapsed'
 
+/** "Good evening, Peter." from the local time of day. */
+export function companionGreeting(name: string | undefined, hour = new Date().getHours()): string {
+  const part = hour < 5 ? 'evening' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
+  const n = name?.trim()
+  return n ? `Good ${part}, ${n}.` : `Good ${part}.`
+}
+
 export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
@@ -615,10 +622,17 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
             {messages?.length === 0 && !thinking && !error && !call.active && !pendingTurns.length && (
               <div className="flex flex-col items-center py-12 text-center">
                 <EchoAvatar />
-                <p className="mt-4 text-base font-semibold text-foreground">What&apos;s on your mind?</p>
+                <p className="mt-4 text-xl font-semibold text-foreground">{companionGreeting(profile.preferredName)}</p>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  {hint ? `${hint} ` : ''}Say anything. Echo will remember what matters.
+                  {hint ? `${hint} ` : ''}I&apos;m Echo, your companion. Tell me about your day and I&apos;ll remember what matters.
                 </p>
+                {prefs?.enabled ? (
+                  <Button icon={Phone} onClick={startCall} disabled={disabled || thinking} className="mt-6 h-12 rounded-full px-6 text-base">
+                    Talk to Echo
+                  </Button>
+                ) : (
+                  <p className="mt-6 max-w-sm text-xs text-muted-foreground">Turn on voice in Settings to talk with Echo out loud.</p>
+                )}
               </div>
             )}
             {(messages ?? []).map((m) => {
@@ -712,7 +726,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                   }}
                   maxLength={2000}
                   disabled={disabled}
-                  placeholder="Tell Echo anything..."
+                  placeholder="Tell Echo about your day..."
                   enterKeyHint="send"
                   className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-lg:h-11 max-lg:px-2"
                 />

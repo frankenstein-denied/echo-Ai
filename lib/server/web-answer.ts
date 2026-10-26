@@ -38,7 +38,7 @@ export function takeSearchSlot(uid: string, now = Date.now()): boolean {
 
 // ---------- answer from the results ----------
 
-export const WEB_ANSWER_INSTRUCTION = `You are Echo, a warm, concise AI diary companion. Answer the user's question from the web search results.
+export const WEB_ANSWER_INSTRUCTION = `You are Echo, a warm, concise virtual companion. Answer the user's question from the web search results.
 
 RULES
 - Reply in 1-4 short sentences, friendly and plain. Use only facts from the results; if they don't answer the question, say so briefly.
