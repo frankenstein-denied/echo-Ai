@@ -31,6 +31,17 @@ describe('SYSTEM_INSTRUCTION search order and teaching', () => {
     expect(SYSTEM_INSTRUCTION).toContain("Spotify isn't connected yet — it's coming soon in Connectors.")
   })
 
+  it('splits TEACHING into connector actions (teach) and information questions (web search fallback)', () => {
+    const teaching = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('TEACHING ('), SYSTEM_INSTRUCTION.indexOf('EDITING EXISTING ITEMS'))
+    expect(teaching).toContain('Action requests')
+    expect(teaching).toContain('Information questions')
+    expect(teaching).toMatch(/Information questions[^\n]*weather[^\n]*return web_search/)
+    expect(SYSTEM_INSTRUCTION).not.toContain('never web_search instead')
+    const connectorLine = SYSTEM_INSTRUCTION.split('\n').find((l) => l.startsWith('- connector:')) ?? ''
+    expect(connectorLine).toContain('an action')
+    expect(connectorLine).not.toMatch(/weather/i)
+  })
+
   it('offers a web_search action in the schema', () => {
     const variants = RESPONSE_SCHEMA.properties.actions.items.anyOf as { properties: { type: { enum?: string[] } }; required?: string[] }[]
     const ws = variants.find((v) => v.properties.type.enum?.includes('web_search'))

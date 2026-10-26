@@ -597,6 +597,8 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
   // A web search stands alone (only memories may come with it): search answers never save items.
   const searches = actions.filter((a) => a.type === 'web_search')
   const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search')
+  // A connector action next to a search means an information question for a missing connector: search instead.
+  if (searches.length && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
   // A pending delete confirmation wins over a search, so the question reaches the user.
   const real = saving.length || confirmations.length ? saving : searches.slice(0, 1)
   const finalActions: EchoAction[] = real.length ? real : actions.filter((a) => a.type === 'general').slice(0, 1)

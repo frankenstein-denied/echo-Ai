@@ -387,6 +387,14 @@ describe('web_search action', () => {
     expect(out.actions.map((a) => a.type)).toEqual(['note'])
   })
 
+  it('prefers the search over a connector action for the same message (information question)', () => {
+    const out = resp([
+      { type: 'connector', provider: 'Weather', request: 'weather in Manila today' },
+      { type: 'web_search', query: 'weather Manila today' },
+    ])
+    expect(out.actions).toEqual([{ type: 'web_search', query: 'weather Manila today' }])
+  })
+
   it('keeps only one web_search, with memories', () => {
     const out = sanitizeEchoResponse(
       { reply: '', actions: [{ type: 'web_search', query: 'a' }, { type: 'web_search', query: 'b' }, { type: 'general' }], memories: [{ label: 'Phones', type: 'topic', links: [] }], trace: [] },
