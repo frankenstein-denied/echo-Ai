@@ -494,9 +494,9 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
   const meta = active ? `${active.messageCount} ${active.messageCount === 1 ? 'message' : 'messages'}` : undefined
 
   return (
-    <div className="animate-in">
+    <div className="animate-in lg:flex lg:h-full lg:flex-col">
       {notice && (
-        <div className={`mb-4 ${pages !== null && (pages.length > 0 || sel.id) ? 'max-lg:hidden' : ''}`}>
+        <div className={`mb-4 shrink-0 ${pages !== null && (pages.length > 0 || sel.id) ? 'max-lg:hidden' : ''}`}>
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
@@ -516,7 +516,7 @@ export function DiaryView({ user, profile, onNavigate }: { user: User; profile: 
           />
         </>
       ) : (
-        <div className="diary-mobile-shell flex h-[calc(100dvh-6rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface md:h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-4rem)] lg:flex-row">
+        <div className="diary-mobile-shell flex h-[calc(100dvh-6rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface md:h-[calc(100dvh-8rem)] lg:min-h-0 lg:flex-1 lg:rounded-none lg:border-0 lg:flex-row">
           {notice && (
             <div className="shrink-0 px-4 pt-3 lg:hidden">
               <Alert variant="warning">{notice}</Alert>

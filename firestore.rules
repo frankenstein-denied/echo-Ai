@@ -36,7 +36,7 @@ service cloud.firestore {
       function validProfile(d) {
         return d.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
-                'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
+                'remindersEnabled', 'onboarded', 'caloriesEnabled', 'calorieGoal', 'createdAt', 'updatedAt'])
           && d.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
                 'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
@@ -52,7 +52,9 @@ service cloud.firestore {
           && isString(d.checkInTime, 5)
           && d.checkInTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
           && d.remindersEnabled is bool
-          && d.onboarded is bool;
+          && d.onboarded is bool
+          && (!('caloriesEnabled' in d) || d.caloriesEnabled is bool)
+          && (!('calorieGoal' in d) || (d.calorieGoal is int && d.calorieGoal >= 800 && d.calorieGoal <= 6000));
       }
 
       allow read, delete: if isOwner(uid);
@@ -102,11 +104,12 @@ service cloud.firestore {
       // ---------- healthLogs (doc id = YYYY-MM-DD; metrics optional) ----------
       match /healthLogs/{date} {
         function validHealth(d) {
-          return d.keys().hasOnly(['date', 'mood', 'sleepMinutes', 'waterGlasses', 'energy', 'createdAt', 'updatedAt'])
+          return d.keys().hasOnly(['date', 'mood', 'moodTag', 'sleepMinutes', 'waterGlasses', 'energy', 'createdAt', 'updatedAt'])
             && d.keys().hasAll(['date', 'createdAt', 'updatedAt'])
             && d.date == date
             && date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
             && (!('mood' in d) || isNum(d.mood, 1, 10))
+            && (!('moodTag' in d) || d.moodTag in ['great', 'happy', 'okay', 'tired', 'sad', 'anxious', 'angry'])
             && (!('sleepMinutes' in d) || isNonNegNum(d.sleepMinutes))
             && (!('waterGlasses' in d) || isNonNegNum(d.waterGlasses))
             && (!('energy' in d) || d.energy in ['low', 'medium', 'high']);
@@ -115,6 +118,26 @@ service cloud.firestore {
         allow create: if isOwner(uid) && validHealth(request.resource.data)
           && createStamps(request.resource.data);
         allow update: if isOwner(uid) && validHealth(request.resource.data)
+          && updateStamps(request.resource.data);
+      }
+
+      // ---------- meals (calorie tracker; item shapes {name,quantity,calories,protein?,carbs?,fat?} are validated client-side) ----------
+      match /meals/{id} {
+        function validMeal(d) {
+          return d.keys().hasOnly(['date', 'mealType', 'description', 'items', 'totalCalories', 'source', 'estimated', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['date', 'mealType', 'description', 'items', 'totalCalories', 'source', 'estimated', 'createdAt', 'updatedAt'])
+            && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && d.mealType in ['breakfast', 'lunch', 'dinner', 'snack']
+            && isString(d.description, 500)
+            && d.items is list && d.items.size() <= 20
+            && d.totalCalories is int && d.totalCalories >= 0 && d.totalCalories <= 20000
+            && d.source in ['chat', 'call', 'manual']
+            && d.estimated is bool;
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validMeal(request.resource.data)
+          && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validMeal(request.resource.data)
           && updateStamps(request.resource.data);
       }
 

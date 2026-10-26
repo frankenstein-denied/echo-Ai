@@ -95,6 +95,9 @@ function Sidebar({ view, setView, collapsed, setCollapsed, days }: { view: View;
   )
 }
 
+const DIARY_MAIN = 'lg:h-dvh lg:p-0'
+const DEFAULT_MAIN = 'mx-auto max-w-[1500px]'
+
 function daysWithEcho(profile: UserProfile): number | null {
   const created = profile.createdAt?.toDate?.()
   if (!created) return null
@@ -121,7 +124,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     <div className="flex min-h-screen bg-background">
       <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} />
       <div className="min-w-0 flex-1">
-        <main className="mx-auto max-w-[1500px] p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]">
+        <main className={`${view === 'Diary' ? DIARY_MAIN : DEFAULT_MAIN} p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]`}>
           {/* Diary draws its own full-height mobile header (list / page bar). */}
           {view !== 'Diary' && <MobileTitleBar title={view} />}
           {!user ? null : view === 'Diary' ? (

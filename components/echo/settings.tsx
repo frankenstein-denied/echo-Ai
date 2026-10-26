@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { LogOut, Play } from 'lucide-react'
-import type { UserProfile } from '@/lib/firestore'
+import { updateCalorieSettings, watchCalorieSettings, type UserProfile } from '@/lib/firestore'
+import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
-import { Alert, Button, Card, PageHeader, Select, Switch } from './ui'
+import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { InstallAppButton } from './pwa'
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
@@ -15,9 +16,16 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [voicesError, setVoicesError] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [previewMsg, setPreviewMsg] = useState<string | null>(null)
+  const [calOn, setCalOn] = useState(profile.caloriesEnabled !== false)
+  const [goalText, setGoalText] = useState(profile.calorieGoal ? String(profile.calorieGoal) : '')
+  const [savedGoal, setSavedGoal] = useState<number | undefined>(profile.calorieGoal)
+  const [calError, setCalError] = useState('')
+  const [goalError, setGoalError] = useState('')
+  const [calBusy, setCalBusy] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
+  const seeded = useRef(false)
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -43,6 +51,52 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
       audioRef.current?.pause()
     }
   }, [user])
+
+  // Follow the live profile so the toggle and goal reflect the stored values.
+  useEffect(
+    () =>
+      watchCalorieSettings(
+        user.uid,
+        (c) => {
+          setCalOn(c.enabled)
+          setSavedGoal(c.goal)
+          if (!seeded.current) setGoalText(c.goal ? String(c.goal) : '')
+          seeded.current = true
+        },
+        () => {},
+      ),
+    [user.uid],
+  )
+
+  const saveCalories = async (patch: { caloriesEnabled?: boolean; calorieGoal?: number | null }, onFail?: () => void) => {
+    setCalError('')
+    setCalBusy(true)
+    try {
+      await updateCalorieSettings(user.uid, patch)
+    } catch (e) {
+      onFail?.()
+      setCalError(e instanceof Error ? e.message : 'Could not save your calorie settings.')
+    } finally {
+      setCalBusy(false)
+    }
+  }
+
+  const toggleCalories = (v: boolean) => {
+    const prev = calOn
+    setCalOn(v)
+    void saveCalories({ caloriesEnabled: v }, () => setCalOn(prev))
+  }
+
+  const saveGoal = () => {
+    const parsed = parseCalorieGoal(goalText)
+    if (parsed === null) {
+      setGoalError(`Enter a whole number from ${LIMITS.goalMin} to ${LIMITS.goalMax}, or leave it empty.`)
+      return
+    }
+    setGoalError('')
+    if (parsed === savedGoal) return
+    void saveCalories({ calorieGoal: parsed ?? null })
+  }
 
   const update = (patch: Partial<VoicePrefs>) => {
     const next = { ...prefs, ...patch }
@@ -133,6 +187,45 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
           {previewMsg && (
             <div className="mt-3">
               <Alert variant="danger">{previewMsg}</Alert>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="text-base font-semibold text-foreground">Calorie tracking</h2>
+          <div className="mt-1 divide-y divide-border">
+            {row('Track calories', 'Show the Calories card in Health. When off, Echo will not log meals.', <Switch checked={calOn} onChange={toggleCalories} label="Track calories" disabled={calBusy} />)}
+          </div>
+          {calOn && (
+            <form
+              className="mt-4 flex flex-wrap items-start gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveGoal()
+              }}
+            >
+              <div className="min-w-40 max-sm:w-full">
+                <Input
+                  label="Daily goal (kcal)"
+                  type="number"
+                  inputMode="numeric"
+                  min={LIMITS.goalMin}
+                  max={LIMITS.goalMax}
+                  value={goalText}
+                  placeholder="2000"
+                  hint="Optional. Shown as progress on the Health page."
+                  error={goalError || undefined}
+                  onChange={(e) => setGoalText(e.target.value)}
+                />
+              </div>
+              <Button type="submit" variant="secondary" loading={calBusy} className="mt-[1.625rem] max-sm:mt-0 max-sm:w-full max-lg:h-11">
+                Save goal
+              </Button>
+            </form>
+          )}
+          {calError && (
+            <div className="mt-3">
+              <Alert variant="danger">{calError}</Alert>
             </div>
           )}
         </Card>

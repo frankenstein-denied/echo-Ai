@@ -464,11 +464,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 max-lg:gap-1 max-lg:py-1.5 max-lg:pl-1 max-lg:pr-3">
           <div className="min-w-0 flex-1">{header}</div>
           {meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{meta}</span>}
-          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden 2xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
           <Button variant="secondary" size="sm" icon={CalendarCheck} className="shrink-0 lg:hidden" aria-label="Open Today" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)}>
             Today
           </Button>
-          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
+          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden 2xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
         </div>
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
@@ -587,7 +587,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       </div>
 
       {!todayCollapsed && (
-        <aside aria-label="Today" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border xl:block">
+        <aside aria-label="Today" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border 2xl:block">
           <TodayPanel uid={uid} day={day} onNavigate={onNavigate} />
         </aside>
       )}

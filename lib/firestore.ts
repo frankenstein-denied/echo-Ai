@@ -2,6 +2,10 @@ import type { User } from 'firebase/auth'
 import {
   collection,
   deleteDoc,
+  deleteField,
+  onSnapshot,
+  where,
+  type Unsubscribe,
   doc,
   getDoc,
   getDocs,
@@ -22,8 +26,9 @@ import { slugifyLabel } from '@/lib/echo/sanitize'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
 import { buildReciprocalUpdate, mergeLinks, planReciprocalLinks } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
+import { validateMeal, type MealInput, type MealItem, type MealSource, type MealType, type MoodTag } from '@/lib/echo/health-helpers'
 
-export type { EchoCategory, MemoryType }
+export type { EchoCategory, MemoryType, MealInput, MealItem, MealSource, MealType, MoodTag }
 
 // Timestamps are read as Timestamp and written as serverTimestamp() (except reminder.dueAt).
 export type UserProfile = {
@@ -39,6 +44,8 @@ export type UserProfile = {
   checkInTime: string
   remindersEnabled: boolean
   onboarded: boolean
+  caloriesEnabled?: boolean // absent means on
+  calorieGoal?: number // 800-6000
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -47,7 +54,8 @@ export type Note = { title: string; body: string; category: string; tags: string
 export type Milestone = { text: string; done: boolean }
 export type Goal = { title: string; category: string; progress: number; streak: number; milestones: Milestone[]; targetDate?: string; createdAt: Timestamp; updatedAt: Timestamp }
 export type Energy = 'low' | 'medium' | 'high'
-export type HealthLog = { date: string; mood: number; sleepMinutes: number; waterGlasses: number; energy: Energy; createdAt: Timestamp; updatedAt: Timestamp }
+export type HealthLog = { date: string; mood: number; moodTag?: MoodTag; sleepMinutes: number; waterGlasses: number; energy: Energy; createdAt: Timestamp; updatedAt: Timestamp }
+export type Meal = { date: string; mealType: MealType; description: string; items: MealItem[]; totalCalories: number; source: MealSource; estimated: boolean; createdAt: Timestamp; updatedAt: Timestamp }
 export type ReminderSource = 'chat' | 'routine' | 'manual'
 export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source: ReminderSource; createdAt: Timestamp; updatedAt: Timestamp }
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
@@ -62,6 +70,7 @@ export const userDoc = (uid: string) => doc(db, 'users', uid) as DocumentReferen
 export const notesCol = (uid: string) => sub<Note>(uid, 'notes')
 export const goalsCol = (uid: string) => sub<Goal>(uid, 'goals')
 export const healthLogsCol = (uid: string) => sub<HealthLog>(uid, 'healthLogs')
+export const mealsCol = (uid: string) => sub<Meal>(uid, 'meals')
 export const remindersCol = (uid: string) => sub<Reminder>(uid, 'reminders')
 export const routinesCol = (uid: string) => sub<Routine>(uid, 'routines')
 export const messagesCol = (uid: string) => sub<Message>(uid, 'messages')
@@ -261,7 +270,7 @@ async function runMigration(uid: string): Promise<boolean> {
 }
 
 // date is YYYY-MM-DD and is the doc id. Creates with createdAt, otherwise updates only the given fields.
-export async function upsertHealthLog(uid: string, date: string, fields: Partial<Pick<HealthLog, 'mood' | 'sleepMinutes' | 'waterGlasses' | 'energy'>>): Promise<void> {
+export async function upsertHealthLog(uid: string, date: string, fields: Partial<Pick<HealthLog, 'mood' | 'moodTag' | 'sleepMinutes' | 'waterGlasses' | 'energy'>>): Promise<void> {
   const ref = doc(healthLogsCol(uid), date)
   const snap = await getDoc(ref)
   if (snap.exists()) await updateDoc(ref, { ...fields, updatedAt: serverTimestamp() })
@@ -273,7 +282,7 @@ export async function upsertHealthLog(uid: string, date: string, fields: Partial
 export async function saveHealthChanges(
   uid: string,
   date: string,
-  fields: Partial<Pick<HealthLog, 'mood' | 'sleepMinutes' | 'energy'>>,
+  fields: Partial<Pick<HealthLog, 'mood' | 'moodTag' | 'sleepMinutes' | 'energy'>>,
   waterDelta = 0,
 ): Promise<void> {
   const ref = doc(healthLogsCol(uid), date)
@@ -364,4 +373,63 @@ export async function upsertMemories(uid: string, inputs: MemoryInput[]): Promis
       tx.update(e.ref, { ...upd, lastSeenAt: serverTimestamp() } as never)
     })
   })
+}
+
+// ---------- profile settings ----------
+// calorieGoal: a number sets it, null removes it. Rules require updatedAt == request.time and a valid whole profile.
+export async function updateCalorieSettings(uid: string, s: { caloriesEnabled?: boolean; calorieGoal?: number | null }): Promise<void> {
+  const upd: Record<string, unknown> = { updatedAt: serverTimestamp() }
+  if (s.caloriesEnabled !== undefined) upd.caloriesEnabled = s.caloriesEnabled
+  if (s.calorieGoal !== undefined) upd.calorieGoal = s.calorieGoal === null ? deleteField() : s.calorieGoal
+  await updateDoc(userDoc(uid), upd as never)
+}
+
+// Live profile calorie settings; caloriesEnabled defaults to true when absent.
+export function watchCalorieSettings(uid: string, onData: (s: { enabled: boolean; goal?: number }) => void, onError: (e: Error) => void): Unsubscribe {
+  return onSnapshot(
+    userDoc(uid),
+    (snap) => {
+      const d = snap.data()
+      onData({ enabled: d?.caloriesEnabled !== false, goal: typeof d?.calorieGoal === 'number' ? d.calorieGoal : undefined })
+    },
+    onError,
+  )
+}
+
+// ---------- meals (users/{uid}/meals/{id}) ----------
+// Input is validated and sanitised client-side (rules cannot check item shapes). Throws Error(message) when invalid.
+type MealFields = { date?: string; mealType?: MealType; description?: string; items?: unknown; totalCalories?: unknown; source?: MealSource; estimated?: boolean }
+
+export async function addMeal(uid: string, input: MealFields): Promise<string> {
+  const check = validateMeal(input)
+  if (!check.ok) throw new Error(check.error)
+  const ref = doc(mealsCol(uid))
+  await setDoc(ref, { ...check.value, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  return ref.id
+}
+
+// Rewrites the editable fields; createdAt is untouched. Pass the stored date and source to keep them.
+export async function updateMeal(uid: string, id: string, input: MealFields): Promise<void> {
+  const check = validateMeal(input)
+  if (!check.ok) throw new Error(check.error)
+  await updateDoc(doc(mealsCol(uid), id), { ...check.value, updatedAt: serverTimestamp() } as never)
+}
+
+export async function deleteMeal(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(mealsCol(uid), id))
+}
+
+export type MealDoc = Meal & { id: string }
+
+// Live meals whose date is in [from, to] (YYYY-MM-DD, inclusive). Single-field range: no composite index needed.
+export function mealsInRange(uid: string, from: string, to: string, onData: (meals: MealDoc[]) => void, onError: (e: Error) => void): Unsubscribe {
+  return onSnapshot(
+    query(mealsCol(uid), where('date', '>=', from), where('date', '<=', to)),
+    (snap) => onData(snap.docs.map((d) => ({ ...d.data(), id: d.id })).sort((a, b) => (a.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER))),
+    onError,
+  )
+}
+
+export function mealsForDate(uid: string, date: string, onData: (meals: MealDoc[]) => void, onError: (e: Error) => void): Unsubscribe {
+  return mealsInRange(uid, date, date, onData, onError)
 }
