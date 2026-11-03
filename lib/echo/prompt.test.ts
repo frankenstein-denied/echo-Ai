@@ -113,7 +113,8 @@ describe('weather in the typed prompt', () => {
   it('teaches weather answers, the not-connected reply and brief mentions', () => {
     expect(SYSTEM_INSTRUCTION).toContain('Weather answers weather and forecast questions from the WEATHER section; never web_search the weather when it is present.')
     expect(SYSTEM_INSTRUCTION).toContain('You may mention the weather briefly when it is relevant to what the user is doing (heat, rain before a run); never read out the whole forecast unprompted.')
-    expect(SYSTEM_INSTRUCTION).toContain('there is no WEATHER section')
-    expect(SYSTEM_INSTRUCTION).toContain('connect Weather in Connectors')
-  })
+    expect(SYSTEM_INSTRUCTION).toContain('there is no WEATHER section: never web_search. If CONNECTORS lists Weather as not connected, tell the user to connect Weather in Connectors')
+    expect(SYSTEM_INSTRUCTION).toContain("If CONNECTORS lists Weather as connected, say briefly that the forecast isn't available right now and to try again in a moment")
+    expect(SYSTEM_INSTRUCTION).toContain('CONNECTORS, WEATHER and APP GUIDE are facts about the app')
+      })
 })

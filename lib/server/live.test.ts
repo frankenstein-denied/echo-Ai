@@ -139,7 +139,9 @@ describe('weather in the live call', () => {
   it('persona has the weather rules and web_search no longer lists weather', () => {
     expect(LIVE_PERSONA).toContain('Weather answers weather and forecast questions from the WEATHER section; never web_search the weather when it is present.')
     expect(LIVE_PERSONA).toContain('You may mention the weather briefly when it is relevant to what the user is doing (heat, rain before a run); never read out the whole forecast unprompted.')
-    expect(LIVE_PERSONA).toContain('there is no WEATHER section')
+    expect(LIVE_PERSONA).toContain('there is no WEATHER section: never web_search. If CONNECTORS lists Weather as not connected, tell the user to connect Weather in Connectors')
+    expect(LIVE_PERSONA).toContain("If CONNECTORS lists Weather as connected, say briefly that the forecast isn't available right now and to try again in a moment")
+    expect(LIVE_PERSONA).toContain('CONNECTORS, WEATHER and APP GUIDE are facts about the app')
     expect(LIVE_PERSONA).toContain('(news, prices, releases, scores')
     expect(LIVE_PERSONA).not.toContain('(news, weather')
   })
