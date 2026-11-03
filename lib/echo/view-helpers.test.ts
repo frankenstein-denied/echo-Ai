@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { areaShares, debounce, filterNotes, lastSevenDays, parseSleepInput, parseTags, safeSourceUrl, sanitizeSources, splitReminders, splitSleep, stepWater } from './view-helpers'
+import { areaShares, debounce, filterNotes, goalsInPeriod, lastSevenDays, notesInPeriod, parseSleepInput, parseTags, remindersInPeriod, safeSourceUrl, sanitizeSources, splitReminders, splitSleep, stepWater } from './view-helpers'
 
 describe('debounce', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -111,5 +111,73 @@ describe('safeSourceUrl / sanitizeSources', () => {
     expect(sanitizeSources(many)).toHaveLength(5)
     expect(sanitizeSources([{ title: 'L', url: 'https://a.org/' + 'p'.repeat(600) }])).toEqual([])
     expect(sanitizeSources(undefined)).toEqual([])
+  })
+})
+
+describe('period selectors', () => {
+  const now = new Date(2026, 10, 4, 12, 0) // Wed 4 Nov 2026, local
+  const at = (d: number, h = 9) => new Date(2026, 10, d, h).getTime()
+
+  describe('notesInPeriod', () => {
+    const notes = [
+      { id: 'created-today', createdMs: at(4), updatedMs: at(4) },
+      { id: 'updated-today', createdMs: at(1, 9) - 40 * 86400000, updatedMs: at(4, 8) },
+      { id: 'this-week', createdMs: at(2), updatedMs: at(2) },
+      { id: 'old', createdMs: at(1) - 90 * 86400000, updatedMs: at(1) - 90 * 86400000 },
+      { id: 'pending', createdMs: null, updatedMs: null },
+    ]
+    it('matches createdAt or updatedAt in the period', () => {
+      expect(notesInPeriod(notes, 'today', now).map((n) => n.id)).toEqual(['created-today', 'updated-today'])
+      expect(notesInPeriod(notes, 'week', now).map((n) => n.id)).toEqual(['created-today', 'updated-today', 'this-week'])
+    })
+    it('all returns everything', () => {
+      expect(notesInPeriod(notes, 'all', now)).toHaveLength(5)
+    })
+  })
+
+  describe('goalsInPeriod', () => {
+    const goals = [
+      { id: 'new', createdMs: at(4), updatedMs: at(4) },
+      { id: 'target-today', createdMs: at(1) - 90 * 86400000, updatedMs: at(1) - 90 * 86400000, targetDate: '2026-11-04' },
+      { id: 'target-month', createdMs: at(1) - 90 * 86400000, updatedMs: null, targetDate: '2026-11-30' },
+      { id: 'target-next-month', createdMs: at(1) - 90 * 86400000, updatedMs: null, targetDate: '2026-12-01' },
+      { id: 'bad-target', createdMs: at(1) - 90 * 86400000, updatedMs: null, targetDate: 'soon' },
+      { id: 'none', createdMs: at(1) - 90 * 86400000, updatedMs: null },
+    ]
+    it('matches created/updated or the target date (local date)', () => {
+      expect(goalsInPeriod(goals, 'today', now).map((g) => g.id)).toEqual(['new', 'target-today'])
+      expect(goalsInPeriod(goals, 'month', now).map((g) => g.id)).toEqual(['new', 'target-today', 'target-month'])
+    })
+    it('target date on the last day of week is in, next Monday is out', () => {
+      const g = [{ id: 'sun', createdMs: null, updatedMs: null, targetDate: '2026-11-08' }, { id: 'mon', createdMs: null, updatedMs: null, targetDate: '2026-11-09' }]
+      expect(goalsInPeriod(g, 'week', now).map((x) => x.id)).toEqual(['sun'])
+    })
+    it('all returns everything', () => {
+      expect(goalsInPeriod(goals, 'all', now)).toHaveLength(6)
+    })
+  })
+
+  describe('remindersInPeriod', () => {
+    const rs = [
+      { id: 'today', dueMs: at(4, 18), done: false },
+      { id: 'overdue', dueMs: at(1), done: false },
+      { id: 'overdue-done', dueMs: at(1), done: true },
+      { id: 'tomorrow', dueMs: at(5), done: false },
+      { id: 'next-month', dueMs: new Date(2026, 11, 2).getTime(), done: false },
+    ]
+    it('today includes overdue not-done reminders', () => {
+      expect(remindersInPeriod(rs, 'today', now).map((r) => r.id)).toEqual(['today', 'overdue'])
+    })
+    it('week and month include overdue not-done and in-range', () => {
+      expect(remindersInPeriod(rs, 'week', now).map((r) => r.id)).toEqual(['today', 'overdue', 'tomorrow'])
+      expect(remindersInPeriod(rs, 'month', now).map((r) => r.id)).toEqual(['today', 'overdue', 'overdue-done', 'tomorrow'])
+    })
+    it('overdue from a previous month still shows for today', () => {
+      const old = [{ id: 'old', dueMs: new Date(2026, 8, 1).getTime(), done: false }]
+      expect(remindersInPeriod(old, 'month', now)).toHaveLength(1)
+    })
+    it('all returns everything', () => {
+      expect(remindersInPeriod(rs, 'all', now)).toHaveLength(5)
+    })
   })
 })

@@ -1,3 +1,5 @@
+import { periodRange, type Period } from './period'
+
 // Pure helpers for the Notes / Goals / Reminders / Health views (no Firebase imports so they are unit-testable).
 
 export type Debounced<A extends unknown[]> = ((...args: A) => void) & { flush: () => void; cancel: () => void }
@@ -124,4 +126,33 @@ export function sanitizeSources(sources: readonly Source[] | undefined): Source[
     if (out.length === 5) break
   }
   return out
+}
+
+// Period selectors. `now` is a parameter so callers/tests control the clock; each computes the range once.
+const inRange = (ms: number | null | undefined, range: { start: number; end: number }) => ms != null && ms >= range.start && ms < range.end
+
+/** A note is in the period when it was created or updated in it. */
+export function notesInPeriod<T extends { createdMs: number | null; updatedMs: number | null }>(notes: T[], period: Period, now: Date = new Date()): T[] {
+  const range = periodRange(period, now)
+  if (!range) return notes
+  return notes.filter((n) => inRange(n.createdMs, range) || inRange(n.updatedMs, range))
+}
+
+/** A goal is in the period when created/updated in it, or its YYYY-MM-DD target date (local) falls in it. */
+export function goalsInPeriod<T extends { createdMs: number | null; updatedMs: number | null; targetDate?: string }>(goals: T[], period: Period, now: Date = new Date()): T[] {
+  const range = periodRange(period, now)
+  if (!range) return goals
+  return goals.filter((g) => {
+    if (inRange(g.createdMs, range) || inRange(g.updatedMs, range)) return true
+    const m = g.targetDate ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(g.targetDate) : null
+    return m ? inRange(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime(), range) : false
+  })
+}
+
+/** A reminder is in the period when due in it; overdue not-done reminders always stay visible (except 'all', which shows everything). */
+export function remindersInPeriod<T extends { dueMs: number; done: boolean }>(reminders: T[], period: Period, now: Date = new Date()): T[] {
+  const range = periodRange(period, now)
+  if (!range) return reminders
+  const nowMs = now.getTime()
+  return reminders.filter((r) => inRange(r.dueMs, range) || (!r.done && r.dueMs < nowMs))
 }
