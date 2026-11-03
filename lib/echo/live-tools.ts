@@ -94,7 +94,7 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'save_memories',
-    description: 'Remember the people, interests, topics and recurring activities from what the user said, linked to each other and to known memories.',
+    description: 'Remember the people, interests, topics and recurring activities from what the user said, linked to each other and to known memories. Include traits: lasting facts about who the user is, from what they say about themselves.',
     parameters: {
       type: Type.OBJECT,
       properties: {

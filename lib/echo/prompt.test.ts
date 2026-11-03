@@ -86,3 +86,13 @@ describe('buildUserContents connectors and app guide', () => {
     expect(APP_GUIDE.split('\n').length).toBeLessThanOrEqual(15)
   })
 })
+
+describe('SYSTEM_INSTRUCTION personality traits', () => {
+  it('teaches Echo to learn and use traits', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('PERSONALITY (learning who the user is)')
+    expect(SYSTEM_INSTRUCTION).toContain('Use trait for lasting facts')
+    expect(SYSTEM_INSTRUCTION).toContain("Never list or label the user's traits back")
+    expect(SYSTEM_INSTRUCTION).toContain('health, connector, trait.')
+    expect(SYSTEM_INSTRUCTION.indexOf('PERSONALITY (learning')).toBeLessThan(SYSTEM_INSTRUCTION.indexOf('\nSAFETY\n'))
+  })
+})

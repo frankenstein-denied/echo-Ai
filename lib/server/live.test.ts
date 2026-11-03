@@ -113,3 +113,10 @@ describe('LIVE_PERSONA interests', () => {
     expect(LIVE_PERSONA).toContain('never from the search results')
   })
 })
+
+describe('LIVE_PERSONA traits', () => {
+  it('saves and uses trait memories', () => {
+    expect(LIVE_PERSONA).toContain('Save a trait memory')
+    expect(LIVE_PERSONA).toContain('- Personality: use known trait memories quietly')
+  })
+})

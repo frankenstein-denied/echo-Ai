@@ -19,6 +19,10 @@ describe('trait type in tool and router schemas', () => {
     const decl = LIVE_TOOL_DECLARATIONS.find((d) => d.name === 'save_memories')
     expect(JSON.stringify(decl?.parameters)).toContain('"trait"')
   })
+  it('save_memories description asks for traits', () => {
+    const decl = LIVE_TOOL_DECLARATIONS.find((d) => d.name === 'save_memories')
+    expect(decl?.description).toContain('Include traits')
+  })
   it('router response schema memory type enums contain trait', () => {
     const json = JSON.stringify(RESPONSE_SCHEMA)
     expect(json.match(/"trait"/g)?.length).toBeGreaterThanOrEqual(2)
