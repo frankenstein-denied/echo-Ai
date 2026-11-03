@@ -7,12 +7,16 @@ import { MOOD_ICONS } from './mood-picker'
 const AXIS = { stroke: 'var(--color-border-strong)', tick: { fill: 'var(--color-muted-foreground)' }, fontSize: 12, tickLine: false } as const
 const TOOLTIP_STYLE = { background: 'var(--color-surface-2)', border: '1px solid var(--color-border-strong)', borderRadius: 8, fontSize: 12, color: 'var(--color-foreground)' }
 
-type TickProps = { x?: number | string; y?: number | string; payload?: { index?: number; value?: string }; points: HealthWeekPoint[] }
+type TickProps = { x?: number | string; y?: number | string; payload?: { index?: number; value?: string }; points: HealthWeekPoint[]; icons: boolean }
+
+// Longer ranges (a month, 90 days) show about 7 axis labels and drop the per-day mood icons so they stay readable on mobile.
+const isDense = (points: HealthWeekPoint[]) => points.length > 7
+const labelInterval = (points: HealthWeekPoint[]) => (isDense(points) ? Math.ceil(points.length / 7) - 1 : 0)
 
 // Day label with that day's mood icon underneath.
-function MoodTick({ x = 0, y = 0, payload, points }: TickProps) {
+function MoodTick({ x = 0, y = 0, payload, points, icons }: TickProps) {
   const point = points[payload?.index ?? -1]
-  const Icon = point?.moodTag ? MOOD_ICONS[point.moodTag] : null
+  const Icon = icons && point?.moodTag ? MOOD_ICONS[point.moodTag] : null
   return (
     <g transform={`translate(${Number(x)},${Number(y)})`}>
       <text y={14} textAnchor="middle" fill="var(--color-muted-foreground)" fontSize={12}>
@@ -28,12 +32,13 @@ function MoodTick({ x = 0, y = 0, payload, points }: TickProps) {
 }
 
 export function MoodWeekChart({ points }: { points: HealthWeekPoint[] }) {
+  const dense = isDense(points)
   return (
-    <div className="h-56">
+    <div className={dense ? 'h-48' : 'h-56'}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points} margin={{ top: 8, right: 12, bottom: 28, left: -20 }}>
+        <LineChart data={points} margin={{ top: 8, right: 12, bottom: dense ? 0 : 28, left: -20 }}>
           <CartesianGrid stroke="var(--color-border)" vertical={false} />
-          <XAxis dataKey="label" interval={0} height={50} tick={(p) => <MoodTick {...p} points={points} />} stroke={AXIS.stroke} tickLine={false} />
+          <XAxis dataKey="label" interval={labelInterval(points)} height={dense ? 30 : 50} tick={(p) => <MoodTick {...p} points={points} icons={!dense} />} stroke={AXIS.stroke} tickLine={false} />
           <YAxis domain={[0, 10]} ticks={[0, 5, 10]} {...AXIS} />
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
@@ -42,7 +47,7 @@ export function MoodWeekChart({ points }: { points: HealthWeekPoint[] }) {
               return [tag ? `${MOOD_LABELS[tag]} (${v}/10)` : `${v}/10`, 'Mood']
             }}
           />
-          <Line type="monotone" dataKey="mood" name="Mood" stroke="var(--color-primary)" strokeWidth={2} dot={{ r: 4, fill: 'var(--color-primary)' }} connectNulls={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="mood" name="Mood" stroke="var(--color-primary)" strokeWidth={2} dot={{ r: dense ? 2.5 : 4, fill: 'var(--color-primary)' }} connectNulls={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -55,11 +60,11 @@ export function CaloriesWeekChart({ points, goal }: { points: HealthWeekPoint[];
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
           <CartesianGrid stroke="var(--color-border)" vertical={false} />
-          <XAxis dataKey="label" {...AXIS} />
+          <XAxis dataKey="label" {...(isDense(points) ? { interval: labelInterval(points) } : {})} {...AXIS} />
           <YAxis allowDecimals={false} {...AXIS} />
           <Tooltip cursor={{ fill: 'var(--color-surface-2)' }} contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v} kcal`, 'Calories']} />
           {goal ? <ReferenceLine y={goal} stroke="var(--color-warning)" strokeDasharray="4 4" /> : null}
-          <Bar dataKey="calories" name="Calories" fill="var(--color-primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="calories" name="Calories" fill="var(--color-primary)" radius={isDense(points) ? [2, 2, 0, 0] : [4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

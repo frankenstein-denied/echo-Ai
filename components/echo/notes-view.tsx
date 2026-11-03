@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Check, FileText, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { addNote, notesCol, type Note } from '@/lib/firestore'
-import { filterNotes } from '@/lib/echo/view-helpers'
+import { filterNotes, notesInPeriod } from '@/lib/echo/view-helpers'
+import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { filterByCategory, noteCategories, previewText, relativeDate, sortByUpdated } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Badge, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { NoteEditor } from './note-editor'
 import { Sheet, SheetItem } from './sheet'
 
@@ -49,11 +51,13 @@ function NoteCard({ note, onOpen }: { note: NoteRow; onOpen: () => void }) {
 }
 
 export function NotesView({ uid }: { uid: string }) {
+  const day = useDay()
   const [notes, setNotes] = useState<NoteRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [filterSheet, setFilterSheet] = useState(false)
@@ -78,7 +82,10 @@ export function NotesView({ uid }: { uid: string }) {
 
   const categories = useMemo(() => noteCategories(notes ?? []), [notes])
   const activeCategory = category === 'All' || categories.some((c) => c.toLowerCase() === category.toLowerCase()) ? category : 'All'
-  const visible = useMemo(() => filterByCategory(filterNotes(notes ?? [], search), activeCategory), [notes, search, activeCategory])
+  const visible = useMemo(() => {
+    const withMs = (notes ?? []).map((n) => ({ ...n, createdMs: n.createdAt?.toMillis?.() ?? null, updatedMs: n.updatedAt?.toMillis?.() ?? null }))
+    return filterByCategory(filterNotes(notesInPeriod(withMs, period, new Date()), search), activeCategory)
+  }, [notes, search, activeCategory, period, day])
   const opened = openId ? notes?.find((n) => n.id === openId) ?? null : null
 
   const open = (id: string) => {
@@ -109,6 +116,7 @@ export function NotesView({ uid }: { uid: string }) {
       const id = await addNote(uid, { title: 'Untitled note', body: '', category: 'Diary', tags: [] })
       setSearch('')
       setCategory('All')
+      setPeriod(DEFAULT_PERIOD)
       open(id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create a note.')
@@ -130,6 +138,7 @@ export function NotesView({ uid }: { uid: string }) {
   }
 
   const filtering = search.trim() !== '' || activeCategory !== 'All'
+  const emptyDescription = filtering ? 'Nothing matches your search or filter.' : period !== 'all' ? `${emptyPeriodText(period)} Pick another period.` : 'Nothing to show.'
 
   return (
     <div ref={root} className="animate-in">
@@ -141,6 +150,11 @@ export function NotesView({ uid }: { uid: string }) {
       {(error || loadError) && (
         <div className="mb-4">
           <Alert variant="danger">{error || loadError}</Alert>
+        </div>
+      )}
+      {notes !== null && notes.length > 0 && (
+        <div className="mb-3 max-w-full overflow-x-auto">
+          <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
         </div>
       )}
       {notes !== null && notes.length > 0 && (
@@ -183,8 +197,8 @@ export function NotesView({ uid }: { uid: string }) {
         <EmptyState
           icon={Search}
           title="No notes found"
-          description={filtering ? 'Nothing matches your search or filter.' : 'Nothing to show.'}
-          action={<Button variant="secondary" onClick={() => { setSearch(''); setCategory('All') }}>Clear filters</Button>}
+          description={emptyDescription}
+          action={<Button variant="secondary" onClick={() => { setSearch(''); setCategory('All'); setPeriod('all') }}>Clear filters</Button>}
         />
       ) : (
         <ul className="grid gap-4 max-sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">

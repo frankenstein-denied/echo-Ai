@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Plus, Target, Trash2, X } from 'lucide-react'
 import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/firestore'
-import { areaShares, debounce, type Debounced } from '@/lib/echo/view-helpers'
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Select, Skeleton } from './ui'
+import { areaShares, debounce, goalsInPeriod, type Debounced } from '@/lib/echo/view-helpers'
+import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
+import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 
 type GoalRow = Goal & { id: string }
@@ -118,6 +120,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
 }
 
 export function GoalsView({ uid }: { uid: string }) {
+  const day = useDay()
   const [goals, setGoals] = useState<GoalRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
@@ -125,6 +128,7 @@ export function GoalsView({ uid }: { uid: string }) {
   const [area, setArea] = useState('Personal')
   const [target, setTarget] = useState('')
   const [adding, setAdding] = useState(false)
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
 
   useEffect(() => {
     const q = query(goalsCol(uid), orderBy('createdAt', 'desc'))
@@ -141,6 +145,10 @@ export function GoalsView({ uid }: { uid: string }) {
     )
   }, [uid])
 
+  const shown = useMemo(
+    () => goalsInPeriod((goals ?? []).map((g) => ({ ...g, createdMs: g.createdAt?.toMillis?.() ?? null, updatedMs: g.updatedAt?.toMillis?.() ?? null })), period, new Date()),
+    [goals, period, day],
+  )
   const shares = useMemo(() => areaShares(goals ?? []), [goals])
   const now = new Date()
   const doy = dayOfYear(now)
@@ -190,6 +198,10 @@ export function GoalsView({ uid }: { uid: string }) {
         </div>
       )}
 
+      <div className="mb-5 max-w-full overflow-x-auto">
+        <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
+      </div>
+
       <Card className="mb-5">
         <h2 className="text-base font-semibold text-foreground">Your year in view</h2>
         {shares.length === 0 ? (
@@ -229,9 +241,11 @@ export function GoalsView({ uid }: { uid: string }) {
         </div>
       ) : goals.length === 0 ? (
         <EmptyState icon={Target} title="No goals yet" description="Add one above, or tell Echo a goal." />
+      ) : shown.length === 0 ? (
+        <EmptyState icon={Target} title="No goals here" description={period === 'all' ? emptyPeriodText(period) : `${emptyPeriodText(period)} Pick another period.`} action={<Button variant="secondary" onClick={() => setPeriod('all')}>Show all</Button>} />
       ) : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {goals.map((g) => (
+          {shown.map((g) => (
             <GoalCard key={g.id} uid={uid} goal={g} onError={setError} />
           ))}
         </div>

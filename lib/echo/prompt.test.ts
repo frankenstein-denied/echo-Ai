@@ -50,6 +50,11 @@ describe('SYSTEM_INSTRUCTION search order and teaching', () => {
     expect(connectorLine).not.toMatch(/weather/i)
   })
 
+  it('turns searches that show a lasting interest into an interest memory', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('lasting interest')
+    expect(SYSTEM_INSTRUCTION).toContain('"interest" memory')
+  })
+
   it('offers a web_search action in the schema', () => {
     const variants = RESPONSE_SCHEMA.properties.actions.items.anyOf as { properties: { type: { enum?: string[] } }; required?: string[] }[]
     const ws = variants.find((v) => v.properties.type.enum?.includes('web_search'))

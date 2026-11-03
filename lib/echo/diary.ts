@@ -1,4 +1,5 @@
 // Pure helpers for diary pages (no Firebase imports so they are unit-testable).
+import { localDateKey } from './view-helpers'
 
 export const TITLE_MAX = 120
 export const PREVIEW_MAX = 160
@@ -74,4 +75,25 @@ export function planMigration(oldIds: string[], alreadyCopied: Iterable<string> 
 
 export function isPermissionDenied(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'permission-denied'
+}
+
+/** True when the timestamp falls on the same local calendar day as `now`. */
+export function isFromToday(createdAtMs: number | undefined, now: Date = new Date()): boolean {
+  if (createdAtMs === undefined) return false
+  return localDateKey(new Date(createdAtMs)) === localDateKey(now)
+}
+
+/** The page to land on: the first (most recently updated) page created today, or null for the fresh empty today state. */
+export function pickTodayPage<T extends { createdAt?: { toMillis?: () => number } | null }>(pages: T[], now: Date = new Date()): T | null {
+  return pages.find((p) => isFromToday(p.createdAt?.toMillis?.(), now)) ?? null
+}
+
+/** Whether an open app should roll over to the fresh "today" page: the day changed since the page was opened, it is not a today page, nothing is live, and a page is open. */
+export function shouldStartNewDay(
+  s: { openedDayKey: string; pageCreatedMs: number | undefined; callActive: boolean; selId: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (s.selId === null || s.callActive) return false
+  if (s.openedDayKey === localDateKey(now)) return false
+  return !isFromToday(s.pageCreatedMs, now)
 }

@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Bell, Plus, Trash2 } from 'lucide-react'
 import { addReminder, deleteReminder, remindersCol, routinesCol, setReminderDone, type Reminder, type Routine } from '@/lib/firestore'
-import { splitReminders } from '@/lib/echo/view-helpers'
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Skeleton } from './ui'
+import { remindersInPeriod, splitReminders } from '@/lib/echo/view-helpers'
+import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
+import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 
 type ReminderRow = Reminder & { id: string; dueMs: number }
@@ -23,6 +25,7 @@ function defaultDueValue(): string {
 }
 
 export function RemindersView({ uid }: { uid: string }) {
+  const day = useDay()
   const [items, setItems] = useState<ReminderRow[] | null>(null)
   const [routines, setRoutines] = useState<(Routine & { id: string })[] | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -31,6 +34,7 @@ export function RemindersView({ uid }: { uid: string }) {
   const [due, setDue] = useState(defaultDueValue)
   const [adding, setAdding] = useState(false)
   const [confirm, setConfirm] = useState<ReminderRow | null>(null)
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   // Touch layouts: the whole row (label) toggles done; desktop: only the checkbox does.
   const HitRow = useIsMobile() ? 'label' : 'div'
 
@@ -57,7 +61,7 @@ export function RemindersView({ uid }: { uid: string }) {
     )
   }, [uid])
 
-  const { upcoming, done } = useMemo(() => splitReminders(items ?? []), [items])
+  const { upcoming, done } = useMemo(() => splitReminders(remindersInPeriod(items ?? [], period, new Date())), [items, period, day])
 
   const run = async (fn: () => Promise<unknown>, fallback: string) => {
     setError('')
@@ -117,6 +121,9 @@ export function RemindersView({ uid }: { uid: string }) {
       )}
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div className="grid content-start gap-5">
+          <div className="max-w-full overflow-x-auto">
+            <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
+          </div>
           <Card>
             <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <Input label="New reminder" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Remind me to..." maxLength={500} />
@@ -133,7 +140,7 @@ export function RemindersView({ uid }: { uid: string }) {
           ) : (
             <Card>
               <h2 className="text-base font-semibold text-foreground">Upcoming</h2>
-              <div className="mt-2">{upcoming.length === 0 ? <p className="py-3 text-sm text-muted-foreground">Nothing upcoming.</p> : upcoming.map(row)}</div>
+              <div className="mt-2">{upcoming.length === 0 ? <p className="py-3 text-sm text-muted-foreground">{done.length === 0 ? period === 'all' ? emptyPeriodText(period) : `${emptyPeriodText(period)} Pick another period.` : 'Nothing upcoming.'}</p> : upcoming.map(row)}</div>
               {done.length > 0 && (
                 <>
                   <h2 className="mt-6 text-base font-semibold text-foreground">Done</h2>

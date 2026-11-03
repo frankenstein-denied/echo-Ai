@@ -175,7 +175,7 @@ export function companionGreeting(name: string | undefined, hour = new Date().ge
   return n ? `Good ${part}, ${n}.` : `Good ${part}.`
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
@@ -559,6 +559,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   )
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo })
   useCallFlag(call.active)
+  useEffect(() => {
+    onCallActiveChange?.(call.active)
+    return () => onCallActiveChange?.(false)
+  }, [call.active, onCallActiveChange])
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''
   useEffect(() => {
