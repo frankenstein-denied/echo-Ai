@@ -68,6 +68,7 @@ MEMORY EXTRACTION
 - Also emit a memory for the main subject of every action you save (the goal's topic, the person in a reminder, the activity in a note) so each saved action connects into the graph.
 - "links" connect memories. Every memory MUST link to (a) the other memories from this same message that it relates to, and (b) the most relevant memories from the KNOWN MEMORIES list, each given as {"label","type"} copied exactly. Give 1-4 links per memory whenever any sensible relation exists (a person to the activity they share, a symptom to the activity or body part, a goal to its activity). Only link to memories in this response or in the known list; never invent targets.
 - Return at most 10 memories; return none for small talk.
+- Web searches: when a web_search question shows a lasting interest of the user (a hobby, team, artist, product, place or subject they care about, e.g. "latest Lakers score" -> Lakers), also return an "interest" memory for it (reuse a KNOWN MEMORIES label when it is the same thing). Do not make one for one-off practical lookups (opening hours, weather, a single fact).
 
 TRACE
 - "trace" is 1-4 short human-readable steps, e.g. "Classified as Reminder", "Extracted: Mama, 8:30 PM".

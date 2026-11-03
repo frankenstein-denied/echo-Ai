@@ -67,6 +67,8 @@ describe('buildLiveConfig', () => {
     expect(si).toContain("Never say you can't access their goals")
     expect(si).toContain('status "saving"')
     expect(si).toContain('Memory saving is silent bookkeeping: never mention it')
+    expect(si).toContain('lasting interest')
+    expect(si).toContain('interest memory')
   })
   it('marks empty sections and keeps user data delimited', () => {
     const si = buildLiveSystemInstruction({ clientTime: 't', timeZone: 'UTC', voice: 'Kore', snapshot: '', context: { profile: '', recentMessages: [], memoryLabels: [] } })
