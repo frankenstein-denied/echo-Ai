@@ -1,6 +1,6 @@
 import { ThinkingLevel, Type, type GoogleGenAI } from '@google/genai'
 import type { EchoResponse } from '@/lib/echo/types'
-import { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY, SEARCH_QUOTA_REPLY } from '@/lib/echo/search-replies'
+import { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY, SEARCH_QUOTA_REPLY, SEARCH_WAKING_REPLY } from '@/lib/echo/search-replies'
 import { geminiModels, withModelFallback } from './gemini-fallback'
 import { tavilySearch, TavilyError, type WebResult } from './tavily'
 import { missingTavilyEnv, TavilyAuthError, withFreshTokens } from './tavily-oauth'
@@ -8,7 +8,7 @@ import { missingTavilyEnv, TavilyAuthError, withFreshTokens } from './tavily-oau
 // Web search for typed chat (and, through the shared limiter and replies, calls): one Tavily search per question,
 // then a second Gemini call writes the reply from the results. Never log the user's text, queries, results or tokens.
 
-export { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_QUOTA_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY }
+export { SEARCH_EMPTY_REPLY, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY, SEARCH_QUOTA_REPLY, SEARCH_RATE_LIMITED_REPLY, SEARCH_RECONNECT_REPLY, SEARCH_WAKING_REPLY }
 export const SEARCH_SOURCES_ONLY_REPLY = "I found some pages but couldn't write an answer just now. Here are the sources."
 
 export const SEARCH_LIMITS = { perHour: 20, windowMs: 3_600_000, sources: 5, reply: 1200 } as const
@@ -19,6 +19,8 @@ const ANSWER_ATTEMPT_TIMEOUT_MS = 7000
 const ANSWER_RESERVE_MS = 4000
 /** Below this much time left, don't start a search at all. */
 const MIN_SEARCH_BUDGET_MS = 6000
+/** A timed-out search is retried once (Tavily is awake by then) only with at least this much search time left. */
+const MIN_RETRY_BUDGET_MS = 3000
 
 // ---------- rate limit (soft guard per server instance; Tavily's monthly quota is the real limit) ----------
 
@@ -172,7 +174,22 @@ export async function resolveWebSearch(res: EchoResponse, deps: WebSearchDeps): 
     const keep = resealed ? { webSearchResealed: resealed } : {}
     const timeoutMs = Math.min(TAVILY_TIMEOUT_MS, remaining() - ANSWER_RESERVE_MS)
     if (timeoutMs < 1000) return done(SEARCH_FAILED_REPLY, 'No time left to search', keep)
-    const results = await (deps.search ?? tavilySearch)(fresh.tokens.access, action.query, { timeoutMs })
+    const search = deps.search ?? tavilySearch
+    let results: WebResult[]
+    try {
+      results = await search(fresh.tokens.access, action.query, { timeoutMs })
+    } catch (err) {
+      if (!(err instanceof TavilyError && err.kind === 'timeout')) throw err
+      // The first search after a quiet period wakes Tavily up: try once more if the time allows.
+      const retryMs = Math.min(TAVILY_TIMEOUT_MS, remaining() - ANSWER_RESERVE_MS)
+      if (retryMs < MIN_RETRY_BUDGET_MS) return done(SEARCH_WAKING_REPLY, 'Tavily is waking up', keep)
+      try {
+        results = await search(fresh.tokens.access, action.query, { timeoutMs: retryMs })
+      } catch (err2) {
+        if (err2 instanceof TavilyError && err2.kind === 'timeout') return done(SEARCH_WAKING_REPLY, 'Tavily is waking up', keep)
+        throw err2
+      }
+    }
     if (!results.length) return done(SEARCH_EMPTY_REPLY, 'Searched the web: no results', keep)
     try {
       const a = await deps.answer(deps.question, results, { clientTime: deps.clientTime, profile: deps.profile })

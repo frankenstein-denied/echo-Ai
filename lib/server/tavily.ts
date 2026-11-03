@@ -10,7 +10,7 @@ const DEFAULT_TIMEOUT_MS = 8000
 export type WebResult = { title: string; url: string; content: string }
 
 export class TavilyError extends Error {
-  constructor(public kind: 'auth' | 'quota' | 'failed') {
+  constructor(public kind: 'auth' | 'quota' | 'failed' | 'timeout') {
     super(`Tavily search ${kind}`)
     this.name = 'TavilyError'
   }
@@ -104,6 +104,8 @@ export async function tavilySearch(accessToken: string, query: string, opts: { t
     return mapResults(JSON.parse(text))
   } catch (err) {
     if (err instanceof TavilyError) throw err
+    // Our own timer fired (Tavily slow to wake), as opposed to a network or parse failure.
+    if (ctrl.signal.aborted) throw new TavilyError('timeout')
     throw new TavilyError('failed')
   } finally {
     clearTimeout(timer)

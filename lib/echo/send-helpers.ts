@@ -37,7 +37,11 @@ export async function fetchWithTimeout(
   try {
     return await fetchImpl(url, { ...init, signal: ctrl.signal })
   } catch (e) {
-    if (ctrl.signal.aborted) throw new Error('Echo took too long to respond.')
+    if (ctrl.signal.aborted) {
+      const timeout = new Error('Echo took too long to respond.')
+      timeout.name = 'TimeoutError'
+      throw timeout
+    }
     throw e
   } finally {
     clearTimeout(timer)

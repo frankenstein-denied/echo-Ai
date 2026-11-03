@@ -95,11 +95,16 @@ describe('tavilySearch', () => {
     await expect(tavilySearch('t', 'q', { fetch: rpc.f })).rejects.toMatchObject({ kind: 'failed' })
   })
 
-  it('times out as failed', async () => {
+  it('a 500 is failed, not timeout', async () => {
+    const { f } = fakeMcp(() => new Response('boom', { status: 500 }))
+    await expect(tavilySearch('t', 'q', { fetch: f })).rejects.toMatchObject({ kind: 'failed' })
+  })
+
+  it('times out as timeout', async () => {
     const hang = (async (_url: string, req: RequestInit) =>
       new Promise<Response>((_, reject) => {
         req.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
       })) as unknown as typeof fetch
-    await expect(tavilySearch('t', 'q', { fetch: hang, timeoutMs: 20 })).rejects.toMatchObject({ kind: 'failed' })
+    await expect(tavilySearch('t', 'q', { fetch: hang, timeoutMs: 20 })).rejects.toMatchObject({ kind: 'timeout' })
   })
 })

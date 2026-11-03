@@ -11,6 +11,7 @@ import {
   SEARCH_NOT_CONNECTED_REPLY,
   SEARCH_QUOTA_REPLY,
   SEARCH_RATE_LIMITED_REPLY,
+  SEARCH_WAKING_REPLY,
   SEARCH_RECONNECT_REPLY,
   takeSearchSlot,
   type WebSearchDeps,
@@ -135,6 +136,39 @@ describe('resolveWebSearch', () => {
     const out = await resolveWebSearch(searchRes(''), d)
     expect(out.reply).toBe(SEARCH_QUOTA_REPLY)
     expect(out.webSearchRevoked).toBeUndefined()
+  })
+
+  it('timeout then success: retries once and answers normally', async () => {
+    const search = vi.fn().mockRejectedValueOnce(new TavilyError('timeout')).mockResolvedValueOnce(RESULTS)
+    const { d, answer } = deps({ search })
+    const out = await resolveWebSearch(searchRes(''), d)
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(answer).toHaveBeenCalled()
+    expect(out.reply).toBe('The iPhone 18 is the latest.')
+  })
+
+  it('timeout twice: says Tavily is waking up and keeps resealed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const search = vi.fn(async () => Promise.reject(new TavilyError('timeout')))
+    const { d } = deps({ search, freshTokens: vi.fn(async () => ({ tokens: { access: 'a', refresh: 'r', expiresAt: 0 }, resealed: 'sealed-2' })) })
+    const out = await resolveWebSearch(searchRes(''), d)
+    warn.mockRestore()
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(out.reply).toBe(SEARCH_WAKING_REPLY)
+    expect(out.trace).toContain('Tavily is waking up')
+    expect(out.webSearchResealed).toBe('sealed-2')
+  })
+
+  it('timeout with no budget left for a retry: waking, no second search', async () => {
+    let t = 1_000_000
+    const search = vi.fn(async () => {
+      t += 9000
+      throw new TavilyError('timeout')
+    })
+    const { d } = deps({ search, now: () => t, deadline: t + 15_000 })
+    const out = await resolveWebSearch(searchRes(''), d)
+    expect(search).toHaveBeenCalledTimes(1)
+    expect(out.reply).toBe(SEARCH_WAKING_REPLY)
   })
 
   it('the 21st search in an hour for one uid is not searched', async () => {

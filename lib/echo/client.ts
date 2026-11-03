@@ -34,6 +34,7 @@ import {
   SEARCH_RATE_LIMITED_REPLY,
   SEARCH_RECONNECT_REPLY,
   SEARCH_RESULT_INSTRUCTIONS,
+  SEARCH_WAKING_REPLY,
 } from './search-replies'
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { sanitizeSources, type Source } from './view-helpers'
@@ -308,6 +309,7 @@ const SEARCH_TELL: Record<string, string> = {
   quota: SEARCH_QUOTA_REPLY,
   rate_limited: SEARCH_RATE_LIMITED_REPLY,
   failed: SEARCH_FAILED_REPLY,
+  waking: SEARCH_WAKING_REPLY,
 }
 
 export type WebSearchOutcome = {
@@ -328,7 +330,7 @@ export async function searchWebViaApi(user: Pick<User, 'getIdToken'>, query: str
     const res = await fetchWithTimeout(
       '/api/search',
       { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ query, sealed }) },
-      15000,
+      19000,
       fetchImpl,
     )
     const d = (await res.json().catch(() => ({}))) as { results?: unknown; error?: unknown; resealed?: unknown }
@@ -337,8 +339,9 @@ export async function searchWebViaApi(user: Pick<User, 'getIdToken'>, query: str
     if (!res.ok || !Array.isArray(d.results)) return fail('failed')
     if (!d.results.length) return { output: { results: [], instructions: 'Nothing useful was found. Say so briefly.' }, ...resealed }
     return { output: { results: d.results, instructions: SEARCH_RESULT_INSTRUCTIONS }, ...resealed }
-  } catch {
-    return fail('failed')
+  } catch (e) {
+    // Our own fetch timeout (cold start plus slow Tavily): the search is waking, not broken.
+    return fail((e as { name?: string })?.name === 'TimeoutError' ? 'waking' : 'failed')
   }
 }
 
