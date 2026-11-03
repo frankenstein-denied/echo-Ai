@@ -67,3 +67,10 @@ describe('buildContext trait slots', () => {
     expect(labels.filter((l) => l.type === 'topic')).toHaveLength(30)
   })
 })
+
+describe('buildContext weather', () => {
+  it('includes weather only when given', () => {
+    expect(buildContext({}, [], [], undefined, undefined, 'Manila 31C').weather).toBe('Manila 31C')
+    expect(buildContext({}, [], [])).not.toHaveProperty('weather')
+  })
+})

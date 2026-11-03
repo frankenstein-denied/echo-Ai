@@ -10,6 +10,7 @@ import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
+import { fetchForecast, formatWeather } from '@/lib/echo/weather'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -27,6 +28,9 @@ type ChatMessage = Message & { id: string }
 type Extras = { trace: string[]; saved: SavedItem[]; failed: string[] }
 type ReplyRetry = { reply: string; category: EchoCategory; extras: Extras; sources?: Source[] }
 type SendError = { text: string; userSaved: boolean; message: string; reply?: string; trace?: string[]; replyRetry?: ReplyRetry }
+
+const WEATHER_TTL_MS = 30 * 60e3
+const WEATHER_WAIT_MS = 1500
 
 const VIEW_FOR: Record<string, HomeView> = {
   note: 'Notes',
@@ -339,6 +343,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
   // Connector states and the sealed Web search tokens, kept in refs for the request and call paths.
   const connectorsRef = useRef<{ statuses: ConnectorState[]; sealed: string }>({ statuses: connectorStatuses([]), sealed: '' })
+  // Saved Weather location (only while Weather is connected) and the forecast text cached per location.
+  const weatherLocRef = useRef<{ place: string; lat: number; lon: number } | null>(null)
+  const weatherCacheRef = useRef<{ key: string; text: string; at: number } | null>(null)
+  const weatherFetchRef = useRef<{ key: string; promise: Promise<void> } | null>(null)
   useEffect(() => {
     return onSnapshot(
       connectorsCol(uid),
@@ -346,10 +354,40 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
         const web = docs.find((d) => d.id === 'web-search')
         connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '' }
+        const wx = docs.find((d) => d.id === 'weather')
+        weatherLocRef.current =
+          isConnected(connectorsRef.current.statuses, 'weather') && typeof wx?.lat === 'number' && typeof wx?.lon === 'number'
+            ? { place: typeof wx.place === 'string' ? wx.place : '', lat: wx.lat, lon: wx.lon }
+            : null
       },
       (e) => console.error('connectors listener', e),
     )
   }, [uid])
+  // WEATHER context text: cached for 30 minutes per location. Never blocks a send for more than 1.5 s;
+  // a stale value is used if the refresh is slow, and a failed fetch just leaves the block out.
+  const getWeather = useCallback(async (): Promise<string | undefined> => {
+    const loc = weatherLocRef.current
+    if (!loc) return undefined
+    const key = `${loc.lat},${loc.lon}`
+    const cached = () => (weatherCacheRef.current?.key === key ? weatherCacheRef.current : null)
+    const hit = cached()
+    if (hit && Date.now() - hit.at < WEATHER_TTL_MS) return hit.text
+    if (weatherFetchRef.current?.key !== key) {
+      const promise = fetchForecast(loc.lat, loc.lon)
+        .then((data) => {
+          weatherCacheRef.current = { key, text: formatWeather(loc.place, data), at: Date.now() }
+        })
+        .catch(() => console.warn('Echo: could not load the weather'))
+        .finally(() => {
+          if (weatherFetchRef.current?.promise === promise) weatherFetchRef.current = null
+        })
+      weatherFetchRef.current = { key, promise }
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([weatherFetchRef.current.promise, new Promise<void>((r) => (timer = setTimeout(r, WEATHER_WAIT_MS)))])
+    clearTimeout(timer)
+    return cached()?.text
+  }, [])
   const webSearchKey = () => {
     const { statuses, sealed } = connectorsRef.current
     return isConnected(statuses, 'web-search') && sealed ? sealed : undefined
@@ -437,7 +475,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         // Write the user message and call the router in parallel.
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
         const built = buildItems()
-        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items, connectorsRef.current.statuses), webSearchKey())
+        const weather = await getWeather()
+        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather), webSearchKey())
         echoP.catch(() => undefined)
         try {
           await userP
@@ -485,7 +524,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, pushUndo],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo],
   )
   useEffect(() => {
     sendRef.current = send
@@ -570,11 +609,12 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   )
   // The call keeps the ref map that matches the items sent in its session instruction.
   const callRefs = useRef<RefMap | undefined>(undefined)
-  const getCallContext = useCallback(() => {
+  const getCallContext = useCallback(async () => {
+    const weather = await getWeather()
     const built = buildItems()
     callRefs.current = built?.refs
-    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses)
-  }, [profile, buildItems])
+    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather)
+  }, [profile, buildItems, getWeather])
   const getCallRefs = useCallback(() => callRefs.current, [])
   const saveWebSearchSecret = useCallback(
     (sealed: string | null) => {

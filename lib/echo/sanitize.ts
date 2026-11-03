@@ -4,6 +4,7 @@ import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoReques
 
 export const LIMITS = {
   connectors: 10,
+  weather: 600,
   webSearchKey: 8192,
   text: 2000,
   profile: 1500,
@@ -140,7 +141,8 @@ export function parseEchoContext(raw: unknown): EchoRequest['context'] {
   }
   const items = parseItemsContext(ctx.items)
   const connectors = parseConnectors(ctx.connectors)
-  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors } : {}) }
+  const weather = str(ctx.weather, LIMITS.weather)
+  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors } : {}), ...(weather ? { weather } : {}) }
 }
 
 const CONNECTOR_STATUSES: readonly string[] = ['connected', 'not_connected', 'coming_soon']

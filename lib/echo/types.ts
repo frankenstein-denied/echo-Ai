@@ -80,6 +80,8 @@ export type EchoRequest = {
     items?: EchoItemsContext
     /** Connector states from the browser; absent means defaults (Nutrition connected). */
     connectors?: { id: string; status: ConnectorStatus }[]
+    /** Compact forecast text from the Weather connector (max 600 chars); absent when Weather is not connected. */
+    weather?: string
   }
   /** Sealed Tavily tokens from the Web search connector doc; sent only when Web search is connected. */
   webSearchKey?: string
