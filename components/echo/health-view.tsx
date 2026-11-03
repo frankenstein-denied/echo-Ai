@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { documentId, onSnapshot, orderBy, query, where } from 'firebase/firestore'
-import { Droplet, Minus, Moon, Plus, Smile, Zap, type LucideIcon } from 'lucide-react'
+import { Droplet, Flame, Minus, Moon, Plus, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
 import { healthLogsCol, mealsInRange, saveHealthChanges, watchCalorieSettings, type Energy, type HealthLog, type MealDoc } from '@/lib/firestore'
-import { debounce, lastSevenDays, localDateKey, parseSleepInput, splitSleep, stepWater, type Debounced } from '@/lib/echo/view-helpers'
-import { dailyTotals, moodScore, moodTagOf, type HealthWeekPoint, type MoodTag } from '@/lib/echo/health-helpers'
+import { chartDays, debounce, healthPeriodDates, healthPeriodStats, localDateKey, mealsByDay, parseSleepInput, splitSleep, stepWater, type Debounced } from '@/lib/echo/view-helpers'
+import { dailyTotals, MEAL_TYPE_LABELS, moodFromScore, MOOD_LABELS, moodScore, moodTagOf, type HealthWeekPoint, type MoodTag } from '@/lib/echo/health-helpers'
+import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { Alert, Card, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { MoodPicker } from './health/mood-picker'
 import { CaloriesCard } from './health/calories-card'
@@ -191,10 +192,41 @@ function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields 
   )
 }
 
+// Chart titles and empty-state wording per period. Today keeps the original 7-day wording.
+const SPAN: Record<Period, { title: string; empty: string }> = {
+  today: { title: 'this week', empty: 'in the last 7 days.' },
+  week: { title: 'this week', empty: 'this week. Try another period.' },
+  month: { title: 'this month', empty: 'this month. Try another period.' },
+  all: { title: 'over the last 90 days', empty: 'in the last 90 days.' },
+}
+
+const dayLabel = (key: string) => {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+const kcal = (n: number) => `${n.toLocaleString('en-US')} kcal`
+
+const daysHint = (n: number) => (n ? `over ${n} ${n === 1 ? 'day' : 'days'} logged` : 'nothing logged')
+
+function Stat({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: string; value: string; hint: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-surface-2 p-4">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Icon size={16} aria-hidden="true" />
+        {label}
+      </p>
+      <p className="mt-2 truncate text-xl font-semibold tabular-nums text-foreground">{value}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+    </div>
+  )
+}
+
 export function HealthView({ uid }: { uid: string }) {
   const day = useDay()
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const [today, setToday] = useState<Fields | null | undefined>(undefined)
-  const [week, setWeek] = useState<{ date: string; mood?: number; moodTag?: string }[] | null>(null)
+  const [logs, setLogs] = useState<{ date: string; mood?: number; moodTag?: string; sleepMinutes?: number }[] | null>(null)
   const [meals, setMeals] = useState<MealDoc[] | null>(null)
   const [cal, setCal] = useState<{ enabled: boolean; goal?: number } | null>(null)
   const [error, setError] = useState('')
@@ -213,61 +245,99 @@ export function HealthView({ uid }: { uid: string }) {
     )
   }, [uid, day])
 
-  const startKey = useMemo(() => {
+  // Date keys the charts and averages cover (today: the last 7 days, as before).
+  const keys = useMemo(() => {
     const [y, m, d] = day.split('-').map(Number)
-    return localDateKey(new Date(y, m - 1, d - 6))
-  }, [day])
+    return healthPeriodDates(period, new Date(y, m - 1, d, 12))
+  }, [day, period])
+  const startKey = keys[0]
+  const endKey = keys[keys.length - 1]
 
+  // healthLogs are keyed by date, so a documentId range covers the period (single-field range: no index).
   useEffect(() => {
-    const q = query(healthLogsCol(uid), where(documentId(), '>=', startKey), where(documentId(), '<=', day), orderBy(documentId()))
+    setLogs(null)
+    const q = query(healthLogsCol(uid), where(documentId(), '>=', startKey), where(documentId(), '<=', endKey), orderBy(documentId()))
     return onSnapshot(
       q,
-      (snap) => setWeek(snap.docs.map((s) => ({ date: s.id, mood: s.data().mood, moodTag: s.data().moodTag }))),
+      (snap) => setLogs(snap.docs.map((s) => ({ date: s.id, mood: s.data().mood, moodTag: s.data().moodTag, sleepMinutes: s.data().sleepMinutes }))),
       (e) => {
-        setWeek([])
-        setError(e.message || 'Could not load this week.')
+        setLogs([])
+        setError(e.message || 'Could not load your health logs.')
       },
     )
-  }, [uid, day, startKey])
+  }, [uid, startKey, endKey])
 
   useEffect(() => watchCalorieSettings(uid, setCal, () => setCal({ enabled: true })), [uid])
 
   const calEnabled = cal?.enabled ?? false
   useEffect(() => {
+    setMeals(null)
     if (!calEnabled) {
-      setMeals(null)
       setMealError('')
       return
     }
-    return mealsInRange(uid, startKey, day, setMeals, (e) => {
+    return mealsInRange(uid, startKey, endKey, setMeals, (e) => {
       setMeals([])
       setMealError(e.message || 'Could not load your meals.')
     })
-  }, [uid, day, startKey, calEnabled])
+  }, [uid, startKey, endKey, calEnabled])
 
   const series = useMemo<HealthWeekPoint[]>(() => {
-    const base = lastSevenDays(day, week ?? [])
-    const byDate = new Map((week ?? []).map((l) => [l.date, l]))
-    const totals = new Map(dailyTotals(meals ?? [], base.map((b) => b.date)).map((t) => [t.date, t.calories]))
+    const base = chartDays(keys, logs ?? [])
+    const byDate = new Map((logs ?? []).map((l) => [l.date, l]))
+    const totals = new Map(dailyTotals(meals ?? [], keys).map((t) => [t.date, t.calories]))
     return base.map((b) => ({ ...b, moodTag: moodTagOf(byDate.get(b.date)), calories: totals.get(b.date) ?? 0 }))
-  }, [day, week, meals])
+  }, [keys, logs, meals])
   const hasMood = series.some((p) => p.mood != null || p.moodTag != null)
   const hasCalories = series.some((p) => p.calories > 0)
   const todayMeals = useMemo(() => (meals ?? []).filter((m) => m.date === day), [meals, day])
+  const stats = useMemo(() => healthPeriodStats(keys, logs ?? [], meals ?? []), [keys, logs, meals])
+  const mealDays = useMemo(() => mealsByDay(meals ?? []), [meals])
+  const isToday = period === 'today'
+  const span = SPAN[period]
+  const avgTag = stats.avgMood != null ? moodFromScore(stats.avgMood) : null
+  const avgSleep = stats.avgSleepMinutes != null ? splitSleep(stats.avgSleepMinutes) : null
+  const nothingLogged = logs !== null && (!calEnabled || meals !== null) && !stats.moodDays && !stats.sleepDays && !stats.mealDays
 
   return (
     <div className="animate-in">
       <PageHeader title="Health" description="Log how you feel today and see your week." />
+      <div className="mb-5 max-w-full overflow-x-auto">
+        <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
+      </div>
       {error && (
         <div className="mb-4">
           <Alert variant="danger">{error}</Alert>
         </div>
       )}
-      {today === undefined ? <Skeleton className="h-64" /> : <TodayForm key={`${uid}-${day}`} uid={uid} day={day} live={today ?? {}} />}
+      {isToday && (today === undefined ? <Skeleton className="h-64" /> : <TodayForm key={`${uid}-${day}`} uid={uid} day={day} live={today ?? {}} />)}
+      {!isToday &&
+        (logs === null ? (
+          <Skeleton className="h-40" />
+        ) : (
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Averages</h2>
+            {nothingLogged ? (
+              <p className="mt-2 text-sm text-muted-foreground">{emptyPeriodText(period)} Try another period.</p>
+            ) : (
+              <div className={`mt-4 grid grid-cols-2 gap-3 ${calEnabled ? 'md:grid-cols-4' : ''}`}>
+                <Stat icon={Smile} label="Mood" value={stats.avgMood != null ? `${stats.avgMood}/10` : '-'} hint={avgTag ? `${MOOD_LABELS[avgTag]}, ${daysHint(stats.moodDays)}` : daysHint(stats.moodDays)} />
+                <Stat icon={Moon} label="Sleep" value={avgSleep ? `${avgSleep.hours}h ${avgSleep.minutes}m` : '-'} hint={daysHint(stats.sleepDays)} />
+                {calEnabled && (
+                  <>
+                    <Stat icon={Flame} label="Calories" value={meals === null ? '...' : kcal(stats.totalCalories)} hint="total" />
+                    <Stat icon={Utensils} label="Daily average" value={stats.avgDailyCalories != null ? kcal(stats.avgDailyCalories) : '-'} hint={daysHint(stats.mealDays)} />
+                  </>
+                )}
+              </div>
+            )}
+          </Card>
+        ))}
       {cal === null ? (
         <Skeleton className="mt-5 h-48" />
       ) : (
-        calEnabled && (
+        calEnabled &&
+        isToday && (
           <>
             {mealError && (
               <div className="mt-5">
@@ -279,8 +349,8 @@ export function HealthView({ uid }: { uid: string }) {
         )
       )}
       <Card className="mt-5">
-        <h2 className="text-base font-semibold text-foreground">Mood this week</h2>
-        {week !== null && !hasMood && <p className="mt-2 text-sm text-muted-foreground">No mood logged in the last 7 days.</p>}
+        <h2 className="text-base font-semibold text-foreground">Mood {span.title}</h2>
+        {logs !== null && !hasMood && <p className="mt-2 text-sm text-muted-foreground">No mood logged {span.empty}</p>}
         {hasMood && (
           <div className="mt-4">
             <MoodWeekChart points={series} />
@@ -289,11 +359,47 @@ export function HealthView({ uid }: { uid: string }) {
       </Card>
       {calEnabled && (
         <Card className="mt-5">
-          <h2 className="text-base font-semibold text-foreground">Calories this week</h2>
-          {meals !== null && !hasCalories && <p className="mt-2 text-sm text-muted-foreground">No meals logged in the last 7 days.</p>}
+          <h2 className="text-base font-semibold text-foreground">Calories {span.title}</h2>
+          {meals !== null && !hasCalories && <p className="mt-2 text-sm text-muted-foreground">No meals logged {span.empty}</p>}
           {hasCalories && (
             <div className="mt-4">
               <CaloriesWeekChart points={series} goal={cal?.goal} />
+            </div>
+          )}
+        </Card>
+      )}
+      {calEnabled && !isToday && (
+        <Card className="mt-5">
+          <h2 className="text-base font-semibold text-foreground">Meals {span.title}</h2>
+          {mealError && (
+            <div className="mt-3">
+              <Alert variant="danger">{mealError}</Alert>
+            </div>
+          )}
+          {meals === null ? (
+            <Skeleton className="mt-4 h-24" />
+          ) : mealDays.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No meals logged {span.empty}</p>
+          ) : (
+            <div className="mt-4 grid gap-4">
+              {mealDays.map((g) => (
+                <section key={g.date} aria-label={dayLabel(g.date)}>
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
+                    <h3 className="text-sm font-medium text-foreground">{dayLabel(g.date)}</h3>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{kcal(g.total)}</span>
+                  </div>
+                  <ul className="mt-2 grid gap-1.5">
+                    {g.meals.map((m) => (
+                      <li key={m.id} className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="min-w-0 truncate text-foreground">
+                          <span className="text-muted-foreground">{MEAL_TYPE_LABELS[m.mealType]}:</span> {m.description}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{kcal(m.totalCalories)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
             </div>
           )}
         </Card>

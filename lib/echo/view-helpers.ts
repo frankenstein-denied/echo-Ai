@@ -1,4 +1,5 @@
-import { periodRange, type Period } from './period'
+import { periodDates, periodRange, type Period } from './period'
+import { isMoodTag, MOOD_SCORES } from './health-helpers'
 
 // Pure helpers for the Notes / Goals / Reminders / Health views (no Firebase imports so they are unit-testable).
 
@@ -61,16 +62,83 @@ export type WeekPoint = { date: string; label: string; mood: number | null }
 
 // Last 7 local days ending at `today` (YYYY-MM-DD), oldest first; missing days have mood null.
 export function lastSevenDays(today: string, logs: { date: string; mood?: number }[]): WeekPoint[] {
-  const [y, m, d] = today.split('-').map(Number)
-  const byDate = new Map(logs.map((l) => [l.date, l.mood]))
-  const out: WeekPoint[] = []
-  for (let i = 6; i >= 0; i--) {
-    const day = new Date(y, m - 1, d - i)
-    const key = localDateKey(day)
-    const mood = byDate.get(key)
-    out.push({ date: key, label: day.toLocaleDateString('en-US', { weekday: 'short' }), mood: typeof mood === 'number' ? mood : null })
-  }
+  return chartDays(daysEndingOn(today, 7), logs)
+}
+
+const parseKey = (key: string) => {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// The `count` local date keys ending on `today` (YYYY-MM-DD), oldest first.
+function daysEndingOn(today: string, count: number): string[] {
+  const t = parseKey(today)
+  const out: string[] = []
+  for (let i = count - 1; i >= 0; i--) out.push(localDateKey(new Date(t.getFullYear(), t.getMonth(), t.getDate() - i)))
   return out
+}
+
+/** Chart points for the given date keys: weekday labels for up to 7 days, short dates ("Nov 3") beyond that. */
+export function chartDays(keys: string[], logs: { date: string; mood?: number }[]): WeekPoint[] {
+  const byDate = new Map(logs.map((l) => [l.date, l.mood]))
+  const fmt: Intl.DateTimeFormatOptions = keys.length <= 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' }
+  return keys.map((key) => {
+    const mood = byDate.get(key)
+    return { date: key, label: parseKey(key).toLocaleDateString('en-US', fmt), mood: typeof mood === 'number' ? mood : null }
+  })
+}
+
+export const HEALTH_ALL_DAYS = 90
+
+/** Date keys the Health charts cover: today = the last 7 days (unchanged), week/month = the calendar period, all = the last 90 days. */
+export function healthPeriodDates(period: Period, now: Date = new Date()): string[] {
+  if (period === 'today') return daysEndingOn(localDateKey(now), 7)
+  if (period === 'all') return daysEndingOn(localDateKey(now), HEALTH_ALL_DAYS)
+  return periodDates(period, now)
+}
+
+export type HealthPeriodStats = { avgMood: number | null; moodDays: number; avgSleepMinutes: number | null; sleepDays: number; totalCalories: number; avgDailyCalories: number | null; mealDays: number }
+
+/** Averages over the days in `dates` that have data (mood falls back to the tag's score; calories over days with meals). */
+export function healthPeriodStats(dates: string[], logs: { date: string; mood?: unknown; moodTag?: unknown; sleepMinutes?: unknown }[], meals: { date: string; totalCalories: number }[]): HealthPeriodStats {
+  const inDates = new Set(dates)
+  let moodSum = 0
+  let moodDays = 0
+  let sleepSum = 0
+  let sleepDays = 0
+  for (const l of logs) {
+    if (!inDates.has(l.date)) continue
+    const mood = typeof l.mood === 'number' && Number.isFinite(l.mood) ? l.mood : isMoodTag(l.moodTag) ? MOOD_SCORES[l.moodTag] : null
+    if (mood != null) {
+      moodSum += mood
+      moodDays++
+    }
+    if (typeof l.sleepMinutes === 'number' && Number.isFinite(l.sleepMinutes)) {
+      sleepSum += l.sleepMinutes
+      sleepDays++
+    }
+  }
+  const perDay = new Map<string, number>()
+  for (const m of meals) if (inDates.has(m.date)) perDay.set(m.date, (perDay.get(m.date) ?? 0) + (m.totalCalories || 0))
+  const totalCalories = [...perDay.values()].reduce((a, b) => a + b, 0)
+  return {
+    avgMood: moodDays ? Math.round((moodSum / moodDays) * 10) / 10 : null,
+    moodDays,
+    avgSleepMinutes: sleepDays ? Math.round(sleepSum / sleepDays) : null,
+    sleepDays,
+    totalCalories,
+    avgDailyCalories: perDay.size ? Math.round(totalCalories / perDay.size) : null,
+    mealDays: perDay.size,
+  }
+}
+
+/** Meals grouped by date, newest day first; order within a day is kept. */
+export function mealsByDay<T extends { date: string; totalCalories: number }>(meals: T[]): { date: string; total: number; meals: T[] }[] {
+  const groups = new Map<string, T[]>()
+  for (const m of meals) groups.set(m.date, [...(groups.get(m.date) ?? []), m])
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([date, ms]) => ({ date, total: ms.reduce((s, m) => s + (m.totalCalories || 0), 0), meals: ms }))
 }
 
 export function splitSleep(minutes: number | undefined): { hours: number; minutes: number } {
