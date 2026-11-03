@@ -5,6 +5,7 @@ const PROFILE_MAX = 1500
 const RECENT_MAX = 10
 const RECENT_TEXT_MAX = 500
 const LABELS_MAX = 40
+export const TRAIT_SLOTS = 10
 const LABEL_LEN = 60
 const CHECK_IN_PREFIX = 'Check-in time:'
 
@@ -56,10 +57,13 @@ export function buildContext(profile: ProfileInput, messages: MessageInput[], me
     .filter((m) => m.text.trim())
     .slice(-RECENT_MAX)
     .map((m) => ({ role: m.role, text: m.text.trim().slice(0, RECENT_TEXT_MAX) }))
-  const memoryLabels = [...memories]
-    .filter((m) => m.label.trim())
-    .sort((a, b) => (b.mentions ?? 1) - (a.mentions ?? 1) || (b.lastSeenAt?.toMillis() ?? 0) - (a.lastSeenAt?.toMillis() ?? 0))
-    .slice(0, LABELS_MAX)
+  const byStrength = (a: MemoryInputLike, b: MemoryInputLike) => (b.mentions ?? 1) - (a.mentions ?? 1) || (b.lastSeenAt?.toMillis() ?? 0) - (a.lastSeenAt?.toMillis() ?? 0)
+  const named = memories.filter((m) => m.label.trim())
+  // Reserve slots for traits so high-mention topics never crowd them out.
+  const traits = named.filter((m) => m.type === 'trait').sort(byStrength).slice(0, TRAIT_SLOTS)
+  const others = named.filter((m) => m.type !== 'trait').sort(byStrength).slice(0, LABELS_MAX - traits.length)
+  const memoryLabels = [...traits, ...others]
+    .sort(byStrength)
     .map((m) => ({ label: m.label.trim().slice(0, LABEL_LEN), type: m.type, mentions: m.mentions ?? 1 }))
   return { profile: buildProfileSummary(profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors: connectors.map(({ id, status }) => ({ id, status })) } : {}) }
 }

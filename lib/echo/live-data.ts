@@ -57,8 +57,14 @@ export function makeReader(uid: string, timeZone: string): ReadFn {
       case 'get_health':
         return shapeHealth(await health(uid, 14), args.days, localDate(now, timeZone))
       case 'get_memories': {
-        const snap = await getDocs(query(memoriesCol(uid), orderBy('mentions', 'desc'), limit(200)))
-        return shapeMemories(snap.docs.map((d) => ({ ...d.data(), id: d.id })), args.query)
+        // Traits come from their own equality-only query so the top-200 cap never hides them.
+        const [snap, traitSnap] = await Promise.all([
+          getDocs(query(memoriesCol(uid), orderBy('mentions', 'desc'), limit(200))),
+          getDocs(query(memoriesCol(uid), where('type', '==', 'trait'), limit(20))),
+        ])
+        const byId = new Map<string, Record<string, unknown> & { id: string }>()
+        for (const d of [...snap.docs, ...traitSnap.docs]) byId.set(d.id, { ...d.data(), id: d.id })
+        return shapeMemories([...byId.values()] as Parameters<typeof shapeMemories>[0], args.query)
       }
     }
   }

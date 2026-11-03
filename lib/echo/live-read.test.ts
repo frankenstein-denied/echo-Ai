@@ -119,6 +119,12 @@ describe('shapeMemories', () => {
     expect(shapeMemories(mems, 'knee').map((m) => m.label)).toEqual(['Mama', 'Knee'])
     expect(shapeMemories(mems, 'person').map((m) => m.label)).toEqual(['Mama'])
   })
+  it('personality queries return trait memories', () => {
+    const withTrait = [...mems, { id: 'trait-owl', label: 'Night owl', type: 'trait', mentions: 1 }]
+    for (const q of ['personality', ' Personality Traits ', 'TRAITS', 'trait']) {
+      expect(shapeMemories(withTrait, q).map((m) => m.label)).toEqual(['Night owl'])
+    }
+  })
 })
 
 describe('buildSnapshot', () => {

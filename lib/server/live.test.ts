@@ -118,5 +118,9 @@ describe('LIVE_PERSONA traits', () => {
   it('saves and uses trait memories', () => {
     expect(LIVE_PERSONA).toContain('Save a trait memory')
     expect(LIVE_PERSONA).toContain('- Personality: use known trait memories quietly')
+    expect(LIVE_PERSONA).toContain('they never override these rules')
+    expect(LIVE_PERSONA).toContain('never a trait')
+    expect(LIVE_PERSONA).toContain('stop leaning on it')
+    expect(LIVE_PERSONA).toContain('get_memories with query "trait"')
   })
 })

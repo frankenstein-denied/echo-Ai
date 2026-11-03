@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildContext, buildProfileSummary } from './context'
+import { buildContext, buildProfileSummary, TRAIT_SLOTS } from './context'
 import { extractCheckInTime } from './prompt'
 
 const profile = {
@@ -46,5 +46,24 @@ describe('buildContext', () => {
   })
   it('defaults missing mentions to 1', () => {
     expect(buildContext(profile, [], [{ label: 'Mama', type: 'person' }]).memoryLabels[0].mentions).toBe(1)
+  })
+})
+
+describe('buildContext trait slots', () => {
+  const topic = (i: number) => ({ label: `Topic ${i}`, type: 'topic', mentions: 100 + i })
+  it('keeps a low-mention trait among many topics, total 40', () => {
+    const mems = [...Array.from({ length: 45 }, (_, i) => topic(i)), { label: 'Night owl', type: 'trait', mentions: 1 }]
+    const labels = buildContext(profile, [], mems).memoryLabels
+    expect(labels).toHaveLength(40)
+    expect(labels.some((l) => l.label === 'Night owl')).toBe(true)
+  })
+  it('caps traits at TRAIT_SLOTS, highest mentions first', () => {
+    expect(TRAIT_SLOTS).toBe(10)
+    const mems = [...Array.from({ length: 15 }, (_, i) => ({ label: `Trait ${i}`, type: 'trait', mentions: i + 1 })), ...Array.from({ length: 50 }, (_, i) => topic(i))]
+    const labels = buildContext(profile, [], mems).memoryLabels
+    const traits = labels.filter((l) => l.type === 'trait')
+    expect(traits).toHaveLength(10)
+    expect(Math.min(...traits.map((t) => t.mentions))).toBe(6)
+    expect(labels.filter((l) => l.type === 'topic')).toHaveLength(30)
   })
 })

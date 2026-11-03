@@ -12,7 +12,7 @@ Spec: none. User request (2026-11-03): "echo learns user personality via 2nd bra
 
 ## Global Constraints
 
-- New memory type string: `trait`. Graph/UI label: `Personality`. Node colour token: `--color-node-trait: #f87171;`.
+- New memory type string: `trait`. Graph/UI label: `Personality`. Node colour token: `--color-node-trait: #e879f9;`.
 - Every list/enum of memory types must include `trait` (types.ts, sanitize.ts, live-tools.ts MEMORY_TYPE_ENUM, prompt.ts response-schema enums, graph.ts NODE_TYPES, ui-classes.ts NodeType + NODE_BADGE_CLASSES, brain-view TYPE_LABEL, badge.tsx doc comment, firestore.rules memories type list).
 - Firestore rules change (memories type list) must be deployed by the user after merge; no other rules changes.
 - Tests: vitest (`npx vitest run <files>`); every existing test keeps passing; `npx tsc --noEmit` adds no new errors (one known pre-existing error in lib/echo/connectors.test.ts).

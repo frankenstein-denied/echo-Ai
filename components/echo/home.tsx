@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
-import { limit, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
@@ -301,15 +301,40 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [uid, pageId])
 
   useEffect(() => {
-    const q = query(memoriesCol(uid), orderBy('mentions', 'desc'), limit(40))
-    return onSnapshot(
-      q,
-      (snap) => setMemories(snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id }))),
-      (e) => {
-        console.error('memories listener', e)
-        setListenError((m) => m ?? 'Could not load your memories.')
+    // Top memories by mentions plus a separate equality-only trait query (no index), merged by id,
+    // so traits are never crowded out of KNOWN MEMORIES.
+    type Mem = Memory & { id: string }
+    let top: Mem[] = []
+    let traits: Mem[] = []
+    const publish = () => {
+      const byId = new Map<string, Mem>()
+      for (const m of [...top, ...traits]) byId.set(m.id, m)
+      setMemories([...byId.values()])
+    }
+    const onErr = (e: unknown) => {
+      console.error('memories listener', e)
+      setListenError((m) => m ?? 'Could not load your memories.')
+    }
+    const unsubTop = onSnapshot(
+      query(memoriesCol(uid), orderBy('mentions', 'desc'), limit(40)),
+      (snap) => {
+        top = snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id })) as Mem[]
+        publish()
       },
+      onErr,
     )
+    const unsubTraits = onSnapshot(
+      query(memoriesCol(uid), where('type', '==', 'trait'), limit(20)),
+      (snap) => {
+        traits = snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id })) as Mem[]
+        publish()
+      },
+      onErr,
+    )
+    return () => {
+      unsubTop()
+      unsubTraits()
+    }
   }, [uid])
 
   // Connector states and the sealed Web search tokens, kept in refs for the request and call paths.

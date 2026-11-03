@@ -39,7 +39,7 @@
   --color-node-task: #2dd4bf;
   --color-node-diary: #fb923c;
   --color-node-connector: #94a3b8;
-  --color-node-trait: #f87171;
+  --color-node-trait: #e879f9;
 
   /* Legacy aliases (shadcn button + older pages); map onto the tokens above. */
   --color-card: var(--color-surface);

@@ -116,8 +116,9 @@ export function shapeHealth(logs: HealthIn[], days: unknown, today: string) {
 export function shapeMemories(mems: MemoryIn[], query: unknown) {
   const q = clip(query, 60).toLowerCase()
   const byId = new Map(mems.map((m) => [m.id, m.label]))
+  const wantTraits = ['personality', 'personality traits', 'traits', 'trait'].includes(q.trim())
   const list = mems
-    .filter((m) => !q || m.label.toLowerCase().includes(q) || m.type === q || (m.links ?? []).some((id) => (byId.get(id) ?? '').toLowerCase().includes(q)))
+    .filter((m) => wantTraits ? m.type === 'trait' : !q || m.label.toLowerCase().includes(q) || m.type === q || (m.links ?? []).some((id) => (byId.get(id) ?? '').toLowerCase().includes(q)))
     .sort((a, b) => (b.mentions ?? 1) - (a.mentions ?? 1))
     .slice(0, 25)
   return capJson(
