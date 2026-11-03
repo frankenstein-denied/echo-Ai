@@ -7,6 +7,7 @@ import { addReminder, deleteReminder, remindersCol, routinesCol, setReminderDone
 import { remindersInPeriod, splitReminders } from '@/lib/echo/view-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 
 type ReminderRow = Reminder & { id: string; dueMs: number }
@@ -24,6 +25,7 @@ function defaultDueValue(): string {
 }
 
 export function RemindersView({ uid }: { uid: string }) {
+  const day = useDay()
   const [items, setItems] = useState<ReminderRow[] | null>(null)
   const [routines, setRoutines] = useState<(Routine & { id: string })[] | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -59,7 +61,7 @@ export function RemindersView({ uid }: { uid: string }) {
     )
   }, [uid])
 
-  const { upcoming, done } = useMemo(() => splitReminders(remindersInPeriod(items ?? [], period, new Date())), [items, period])
+  const { upcoming, done } = useMemo(() => splitReminders(remindersInPeriod(items ?? [], period, new Date())), [items, period, day])
 
   const run = async (fn: () => Promise<unknown>, fallback: string) => {
     setError('')
@@ -138,7 +140,7 @@ export function RemindersView({ uid }: { uid: string }) {
           ) : (
             <Card>
               <h2 className="text-base font-semibold text-foreground">Upcoming</h2>
-              <div className="mt-2">{upcoming.length === 0 ? <p className="py-3 text-sm text-muted-foreground">{done.length === 0 ? `${emptyPeriodText(period)} Pick another period.` : 'Nothing upcoming.'}</p> : upcoming.map(row)}</div>
+              <div className="mt-2">{upcoming.length === 0 ? <p className="py-3 text-sm text-muted-foreground">{done.length === 0 ? period === 'all' ? emptyPeriodText(period) : `${emptyPeriodText(period)} Pick another period.` : 'Nothing upcoming.'}</p> : upcoming.map(row)}</div>
               {done.length > 0 && (
                 <>
                   <h2 className="mt-6 text-base font-semibold text-foreground">Done</h2>

@@ -83,6 +83,11 @@ export function isFromToday(createdAtMs: number | undefined, now: Date = new Dat
   return localDateKey(new Date(createdAtMs)) === localDateKey(now)
 }
 
+/** The page to land on: the first (most recently updated) page created today, or null for the fresh empty today state. */
+export function pickTodayPage<T extends { createdAt?: { toMillis?: () => number } | null }>(pages: T[], now: Date = new Date()): T | null {
+  return pages.find((p) => isFromToday(p.createdAt?.toMillis?.(), now)) ?? null
+}
+
 /** Whether an open app should roll over to the fresh "today" page: the day changed since the page was opened, it is not a today page, nothing is live, and a page is open. */
 export function shouldStartNewDay(
   s: { openedDayKey: string; pageCreatedMs: number | undefined; callActive: boolean; selId: string | null },

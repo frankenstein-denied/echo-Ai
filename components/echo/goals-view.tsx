@@ -7,6 +7,7 @@ import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/fire
 import { areaShares, debounce, goalsInPeriod, type Debounced } from '@/lib/echo/view-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 
 type GoalRow = Goal & { id: string }
@@ -119,6 +120,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
 }
 
 export function GoalsView({ uid }: { uid: string }) {
+  const day = useDay()
   const [goals, setGoals] = useState<GoalRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
@@ -145,9 +147,9 @@ export function GoalsView({ uid }: { uid: string }) {
 
   const shown = useMemo(
     () => goalsInPeriod((goals ?? []).map((g) => ({ ...g, createdMs: g.createdAt?.toMillis?.() ?? null, updatedMs: g.updatedAt?.toMillis?.() ?? null })), period, new Date()),
-    [goals, period],
+    [goals, period, day],
   )
-  const shares = useMemo(() => areaShares(shown), [shown])
+  const shares = useMemo(() => areaShares(goals ?? []), [goals])
   const now = new Date()
   const doy = dayOfYear(now)
   const yearDays = dayOfYear(new Date(now.getFullYear(), 11, 31))
@@ -203,7 +205,7 @@ export function GoalsView({ uid }: { uid: string }) {
       <Card className="mb-5">
         <h2 className="text-base font-semibold text-foreground">Your year in view</h2>
         {shares.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">{goals && goals.length > 0 ? emptyPeriodText(period) : 'Add goals and their areas will appear here.'}</p>
+          <p className="mt-2 text-sm text-muted-foreground">Add goals and their areas will appear here.</p>
         ) : (
           <>
             <div className="mt-4 flex h-3 gap-1">
@@ -240,7 +242,7 @@ export function GoalsView({ uid }: { uid: string }) {
       ) : goals.length === 0 ? (
         <EmptyState icon={Target} title="No goals yet" description="Add one above, or tell Echo a goal." />
       ) : shown.length === 0 ? (
-        <EmptyState icon={Target} title="No goals here" description={`${emptyPeriodText(period)} Pick another period.`} action={<Button variant="secondary" onClick={() => setPeriod('all')}>Show all</Button>} />
+        <EmptyState icon={Target} title="No goals here" description={period === 'all' ? emptyPeriodText(period) : `${emptyPeriodText(period)} Pick another period.`} action={<Button variant="secondary" onClick={() => setPeriod('all')}>Show all</Button>} />
       ) : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((g) => (

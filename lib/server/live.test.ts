@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Modality } from '@google/genai'
-import { buildLiveConfig, buildLiveSystemInstruction, DEFAULT_LIVE_MODEL, liveModel, mintLiveToken, parseLiveSessionRequest, SILENCE_MS } from './live'
+import { LIVE_PERSONA, buildLiveConfig, buildLiveSystemInstruction, DEFAULT_LIVE_MODEL, liveModel, mintLiveToken, parseLiveSessionRequest, SILENCE_MS } from './live'
 
 const body = (over: Record<string, unknown> = {}) => ({
   clientTime: '2026-10-25T14:00:00+08:00',
@@ -98,5 +98,11 @@ describe('liveModel / mintLiveToken', () => {
       },
     })
     await expect(mintLiveToken({ authTokens: { create: async () => ({}) } } as never, 'm', {})).rejects.toThrow()
+  })
+})
+
+describe('LIVE_PERSONA interests', () => {
+  it('judges interests from the user ask only', () => {
+    expect(LIVE_PERSONA).toContain('never from the search results')
   })
 })

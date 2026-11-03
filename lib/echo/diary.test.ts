@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunk, defaultPageTitle, filterPages, isPermissionDenied, normalizeTitle, planMigration, isFromToday, previewOf, relativeTime, shouldStartNewDay, sortPages } from './diary'
+import { chunk, defaultPageTitle, filterPages, isPermissionDenied, normalizeTitle, planMigration, isFromToday, pickTodayPage, previewOf, relativeTime, shouldStartNewDay, sortPages } from './diary'
 
 const t = (n: number) => ({ toMillis: () => n })
 
@@ -66,6 +66,15 @@ describe('new day', () => {
     expect(isFromToday(new Date(2026, 10, 3, 0, 1).getTime(), now)).toBe(true)
     expect(isFromToday(new Date(2026, 10, 2, 23, 59).getTime(), now)).toBe(false)
     expect(isFromToday(undefined, now)).toBe(false)
+  })
+  it('pickTodayPage prefers the most recently updated page created today, wherever it sits', () => {
+    const pg = (id: string, c: Date) => ({ id, createdAt: { toMillis: () => c.getTime() } })
+    const old = pg('old', new Date(2026, 10, 1, 9))
+    const t1 = pg('t1', new Date(2026, 10, 3, 1))
+    const t2 = pg('t2', new Date(2026, 10, 3, 2))
+    expect(pickTodayPage([old, t1, t2], now)?.id).toBe('t1')
+    expect(pickTodayPage([old], now)).toBeNull()
+    expect(pickTodayPage([], now)).toBeNull()
   })
   it('shouldStartNewDay only on a rollover with an old idle page', () => {
     const base = { openedDayKey: '2026-11-02', pageCreatedMs: new Date(2026, 10, 2, 8).getTime(), callActive: false, selId: 'p' }

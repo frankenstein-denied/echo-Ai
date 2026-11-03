@@ -6,7 +6,7 @@ import type { User } from 'firebase/auth'
 import { limit, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { ArrowLeft, BookOpen, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, pageMemoryImpact, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
-import { filterPages, isFromToday, isPermissionDenied, normalizeTitle, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
+import { filterPages, isFromToday, isPermissionDenied, normalizeTitle, pickTodayPage, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
 import { pageDeleteBody } from '@/lib/echo/links'
 import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
@@ -307,14 +307,15 @@ export function DiaryView({
     onOpenPageHandled?.()
   }, [openPageId, pages, onOpenPageHandled])
 
-  // Land on the most recently updated page once.
+  // Land once on today's page (most recently updated one created today), else the fresh today state.
   useEffect(() => {
     if (auto || pages === null) return
     setAuto(true)
     openedDay.current = localDateKey(new Date())
     if (pages.length) {
       // Newest page from today: continue it. Otherwise show the fresh empty "today" state (page is created lazily).
-      if (isFromToday(pages[0].createdAt?.toMillis?.())) setSel((s) => (s.id ? s : { id: pages[0].id, key: s.key }))
+      const todayPage = pickTodayPage(pages)
+      if (todayPage) setSel((s) => (s.id ? s : { id: todayPage.id, key: s.key }))
       setMobileOpen(true)
     }
   }, [pages, auto])

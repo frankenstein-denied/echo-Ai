@@ -9,6 +9,7 @@ import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/
 import { filterByCategory, noteCategories, previewText, relativeDate, sortByUpdated } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Badge, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { NoteEditor } from './note-editor'
 import { Sheet, SheetItem } from './sheet'
 
@@ -50,6 +51,7 @@ function NoteCard({ note, onOpen }: { note: NoteRow; onOpen: () => void }) {
 }
 
 export function NotesView({ uid }: { uid: string }) {
+  const day = useDay()
   const [notes, setNotes] = useState<NoteRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
@@ -83,7 +85,7 @@ export function NotesView({ uid }: { uid: string }) {
   const visible = useMemo(() => {
     const withMs = (notes ?? []).map((n) => ({ ...n, createdMs: n.createdAt?.toMillis?.() ?? null, updatedMs: n.updatedAt?.toMillis?.() ?? null }))
     return filterByCategory(filterNotes(notesInPeriod(withMs, period, new Date()), search), activeCategory)
-  }, [notes, search, activeCategory, period])
+  }, [notes, search, activeCategory, period, day])
   const opened = openId ? notes?.find((n) => n.id === openId) ?? null : null
 
   const open = (id: string) => {

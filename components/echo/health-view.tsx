@@ -8,6 +8,7 @@ import { chartDays, debounce, healthPeriodDates, healthPeriodStats, localDateKey
 import { dailyTotals, MEAL_TYPE_LABELS, moodFromScore, MOOD_LABELS, moodScore, moodTagOf, type HealthWeekPoint, type MoodTag } from '@/lib/echo/health-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { Alert, Card, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { useDay } from './use-day'
 import { MoodPicker } from './health/mood-picker'
 import { CaloriesCard } from './health/calories-card'
 import { CaloriesWeekChart, MoodWeekChart } from './health/week-charts'
@@ -16,16 +17,6 @@ type Fields = Partial<Pick<HealthLog, 'mood' | 'moodTag' | 'sleepMinutes' | 'wat
 
 const ENERGIES: Energy[] = ['low', 'medium', 'high']
 const SLEEP_STEP = 30
-
-// Re-renders when the local day changes.
-function useDay(): string {
-  const [day, setDay] = useState(() => localDateKey(new Date()))
-  useEffect(() => {
-    const id = setInterval(() => setDay(localDateKey(new Date())), 60000)
-    return () => clearInterval(id)
-  }, [])
-  return day
-}
 
 type Edits = { moodTag?: MoodTag; energy?: Energy; water?: number; sleep?: { h: string; m: string } }
 type EditKey = 'mood' | 'energy' | 'water' | 'sleep'
@@ -318,7 +309,7 @@ export function HealthView({ uid }: { uid: string }) {
           <Card>
             <h2 className="text-base font-semibold text-foreground">Averages</h2>
             {nothingLogged ? (
-              <p className="mt-2 text-sm text-muted-foreground">{emptyPeriodText(period)} Try another period.</p>
+              <p className="mt-2 text-sm text-muted-foreground">{emptyPeriodText(period)}{period !== 'all' && ' Try another period.'}</p>
             ) : (
               <div className={`mt-4 grid grid-cols-2 gap-3 ${calEnabled ? 'md:grid-cols-4' : ''}`}>
                 <Stat icon={Smile} label="Mood" value={stats.avgMood != null ? `${stats.avgMood}/10` : '-'} hint={avgTag ? `${MOOD_LABELS[avgTag]}, ${daysHint(stats.moodDays)}` : daysHint(stats.moodDays)} />
