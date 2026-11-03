@@ -242,6 +242,13 @@ describe('memories, reply, trace', () => {
     expect(out).toEqual([{ label: 'Rough day', type: 'topic', linkIds: [] }])
   })
 
+  it('keeps a trait-type memory and still rejects unknown types', () => {
+    const out = sanitizeEchoResponse({ reply: 'x', actions: [], memories: [{ label: 'Night Owl', type: 'trait' }], trace: [] }, NOW, '09:00', []).memories
+    expect(out).toEqual([{ label: 'Night Owl', type: 'trait', linkIds: [] }])
+    const bad = sanitizeEchoResponse({ reply: 'x', actions: [], memories: [{ label: 'Night Owl', type: 'bogus' }], trace: [] }, NOW, '09:00', []).memories
+    expect(bad.every((m) => m.type !== ('bogus' as string))).toBe(true)
+  })
+
   describe('link resolution', () => {
     const ctx = [
       { label: 'Alex', type: 'person', mentions: 2 },

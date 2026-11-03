@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { RESPONSE_SCHEMA } from './prompt'
 import { SEARCH_NOT_CONNECTED_REPLY } from './search-replies'
 import { CONFIRM_WITHIN_MS, executeToolCalls, LIVE_TOOL_DECLARATIONS, LIVE_TOOL_NAMES, mapToolCall, type ToolContext } from './live-tools'
 
@@ -10,6 +11,21 @@ describe('LIVE_TOOL_DECLARATIONS', () => {
     expect(LIVE_TOOL_DECLARATIONS.some((d) => /connector/i.test(d.name ?? ''))).toBe(false)
     const reminder = LIVE_TOOL_DECLARATIONS.find((d) => d.name === 'add_reminder')
     expect(reminder?.parameters?.required).toEqual(['title', 'dueAt'])
+  })
+})
+
+describe('trait type in tool and router schemas', () => {
+  it('save_memories type enum contains trait', () => {
+    const decl = LIVE_TOOL_DECLARATIONS.find((d) => d.name === 'save_memories')
+    expect(JSON.stringify(decl?.parameters)).toContain('"trait"')
+  })
+  it('save_memories description asks for traits', () => {
+    const decl = LIVE_TOOL_DECLARATIONS.find((d) => d.name === 'save_memories')
+    expect(decl?.description).toContain('Include traits')
+  })
+  it('router response schema memory type enums contain trait', () => {
+    const json = JSON.stringify(RESPONSE_SCHEMA)
+    expect(json.match(/"trait"/g)?.length).toBeGreaterThanOrEqual(2)
   })
 })
 

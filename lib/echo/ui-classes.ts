@@ -1,5 +1,5 @@
 export type BadgeVariant = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
-export type NodeType = 'person' | 'topic' | 'interest' | 'goal' | 'health' | 'task' | 'diary' | 'connector'
+export type NodeType = 'person' | 'topic' | 'interest' | 'goal' | 'health' | 'task' | 'diary' | 'connector' | 'trait'
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md'
 
@@ -21,6 +21,7 @@ export const NODE_BADGE_CLASSES: Record<NodeType, string> = {
   task: 'text-node-task border-node-task/40',
   diary: 'text-node-diary border-node-diary/40',
   connector: 'text-node-connector border-node-connector/40',
+  trait: 'text-node-trait border-node-trait/40',
 }
 
 export function badgeClass(variant: BadgeVariant = 'neutral', nodeType?: NodeType): string {

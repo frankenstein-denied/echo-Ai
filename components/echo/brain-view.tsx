@@ -15,6 +15,7 @@ import {
   NODE_TYPES,
   relativeTime,
   searchNodes,
+  traitStrength,
   typeCounts,
   type GraphNode,
   type GraphNodeType,
@@ -38,6 +39,7 @@ const TYPE_LABEL: Record<GraphNodeType, string> = {
   task: 'Tasks',
   diary: 'Diary pages',
   connector: 'Connectors',
+  trait: 'Personality',
 }
 const typeColor = (t: GraphNodeType) => `var(--color-node-${t})`
 const MAX_TICKS = 400
@@ -506,6 +508,12 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <dt className="text-xs text-muted-foreground">{isPage ? 'Last message' : 'Last seen'}</dt>
           <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
         </div>
+        {selected.type === 'trait' && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Strength</dt>
+            <dd className="text-foreground">{traitStrength(selected.mentions ?? 1)}</dd>
+          </div>
+        )}
       </dl>
       <div>
         <h3 className="mb-1 text-sm font-medium text-foreground">Connected ({connected.length})</h3>

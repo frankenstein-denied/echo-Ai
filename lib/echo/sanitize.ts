@@ -39,7 +39,7 @@ export const LIMITS = {
   itemHealth: 200,
 } as const
 
-const MEMORY_TYPES: MemoryType[] = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
+const MEMORY_TYPES: MemoryType[] = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic', 'trait']
 const ENERGIES: EchoEnergy[] = ['low', 'medium', 'high']
 const FUZZY_HOURS: Record<string, string> = { morning: '09:00', afternoon: '14:00', evening: '20:00', tonight: '20:00' }
 

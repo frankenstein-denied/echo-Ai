@@ -260,7 +260,7 @@ service cloud.firestore {
           return d.keys().hasOnly(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt', 'pages'])
             && d.keys().hasAll(['label', 'type', 'links', 'mentions', 'createdAt', 'lastSeenAt'])
             && isString(d.label, 500)
-            && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
+            && d.type in ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic', 'trait']
             && d.links is list && d.links.size() <= 50
             && (!('pages' in d) || (d.pages is list && d.pages.size() <= 50))
             && d.mentions is int && d.mentions >= 1

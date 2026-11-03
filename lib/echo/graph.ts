@@ -1,6 +1,6 @@
 // Pure graph helpers for the 2nd Brain view (no Firebase / DOM imports so they are unit-testable).
 
-export const NODE_TYPES = ['person', 'topic', 'interest', 'goal', 'health', 'task', 'diary', 'connector'] as const
+export const NODE_TYPES = ['person', 'topic', 'interest', 'goal', 'health', 'task', 'diary', 'connector', 'trait'] as const
 export type GraphNodeType = (typeof NODE_TYPES)[number]
 
 export type MemoryDoc = {
@@ -19,6 +19,11 @@ export type GraphEdge = { source: string; target: string }
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
 
 export const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+
+/** A personality trait is 'Confident' once it has been mentioned at least twice; otherwise it is still being learned. */
+export function traitStrength(mentions: number): 'Confident' | 'Still learning' {
+  return Number.isFinite(mentions) && mentions >= 2 ? 'Confident' : 'Still learning'
+}
 
 export function nodeRadius(mentions: number): number {
   const m = Number.isFinite(mentions) ? Math.max(1, mentions) : 1

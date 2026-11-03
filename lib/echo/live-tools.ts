@@ -8,7 +8,7 @@ import type { EchoAction, EchoMemoryLabel, EchoResponse, MemoryInput } from './t
 // Function tools for Echo calls. They mirror the router's EchoAction variants plus memories;
 // connectors have no tool (Echo teaches verbally); web_search reads the web through /api/search.
 
-const MEMORY_TYPE_ENUM = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic']
+const MEMORY_TYPE_ENUM = ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic', 'trait']
 const MOOD_TAG_ENUM = ['great', 'happy', 'okay', 'tired', 'sad', 'anxious', 'angry']
 const MEAL_TYPE_ENUM = ['breakfast', 'lunch', 'dinner', 'snack']
 const ref = (kind: string, example: string) => s(`ref of the ${kind} from YOUR ITEMS (or a ref returned by a save in this call), e.g. ${example}`)
@@ -94,7 +94,7 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'save_memories',
-    description: 'Remember the people, interests, topics and recurring activities from what the user said, linked to each other and to known memories.',
+    description: 'Remember the people, interests, topics and recurring activities from what the user said, linked to each other and to known memories. Include traits: lasting facts about who the user is, from what they say about themselves.',
     parameters: {
       type: Type.OBJECT,
       properties: {

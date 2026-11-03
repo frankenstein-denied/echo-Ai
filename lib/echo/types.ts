@@ -1,7 +1,7 @@
 import type { ConnectorStatus } from './connectors'
 export type EchoCategory = 'note' | 'goal' | 'health' | 'reminder' | 'connector' | 'general'
 
-export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector' | 'interest' | 'topic'
+export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector' | 'interest' | 'topic' | 'trait'
 
 export type EchoEnergy = 'low' | 'medium' | 'high'
 

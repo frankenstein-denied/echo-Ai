@@ -1,6 +1,6 @@
 /**
  * Badge props: variant 'neutral'|'primary'|'success'|'warning'|'danger'|'info' (default primary for legacy callers),
- *   type?: 2nd Brain node type ('person'|'topic'|'interest'|'goal'|'health'|'task'|'diary'|'connector') overrides variant colours,
+ *   type?: 2nd Brain node type ('person'|'topic'|'interest'|'goal'|'health'|'task'|'diary'|'connector'|'trait') overrides variant colours,
  *   children, violet?: legacy boolean (maps to info). Sentence case, 12px, 6px radius.
  */
 import type { ReactNode } from 'react'
