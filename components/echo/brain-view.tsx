@@ -38,6 +38,7 @@ const TYPE_LABEL: Record<GraphNodeType, string> = {
   task: 'Tasks',
   diary: 'Diary pages',
   connector: 'Connectors',
+  trait: 'Personality',
 }
 const typeColor = (t: GraphNodeType) => `var(--color-node-${t})`
 const MAX_TICKS = 400

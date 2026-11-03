@@ -202,7 +202,7 @@ export const RESPONSE_SCHEMA = {
         type: Type.OBJECT,
         properties: {
           label: str('max 60 characters'),
-          type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic'] },
+          type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic', 'trait'] },
           links: {
             type: Type.ARRAY,
             description: 'related memories from this response or the known list, exact label and type',
@@ -210,7 +210,7 @@ export const RESPONSE_SCHEMA = {
               type: Type.OBJECT,
               properties: {
                 label: str('exact label of the related memory'),
-                type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic'] },
+                type: { type: Type.STRING, enum: ['diary', 'task', 'goal', 'health', 'person', 'connector', 'interest', 'topic', 'trait'] },
               },
               required: ['label', 'type'],
             },

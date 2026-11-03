@@ -1,6 +1,6 @@
 // Pure graph helpers for the 2nd Brain view (no Firebase / DOM imports so they are unit-testable).
 
-export const NODE_TYPES = ['person', 'topic', 'interest', 'goal', 'health', 'task', 'diary', 'connector'] as const
+export const NODE_TYPES = ['person', 'topic', 'interest', 'goal', 'health', 'task', 'diary', 'connector', 'trait'] as const
 export type GraphNodeType = (typeof NODE_TYPES)[number]
 
 export type MemoryDoc = {

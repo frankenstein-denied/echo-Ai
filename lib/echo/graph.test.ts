@@ -75,4 +75,8 @@ describe('graph', () => {
       expect(g.nodes.find((n) => n.id === 'diary-x')!.type).toBe('diary')
     })
   })
+  it('buildGraph keeps trait nodes as trait (not topic)', () => {
+    const g = buildGraph([{ id: 'trait-night-owl', label: 'Night Owl', type: 'trait', links: [], mentions: 2 }])
+    expect(g.nodes[0].type).toBe('trait')
+  })
 })
