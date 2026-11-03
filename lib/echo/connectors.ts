@@ -1,6 +1,6 @@
 // Connector catalog and state resolution. No Firebase/SDK imports: shared by browser and server.
 
-export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'spotify' | 'google-calendar' | 'gmail' | 'github' | 'notion'
+export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'music' | 'google-calendar' | 'gmail' | 'github' | 'notion'
 export type ConnectorStatus = 'connected' | 'not_connected' | 'coming_soon'
 
 export type ConnectorDef = {
@@ -18,7 +18,7 @@ export const CONNECTORS: readonly ConnectorDef[] = [
   { id: 'nutrition', name: 'Nutrition (USDA)', description: 'Look up calories and macros in the USDA food database.', kind: 'builtin', available: true, defaultConnected: true, topics: 'food calories and macros' },
   { id: 'web-search', name: 'Web search (Tavily)', description: 'Search the web when Echo and your connectors do not know.', kind: 'oauth', available: true, defaultConnected: false, topics: 'current events and facts from the web' },
   { id: 'weather', name: 'Weather', description: 'Local forecast via Open-Meteo. No account needed.', kind: 'builtin', available: true, defaultConnected: false, topics: 'weather and forecasts' },
-  { id: 'spotify', name: 'Spotify', description: 'Understand listening patterns.', kind: 'oauth', available: false, defaultConnected: false, topics: 'music and listening history' },
+  { id: 'music', name: 'Music (Last.fm / ListenBrainz)', description: 'See what you listen to on Last.fm or ListenBrainz (ArchiveTune can scrobble there).', kind: 'oauth', available: true, defaultConnected: false, topics: 'music and listening history' },
   { id: 'google-calendar', name: 'Google Calendar', description: 'Read and create events.', kind: 'oauth', available: false, defaultConnected: false, topics: 'calendar events and schedule' },
   { id: 'gmail', name: 'Gmail', description: 'Summarize and draft emails.', kind: 'oauth', available: false, defaultConnected: false, topics: 'email' },
   { id: 'github', name: 'GitHub', description: 'Read activity and commits.', kind: 'oauth', available: false, defaultConnected: false, topics: 'code activity and commits' },
@@ -29,14 +29,15 @@ export type ConnectorState = { id: ConnectorId; name: string; status: ConnectorS
 
 // A sign-in connector only counts as connected when its saved login is present: a doc that says connected but has
 // no `sealed` (e.g. a half-finished login) would show "Connected" while Echo can't use it.
-// Weather likewise needs its saved location (finite `lat` and `lon`).
-export function connectorStatuses(docs: { id: string; connected?: boolean; sealed?: unknown; lat?: unknown; lon?: unknown }[]): ConnectorState[] {
+// Weather likewise needs its saved location (finite `lat` and `lon`); Music needs a valid `service` and a `username`.
+export function connectorStatuses(docs: { id: string; connected?: boolean; sealed?: unknown; lat?: unknown; lon?: unknown; service?: unknown; username?: unknown }[]): ConnectorState[] {
   const byId = new Map(docs.map((d) => [d.id, d]))
   return CONNECTORS.map((c) => {
     const doc = byId.get(c.id)
     const flag = doc && typeof doc.connected === 'boolean' ? doc.connected : c.defaultConnected
     const hasLocation = Number.isFinite(doc?.lat) && Number.isFinite(doc?.lon) && typeof doc?.lat === 'number' && typeof doc?.lon === 'number'
-    const connected = flag && (c.id === 'weather' ? hasLocation : c.kind === 'builtin' || (typeof doc?.sealed === 'string' && doc.sealed.length > 0))
+    const hasMusic = (doc?.service === 'lastfm' || doc?.service === 'listenbrainz') && typeof doc?.username === 'string' && doc.username.trim().length > 0
+    const connected = flag && (c.id === 'weather' ? hasLocation : c.id === 'music' ? hasMusic : c.kind === 'builtin' || (typeof doc?.sealed === 'string' && doc.sealed.length > 0))
     const status: ConnectorStatus = !c.available ? 'coming_soon' : connected ? 'connected' : 'not_connected'
     return { id: c.id, name: c.name, status }
   })

@@ -31,6 +31,25 @@ export function formatListening({ recent, topArtists }: Listening): string {
   return lines.join('\n').slice(0, MUSIC_MAX_CHARS)
 }
 
+export type MusicService = 'lastfm' | 'listenbrainz'
+export const MUSIC_USERNAME_MAX = 100
+
+/** URL fragment the Last.fm callback hands back: `#music=lastfm:<encoded username>`. */
+export const musicFragment = (service: MusicService, username: string) => `#music=${service}:${encodeURIComponent(username)}`
+
+/** Parses that fragment; null for anything else (wrong prefix/service, empty, undecodable or oversized name). */
+export function parseMusicFragment(hash: string): { service: MusicService; username: string } | null {
+  const m = /^#music=lastfm:([^:]*)$/.exec(hash)
+  if (!m) return null
+  let username: string
+  try {
+    username = decodeURIComponent(m[1]).trim()
+  } catch {
+    return null
+  }
+  return username && username.length <= MUSIC_USERNAME_MAX ? { service: 'lastfm', username } : null
+}
+
 export const youtubeEmbedUrl = (id: string, autoplay: boolean) =>
   `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=${autoplay ? 1 : 0}`
 

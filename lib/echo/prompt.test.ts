@@ -69,13 +69,13 @@ describe('buildUserContents connectors and app guide', () => {
     expect(c).toContain('=== CONNECTORS')
     expect(c).toContain('- Web search (Tavily): connected — current events and facts from the web')
     expect(c).toContain('- Nutrition (USDA): not connected — food calories and macros')
-    expect(c).toContain('- Spotify: coming soon — music and listening history')
+    expect(c).toContain('- Gmail: coming soon — email')
   })
 
   it('uses catalog defaults when the browser sent no states, and never marks an unavailable connector connected', () => {
     expect(buildUserContents(req())).toContain('- Nutrition (USDA): connected')
     expect(buildUserContents(req())).toContain('- Web search (Tavily): not connected')
-    expect(buildUserContents(req([{ id: 'spotify', status: 'connected' }]))).toContain('- Spotify: coming soon')
+    expect(buildUserContents(req([{ id: 'gmail', status: 'connected' }]))).toContain('- Gmail: coming soon')
   })
 
   it('includes the APP GUIDE block', () => {

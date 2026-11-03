@@ -436,6 +436,16 @@ export async function applyEchoResponse(uid: string, pageId: string, res: EchoRe
   return { saved, failed, category, reply, messageId, sources: res.sources }
 }
 
+/** Music: asks the server for Last.fm's login URL. Throws a friendly message (never a raw one). */
+export async function startLastfmLogin(user: Pick<User, 'getIdToken'>, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const token = await user.getIdToken()
+  const res = await fetchWithTimeout('/api/connectors/music/lastfm/start', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }, 15000, fetchImpl)
+  const d = (await res.json().catch(() => null)) as { url?: unknown; error?: unknown } | null
+  if (res.ok && typeof d?.url === 'string') return d.url
+  if (d?.error === 'not_configured') throw new Error("Last.fm isn't set up yet.")
+  throw new Error(res.status === 401 ? 'Please sign in again.' : "Couldn't start the Last.fm login. Try again.")
+}
+
 /** Web search: asks the server for Tavily's login URL (POST /api/connectors/web-search/start). */
 export async function startTavilyLogin(user: Pick<User, 'getIdToken'>, fetchImpl: typeof fetch = fetch): Promise<string> {
   const token = await user.getIdToken()

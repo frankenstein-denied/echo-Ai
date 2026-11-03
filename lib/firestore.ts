@@ -64,7 +64,7 @@ export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source:
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
 export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
-export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number }
+export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number; service?: 'lastfm' | 'listenbrainz'; username?: string }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp; pages?: string[] }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
@@ -137,7 +137,7 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
   dueAt.setHours(Number.isFinite(hh) ? hh : 20, Number.isFinite(mm) ? mm : 30, 0, 0)
   batch.set(doc(remindersCol(uid)), { title: 'Daily check-in', dueAt: Timestamp.fromDate(dueAt), done: false, source: 'routine', createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
   batch.set(doc(routinesCol(uid)), { title: 'Daily check-in', cadence: 'Daily', confidence: 0.5, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
-  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['spotify', 'Spotify'], ['weather', 'Weather'], ['nutrition', 'Nutrition (USDA)'], ['web-search', 'Web search (Tavily)']]
+  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['music', 'Music (Last.fm / ListenBrainz)'], ['weather', 'Weather'], ['nutrition', 'Nutrition (USDA)'], ['web-search', 'Web search (Tavily)']]
   for (const [id, name] of connectors) {
     batch.set(doc(connectorsCol(uid), id), { name, connected: id === 'nutrition', updatedAt: serverTimestamp() } as never)
   }
@@ -173,6 +173,16 @@ export async function setWeatherLocation(uid: string, loc: { place: string; lat:
 /** Weather: disconnects and removes the saved location. */
 export async function disconnectWeather(uid: string): Promise<void> {
   await setDoc(doc(connectorsCol(uid), 'weather'), { name: 'Weather', connected: false, place: deleteField(), lat: deleteField(), lon: deleteField(), updatedAt: serverTimestamp() } as never, { merge: true })
+}
+
+/** Music: saves the Last.fm / ListenBrainz account and connects. Replaces the doc. */
+export async function setMusicAccount(uid: string, service: 'lastfm' | 'listenbrainz', username: string): Promise<void> {
+  await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (Last.fm / ListenBrainz)', connected: true, service, username: username.trim().slice(0, 100), updatedAt: serverTimestamp() } as never)
+}
+
+/** Music: disconnects and removes the saved account. */
+export async function disconnectMusic(uid: string): Promise<void> {
+  await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (Last.fm / ListenBrainz)', connected: false, updatedAt: serverTimestamp() } as never)
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {

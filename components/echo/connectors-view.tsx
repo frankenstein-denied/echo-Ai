@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { Apple, Calendar, CloudSun, FileText, GitBranch, Globe, Mail, Music, Plug, type LucideIcon } from 'lucide-react'
-import { connectorsCol, disconnectWeather, setConnectorConnected, setWeatherLocation } from '@/lib/firestore'
+import { connectorsCol, disconnectMusic, disconnectWeather, setConnectorConnected, setMusicAccount, setWeatherLocation } from '@/lib/firestore'
 import { searchPlaces, type Place } from '@/lib/echo/weather'
+import { listenbrainzUserExists, MUSIC_USERNAME_MAX, type MusicService } from '@/lib/echo/music'
 import { CONNECTORS, connectorStatuses, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { Alert, Badge, Button, Card, Input, PageHeader, Skeleton } from './ui'
 
@@ -12,7 +13,7 @@ const ICONS: Record<ConnectorId, LucideIcon> = {
   nutrition: Apple,
   'web-search': Globe,
   weather: CloudSun,
-  spotify: Music,
+  music: Music,
   'google-calendar': Calendar,
   gmail: Mail,
   github: GitBranch,
@@ -30,16 +31,19 @@ export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text:
 export function ConnectorsView({
   uid,
   onTavilyLogin,
+  onLastfmLogin,
   onTavilyDisconnect,
   notice,
 }: {
   uid: string
   onTavilyLogin?: () => Promise<void>
+  /** Starts the Last.fm login (navigates away); rejects with a friendly message. */
+  onLastfmLogin?: () => Promise<void>
   /** Revokes and clears the Web search login; gets the saved sealed tokens when there are any. */
   onTavilyDisconnect?: (sealed?: string) => Promise<void>
   notice?: ConnectorNotice | null
 }) {
-  const [docs, setDocs] = useState<{ id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }[] | null>(null)
+  const [docs, setDocs] = useState<{ id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number; service?: string; username?: string }[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [busy, setBusy] = useState<ConnectorId | null>(null)
@@ -48,7 +52,7 @@ export function ConnectorsView({
     return onSnapshot(
       connectorsCol(uid),
       (snap) => {
-        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon })))
+        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon, service: s.data().service, username: s.data().username })))
         setLoadError('')
       },
       (e) => {
@@ -74,6 +78,7 @@ export function ConnectorsView({
   const toggle = (id: ConnectorId, name: string, connected: boolean) => run(id, () => setConnectorConnected(uid, id, name, connected))
   const webSealed = docs?.find((d) => d.id === 'web-search')?.sealed
   const weatherPlace = docs?.find((d) => d.id === 'weather')?.place
+  const musicDoc = docs?.find((d) => d.id === 'music')
 
   return (
     <div className="animate-in">
@@ -129,6 +134,8 @@ export function ConnectorsView({
                   )
                 ) : c.id === 'weather' ? (
                   <WeatherBody uid={uid} connected={status === 'connected'} place={weatherPlace} />
+                ) : c.id === 'music' ? (
+                  <MusicBody uid={uid} connected={status === 'connected'} service={musicDoc?.service} username={musicDoc?.username} onLastfmLogin={onLastfmLogin} />
                 ) : (
                   <Button variant="secondary" disabled className="mt-4 w-full">
                     Coming soon
@@ -138,6 +145,111 @@ export function ConnectorsView({
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+const SERVICE_LABEL: Record<MusicService, string> = { lastfm: 'Last.fm', listenbrainz: 'ListenBrainz' }
+const LB_CHECK_TIMEOUT_MS = 10000
+
+/** Music card body: log in with Last.fm, or type a ListenBrainz username; or show the account and disconnect. */
+function MusicBody({ uid, connected, service, username, onLastfmLogin }: { uid: string; connected: boolean; service?: string; username?: string; onLastfmLogin?: () => Promise<void> }) {
+  const [busy, setBusy] = useState<'lastfm' | 'listenbrainz' | 'disconnect' | null>(null)
+  const [name, setName] = useState('')
+  const [message, setMessage] = useState('')
+
+  async function lastfm() {
+    if (!onLastfmLogin) return
+    setBusy('lastfm')
+    setMessage('')
+    try {
+      await onLastfmLogin()
+    } catch (e) {
+      // The login helper throws fixed, friendly messages only.
+      setMessage(e instanceof Error && e.message ? e.message : "Couldn't start the Last.fm login. Try again.")
+      setBusy(null)
+    }
+  }
+
+  async function listenbrainz() {
+    const user = name.trim()
+    if (!user) return
+    setBusy('listenbrainz')
+    setMessage('')
+    try {
+      // listenbrainzUserExists has no timeout of its own: race it so a hung request can not spin forever.
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), LB_CHECK_TIMEOUT_MS)
+      let exists: boolean
+      try {
+        const signalled: typeof fetch = (input, init) => fetch(input, { ...init, signal: ctrl.signal })
+        exists = await listenbrainzUserExists(user, signalled)
+      } finally {
+        clearTimeout(timer)
+      }
+      if (!exists) {
+        setMessage("We couldn't find that ListenBrainz user. Check the spelling and try again.")
+        return
+      }
+      await setMusicAccount(uid, 'listenbrainz', user)
+      setName('')
+    } catch {
+      setMessage('Could not save your account. Please try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function disconnect() {
+    setBusy('disconnect')
+    setMessage('')
+    try {
+      await disconnectMusic(uid)
+    } catch {
+      setMessage('Could not disconnect. Please try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const label = service === 'lastfm' || service === 'listenbrainz' ? SERVICE_LABEL[service] : ''
+  return (
+    <div className="mt-4 space-y-3">
+      {connected ? (
+        <>
+          <p className="break-words text-sm text-foreground">
+            Connected as <span className="font-medium">{username}</span> ({label})
+          </p>
+          <Button variant="secondary" loading={busy === 'disconnect'} onClick={() => void disconnect()} className="w-full">
+            Disconnect
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button variant="primary" loading={busy === 'lastfm'} disabled={!onLastfmLogin || (busy !== null && busy !== 'lastfm')} onClick={() => void lastfm()} className="w-full">
+            Log in with Last.fm
+          </Button>
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void listenbrainz()
+            }}
+          >
+            <div className="min-w-0 flex-1">
+              <Input label="Or your ListenBrainz username" value={name} onChange={(e) => setName(e.target.value)} placeholder="username" maxLength={MUSIC_USERNAME_MAX} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+            </div>
+            <Button type="submit" variant="secondary" loading={busy === 'listenbrainz'} disabled={(busy !== null && busy !== 'listenbrainz') || !name.trim()} className="w-full sm:w-auto">
+              Connect
+            </Button>
+          </form>
+        </>
+      )}
+      {message && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {message}
+        </p>
       )}
     </div>
   )
