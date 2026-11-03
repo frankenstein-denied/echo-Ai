@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CONNECTORS, connectorStatuses, isConnected } from './connectors'
 
-const status = (docs: { id: string; connected?: boolean }[], id: string) => connectorStatuses(docs).find((s) => s.id === id)?.status
+const status = (docs: { id: string; connected?: boolean; sealed?: string; lat?: unknown; lon?: unknown }[], id: string) => connectorStatuses(docs).find((s) => s.id === id)?.status
 
 describe('connectorStatuses', () => {
   it('uses catalog defaults when there are no docs', () => {
@@ -37,5 +37,17 @@ describe('isConnected', () => {
     expect(web([{ id: 'web-search', connected: true, sealed: '' }])).toBe('not_connected')
     expect(web([{ id: 'web-search', connected: true, sealed: 'v1.x.y' }])).toBe('connected')
     expect(connectorStatuses([{ id: 'nutrition', connected: true }]).find((c) => c.id === 'nutrition')?.status).toBe('connected')
+  })
+
+  it('counts weather as connected only with a saved location', () => {
+    const w = (docs: { id: string; connected?: boolean; lat?: unknown; lon?: unknown }[]) => status(docs, 'weather')
+    expect(w([])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: true }])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: true, lat: 14.6 }])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: true, lat: Number.NaN, lon: 121 }])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: true, lat: '14.6', lon: '121' }])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: false, lat: 14.6, lon: 121 }])).toBe('not_connected')
+    expect(w([{ id: 'weather', connected: true, lat: 14.6, lon: 121 }])).toBe('connected')
+    expect(w([{ id: 'weather', connected: true, lat: 0, lon: 0 }])).toBe('connected')
   })
 })

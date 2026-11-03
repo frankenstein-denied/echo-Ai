@@ -25,6 +25,7 @@ import {
 import { db } from '@/lib/firebase'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
+import { roundCoord } from '@/lib/echo/weather'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
 import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks, splitImpact } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
@@ -63,7 +64,7 @@ export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source:
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
 export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
-export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string }
+export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp; pages?: string[] }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
@@ -162,6 +163,16 @@ export async function setConnectorConnected(uid: string, id: string, name: strin
 export async function setConnectorSecret(uid: string, id: ConnectorId, sealed: string | null): Promise<void> {
   const name = CONNECTORS.find((c) => c.id === id)?.name ?? id
   await setDoc(doc(connectorsCol(uid), id), (sealed ? { name, connected: true, sealed, updatedAt: serverTimestamp() } : { name, connected: false, updatedAt: serverTimestamp() }) as never)
+}
+
+/** Weather: saves the chosen place (coords rounded to ~1 km) and connects. Replaces the doc. */
+export async function setWeatherLocation(uid: string, loc: { place: string; lat: number; lon: number }): Promise<void> {
+  await setDoc(doc(connectorsCol(uid), 'weather'), { name: 'Weather', connected: true, place: loc.place.slice(0, 100), lat: roundCoord(loc.lat), lon: roundCoord(loc.lon), updatedAt: serverTimestamp() } as never)
+}
+
+/** Weather: disconnects and removes the saved location. */
+export async function disconnectWeather(uid: string): Promise<void> {
+  await setDoc(doc(connectorsCol(uid), 'weather'), { name: 'Weather', connected: false, place: deleteField(), lat: deleteField(), lon: deleteField(), updatedAt: serverTimestamp() } as never, { merge: true })
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {
