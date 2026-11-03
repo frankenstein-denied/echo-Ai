@@ -6,6 +6,7 @@ export const SEARCH_RECONNECT_REPLY = 'Your Tavily login expired. Log in again u
 export const SEARCH_QUOTA_REPLY = 'Your Tavily searches for this month are used up.'
 export const SEARCH_RATE_LIMITED_REPLY = "I've searched the web a lot this hour. Try again later."
 export const SEARCH_FAILED_REPLY = "I couldn't search the web just now. Try again in a moment."
+export const SEARCH_WAKING_REPLY = "Tavily is still waking up. First searches in a while take a little longer, so ask me again in a moment."
 export const SEARCH_EMPTY_REPLY = "I searched the web but didn't find anything useful for that."
 
 /** Sent with web results to the call model. */

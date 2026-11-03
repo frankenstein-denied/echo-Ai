@@ -2,7 +2,7 @@ import { vi } from 'vitest'
 vi.mock('@/lib/firebase', () => ({ db: {}, auth: {} }))
 import { describe, expect, it } from 'vitest'
 import { searchWebViaApi } from './client'
-import { SEARCH_NOT_CONNECTED_REPLY, SEARCH_QUOTA_REPLY, SEARCH_RECONNECT_REPLY } from './search-replies'
+import { SEARCH_NOT_CONNECTED_REPLY, SEARCH_QUOTA_REPLY, SEARCH_RECONNECT_REPLY, SEARCH_WAKING_REPLY } from './search-replies'
 
 const user = { getIdToken: async () => 'tok' }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
@@ -21,6 +21,10 @@ describe('searchWebViaApi', () => {
     expect(r.output).toMatchObject({ results: [{ title: 'A', url: 'https://a', content: 'c' }] })
     expect(String(r.output.instructions)).toMatch(/site name/)
     expect(String(r.output.instructions)).toMatch(/never change/i)
+  })
+  it('maps a waking error to its own tell_user', async () => {
+    const r = await searchWebViaApi(user, 'x', 's', (async () => json({ error: 'waking' }, 504)) as never)
+    expect(r.output).toEqual({ error: 'waking', tell_user: SEARCH_WAKING_REPLY })
   })
   it('maps errors to tell_user and flags a disconnect on reconnect', async () => {
     const rc = await searchWebViaApi(user, 'x', 's', (async () => json({ error: 'reconnect' })) as never)

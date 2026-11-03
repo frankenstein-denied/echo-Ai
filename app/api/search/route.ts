@@ -11,11 +11,15 @@ const MAX_BODY_BYTES = 16 * 1024
 const MAX_SEALED = 8192
 const MAX_QUERY = 300
 const TIMEOUT_MS = 8000
+/** A timed-out search is retried once (Tavily is awake by then) while at least this much of the budget is left. */
+const BUDGET_MS = 17000
+const MIN_RETRY_MS = 3000
 
 // Web search for Echo calls. { query, sealed } -> { results: { title, url, content }[], resealed? } or
-// { error: 'not_connected' | 'reconnect' | 'quota' | 'rate_limited' | 'failed', resealed? }. Shares the per-user
+// { error: 'not_connected' | 'reconnect' | 'quota' | 'rate_limited' | 'waking' | 'failed', resealed? }. Shares the per-user
 // hourly limit with typed chat. Never log the query, the results or the sealed tokens.
 export async function POST(req: Request) {
+  const startedAt = Date.now()
   const user = await verifyUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -44,13 +48,25 @@ export async function POST(req: Request) {
   try {
     const fresh = await withFreshTokens(sealed, user.uid)
     resealed = fresh.resealed
-    const results = await tavilySearch(fresh.tokens.access, query, { timeoutMs: TIMEOUT_MS })
+    let results
+    try {
+      results = await tavilySearch(fresh.tokens.access, query, { timeoutMs: TIMEOUT_MS })
+    } catch (err) {
+      if (!(err instanceof TavilyError && err.kind === 'timeout')) throw err
+      const left = BUDGET_MS - (Date.now() - startedAt)
+      if (left < MIN_RETRY_MS) throw err
+      results = await tavilySearch(fresh.tokens.access, query, { timeoutMs: Math.min(TIMEOUT_MS, left) })
+    }
     return NextResponse.json({ results: results.slice(0, SEARCH_LIMITS.sources), ...(resealed ? { resealed } : {}) }, noStore)
   } catch (err) {
     const keep = resealed ? { resealed } : {}
     // A refused refresh (Tavily's refresh fails today) or a rejected token: the login is gone.
     if (err instanceof TavilyAuthError || (err instanceof TavilyError && err.kind === 'auth')) return NextResponse.json({ error: 'reconnect' }, noStore)
     if (err instanceof TavilyError && err.kind === 'quota') return NextResponse.json({ error: 'quota', ...keep }, { status: 429, ...noStore })
+    if (err instanceof TavilyError && err.kind === 'timeout') {
+      console.warn('[search] failed: timeout')
+      return NextResponse.json({ error: 'waking', ...keep }, { status: 504, ...noStore })
+    }
     console.warn('[search] failed:', err instanceof TavilyError ? err.kind : ((err as { name?: string })?.name ?? 'unknown'))
     return NextResponse.json({ error: 'failed', ...keep }, { status: 502, ...noStore })
   }
