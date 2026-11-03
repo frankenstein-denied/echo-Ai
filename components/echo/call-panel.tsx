@@ -125,7 +125,7 @@ export function useEchoCall({
 }: {
   user: User
   voice: string
-  getContext: () => EchoRequest['context']
+  getContext: () => EchoRequest['context'] | Promise<EchoRequest['context']>
   /** The ref map that matches the items in the last getContext() result (kept for the whole call). */
   getRefs?: () => RefMap | undefined
   /** The saved sealed Web search login when Web search is connected (absent otherwise). */
@@ -416,7 +416,7 @@ export function useEchoCall({
       fail({ kind: 'failed', message: 'This browser cannot play audio for calls.' })
       return
     }
-    const context = cb.current.getContext()
+    const context = await cb.current.getContext()
     lastEcho.current = ''
     toolCtx.current = {
       checkInTime: extractCheckInTime(context.profile),

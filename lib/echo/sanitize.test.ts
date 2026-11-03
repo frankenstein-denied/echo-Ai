@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractCheckInTime } from './prompt'
-import { parseEchoRequest, REMINDER_DROPPED_TRACE, sanitizeEchoResponse, slugifyLabel } from './sanitize'
+import { parseEchoContext, parseEchoRequest, REMINDER_DROPPED_TRACE, sanitizeEchoResponse, slugifyLabel } from './sanitize'
 
 const NOW = '2026-10-25T19:42:00+08:00'
 const base = { text: 'hello', clientTime: NOW, timeZone: 'Asia/Manila' }
@@ -415,5 +415,15 @@ describe('web_search action', () => {
     )
     expect(out.actions).toEqual([{ type: 'web_search', query: 'a' }])
     expect(out.memories.map((m) => m.label)).toEqual(['Phones'])
+  })
+})
+
+describe('parseEchoContext weather', () => {
+  it('keeps a trimmed string capped at 600 chars and drops non-strings', () => {
+    expect(parseEchoContext({ weather: '  Manila 31C  ' }).weather).toBe('Manila 31C')
+    expect(parseEchoContext({ weather: 'x'.repeat(900) }).weather).toHaveLength(600)
+    expect(parseEchoContext({ weather: 42 })).not.toHaveProperty('weather')
+    expect(parseEchoContext({ weather: '   ' })).not.toHaveProperty('weather')
+    expect(parseEchoContext({})).not.toHaveProperty('weather')
   })
 })
