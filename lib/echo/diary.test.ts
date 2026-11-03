@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunk, defaultPageTitle, filterPages, isPermissionDenied, normalizeTitle, planMigration, previewOf, relativeTime, sortPages } from './diary'
+import { chunk, defaultPageTitle, filterPages, isPermissionDenied, normalizeTitle, planMigration, isFromToday, previewOf, relativeTime, shouldStartNewDay, sortPages } from './diary'
 
 const t = (n: number) => ({ toMillis: () => n })
 
@@ -57,5 +57,22 @@ describe('diary helpers', () => {
     expect(isPermissionDenied({ code: 'permission-denied' })).toBe(true)
     expect(isPermissionDenied(new Error('x'))).toBe(false)
     expect(isPermissionDenied(null)).toBe(false)
+  })
+})
+
+describe('new day', () => {
+  const now = new Date(2026, 10, 3, 9, 0)
+  it('isFromToday compares local dates', () => {
+    expect(isFromToday(new Date(2026, 10, 3, 0, 1).getTime(), now)).toBe(true)
+    expect(isFromToday(new Date(2026, 10, 2, 23, 59).getTime(), now)).toBe(false)
+    expect(isFromToday(undefined, now)).toBe(false)
+  })
+  it('shouldStartNewDay only on a rollover with an old idle page', () => {
+    const base = { openedDayKey: '2026-11-02', pageCreatedMs: new Date(2026, 10, 2, 8).getTime(), callActive: false, selId: 'p' }
+    expect(shouldStartNewDay(base, now)).toBe(true)
+    expect(shouldStartNewDay({ ...base, openedDayKey: '2026-11-03' }, now)).toBe(false)
+    expect(shouldStartNewDay({ ...base, pageCreatedMs: new Date(2026, 10, 3, 1).getTime() }, now)).toBe(false)
+    expect(shouldStartNewDay({ ...base, callActive: true }, now)).toBe(false)
+    expect(shouldStartNewDay({ ...base, selId: null }, now)).toBe(false)
   })
 })

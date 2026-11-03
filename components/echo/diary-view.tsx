@@ -6,8 +6,9 @@ import type { User } from 'firebase/auth'
 import { limit, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { ArrowLeft, BookOpen, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, pageMemoryImpact, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
-import { filterPages, isPermissionDenied, normalizeTitle, relativeTime, RULES_MESSAGE, sortPages, TITLE_MAX } from '@/lib/echo/diary'
+import { filterPages, isFromToday, isPermissionDenied, normalizeTitle, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
 import { pageDeleteBody } from '@/lib/echo/links'
+import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
@@ -234,6 +235,14 @@ export function DiaryView({
   const [delCount, setDelCount] = useState<number | null | undefined>(undefined)
   const [creating, setCreating] = useState(false)
   const [, tick] = useState(0)
+  const callActive = useRef(false)
+  const onCallActiveChange = useCallback((a: boolean) => {
+    callActive.current = a
+  }, [])
+  // Local date key when the current selection was made (for the new-day rollover).
+  const openedDay = useRef(localDateKey(new Date()))
+  const selRef = useRef<Selection>({ id: null, key: 0 })
+  const pagesRef = useRef<Page[] | null>(null)
   const [collapsed, setCollapsed] = useState(false) // page list collapsed to an icon rail (desktop)
   useEffect(() => {
     try {
@@ -289,9 +298,11 @@ export function DiaryView({
   useEffect(() => {
     if (!openPageId || pages === null) return
     if (pages.some((p) => p.id === openPageId)) {
+      openedDay.current = localDateKey(new Date())
       setSel((s) => ({ id: openPageId, key: s.key + 1 }))
       setEditing(false)
       setMobileOpen(true)
+      setAuto(true) // an explicit request wins over the auto landing
     }
     onOpenPageHandled?.()
   }, [openPageId, pages, onOpenPageHandled])
@@ -300,11 +311,35 @@ export function DiaryView({
   useEffect(() => {
     if (auto || pages === null) return
     setAuto(true)
+    openedDay.current = localDateKey(new Date())
     if (pages.length) {
-      setSel((s) => (s.id ? s : { id: pages[0].id, key: s.key }))
+      // Newest page from today: continue it. Otherwise show the fresh empty "today" state (page is created lazily).
+      if (isFromToday(pages[0].createdAt?.toMillis?.())) setSel((s) => (s.id ? s : { id: pages[0].id, key: s.key }))
       setMobileOpen(true)
     }
   }, [pages, auto])
+
+  selRef.current = sel
+  pagesRef.current = pages
+  // Day rollover while the app stays open: start a fresh today page unless a call is live or the page is from today.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'hidden') return
+      const cur = selRef.current
+      const page = pagesRef.current?.find((p) => p.id === cur.id)
+      if (!shouldStartNewDay({ openedDayKey: openedDay.current, pageCreatedMs: page?.createdAt?.toMillis?.(), callActive: callActive.current, selId: cur.id })) return
+      openedDay.current = localDateKey(new Date())
+      setSel((s) => ({ id: null, key: s.key + 1 }))
+      setEditing(false)
+      setMobileOpen(true)
+    }
+    document.addEventListener('visibilitychange', check)
+    window.addEventListener('focus', check)
+    return () => {
+      document.removeEventListener('visibilitychange', check)
+      window.removeEventListener('focus', check)
+    }
+  }, [])
 
   // If the open page vanishes (deleted from another tab), fall back to the newest remaining page.
   const seen = useRef(new Set<string>())
@@ -324,6 +359,7 @@ export function DiaryView({
   const active = sel.id ? (sorted.find((p) => p.id === sel.id) ?? null) : null
 
   const select = (id: string | null) => {
+    openedDay.current = localDateKey(new Date())
     setSel((s) => ({ id, key: s.key + 1 }))
     setEditing(false)
     setMobileOpen(true)
@@ -346,6 +382,7 @@ export function DiaryView({
   // Used by the chat when a message is sent with no page open: same view, no remount.
   const ensurePage = useCallback(async () => {
     const id = await createDiaryPage(uid)
+    openedDay.current = localDateKey(new Date())
     setSel((s) => ({ id, key: s.key }))
     return id
   }, [uid])
@@ -513,7 +550,7 @@ export function DiaryView({
           )}
           {list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
-            <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null} onNavigate={onNavigate} header={header} meta={meta} hint={desc} />
+            <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} />
           </div>
         </div>
       )}
