@@ -20,6 +20,11 @@ export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
 
 export const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`)
 
+/** A personality trait is 'Confident' once it has been mentioned at least twice; otherwise it is still being learned. */
+export function traitStrength(mentions: number): 'Confident' | 'Still learning' {
+  return Number.isFinite(mentions) && mentions >= 2 ? 'Confident' : 'Still learning'
+}
+
 export function nodeRadius(mentions: number): number {
   const m = Number.isFinite(mentions) ? Math.max(1, mentions) : 1
   return Math.min(22, Math.max(6, 6 + 3 * Math.sqrt(m)))

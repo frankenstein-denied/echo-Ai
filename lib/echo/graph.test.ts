@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGraph, filterGraph, neighbours, nodeRadius, relativeTime, searchNodes, typeCounts } from './graph'
+import { buildGraph, filterGraph, neighbours, nodeRadius, relativeTime, searchNodes, traitStrength, typeCounts } from './graph'
 
 const docs = [
   { id: 'person-mama', label: 'Mama', type: 'person', links: ['topic-thesis', 'ghost'], mentions: 4, createdMs: 100, lastSeenMs: 500 },
@@ -78,5 +78,13 @@ describe('graph', () => {
   it('buildGraph keeps trait nodes as trait (not topic)', () => {
     const g = buildGraph([{ id: 'trait-night-owl', label: 'Night Owl', type: 'trait', links: [], mentions: 2 }])
     expect(g.nodes[0].type).toBe('trait')
+  })
+  it('traitStrength is Confident from 2 mentions, Still learning below', () => {
+    expect(traitStrength(0)).toBe('Still learning')
+    expect(traitStrength(1)).toBe('Still learning')
+    expect(traitStrength(2)).toBe('Confident')
+    expect(traitStrength(5)).toBe('Confident')
+    expect(traitStrength(NaN)).toBe('Still learning')
+    expect(traitStrength(Infinity)).toBe('Still learning')
   })
 })

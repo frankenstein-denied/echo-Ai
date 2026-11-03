@@ -15,6 +15,7 @@ import {
   NODE_TYPES,
   relativeTime,
   searchNodes,
+  traitStrength,
   typeCounts,
   type GraphNode,
   type GraphNodeType,
@@ -507,6 +508,12 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <dt className="text-xs text-muted-foreground">{isPage ? 'Last message' : 'Last seen'}</dt>
           <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
         </div>
+        {selected.type === 'trait' && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Strength</dt>
+            <dd className="text-foreground">{traitStrength(selected.mentions ?? 1)}</dd>
+          </div>
+        )}
       </dl>
       <div>
         <h3 className="mb-1 text-sm font-medium text-foreground">Connected ({connected.length})</h3>
