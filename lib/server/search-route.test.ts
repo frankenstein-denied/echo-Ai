@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TavilyError } from './tavily'
 import { TavilyAuthError } from './tavily-oauth'
 import { takeSearchSlot } from './web-answer'
+import { verifyUser } from '@/lib/server/verify-user'
 import { POST } from '@/app/api/search/route'
 
 vi.mock('@/lib/server/verify-user', () => ({ verifyUser: vi.fn(async () => ({ uid: 'uid-s' })) }))
@@ -84,6 +85,32 @@ describe('POST /api/search', () => {
   it('shares the rate limiter with typed chat', async () => {
     for (let i = 0; i < 20; i++) takeSearchSlot('uid-s')
     expect((await call({ query: 'q', sealed: 's' })).error).toBe('rate_limited')
+    expect(mocks.search).not.toHaveBeenCalled()
+  })
+  it('caps the first attempt to the budget left after auth and token refresh', async () => {
+    const t0 = Date.now()
+    vi.mocked(verifyUser).mockResolvedValueOnce({ uid: 'uid-cap' } as never)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
+    mocks.fresh.mockImplementation(async () => {
+      now.mockReturnValue(t0 + 11000)
+      return { tokens: { access: 'a' } }
+    })
+    const res = await POST(req({ query: 'q', sealed: 's' }))
+    expect(res.status).toBe(200)
+    expect(mocks.search.mock.calls[0][2].timeoutMs).toBeLessThan(8000)
+    expect(mocks.search.mock.calls[0][2].timeoutMs).toBeLessThanOrEqual(4000)
+  })
+  it('answers waking (504) without searching when almost no budget is left', async () => {
+    const t0 = Date.now()
+    vi.mocked(verifyUser).mockResolvedValueOnce({ uid: 'uid-nobudget' } as never)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
+    mocks.fresh.mockImplementation(async () => {
+      now.mockReturnValue(t0 + 14500)
+      return { tokens: { access: 'a' }, resealed: 'rs' }
+    })
+    const res = await POST(req({ query: 'q', sealed: 's' }))
+    expect(res.status).toBe(504)
+    expect(await res.json()).toEqual({ error: 'waking', resealed: 'rs' })
     expect(mocks.search).not.toHaveBeenCalled()
   })
 })

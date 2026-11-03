@@ -36,4 +36,19 @@ describe('searchWebViaApi', () => {
     }) as never)
     expect(bad.output).toMatchObject({ error: 'failed' })
   })
+  it('answers waking when the client-side timeout fires, but plain network errors stay failed', async () => {
+    vi.useFakeTimers()
+    try {
+      const hang = (_u: string, init: RequestInit) => new Promise<Response>((_, rej) => init.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))))
+      const p = searchWebViaApi(user, 'x', 's', hang as never)
+      await vi.advanceTimersByTimeAsync(19001)
+      expect((await p).output).toEqual({ error: 'waking', tell_user: SEARCH_WAKING_REPLY })
+    } finally {
+      vi.useRealTimers()
+    }
+    const net = await searchWebViaApi(user, 'x', 's', (async () => {
+      throw new TypeError('Failed to fetch')
+    }) as never)
+    expect(net.output).toMatchObject({ error: 'failed' })
+  })
 })

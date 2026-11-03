@@ -12,8 +12,9 @@ const MAX_SEALED = 8192
 const MAX_QUERY = 300
 const TIMEOUT_MS = 8000
 /** A timed-out search is retried once (Tavily is awake by then) while at least this much of the budget is left. */
-const BUDGET_MS = 17000
+const BUDGET_MS = 15000
 const MIN_RETRY_MS = 3000
+const MIN_FIRST_MS = 1000
 
 // Web search for Echo calls. { query, sealed } -> { results: { title, url, content }[], resealed? } or
 // { error: 'not_connected' | 'reconnect' | 'quota' | 'rate_limited' | 'waking' | 'failed', resealed? }. Shares the per-user
@@ -48,9 +49,12 @@ export async function POST(req: Request) {
   try {
     const fresh = await withFreshTokens(sealed, user.uid)
     resealed = fresh.resealed
+    // Auth and token refresh already used part of the budget: cap the first attempt so the worst case stays under maxDuration.
+    const firstMs = Math.min(TIMEOUT_MS, BUDGET_MS - (Date.now() - startedAt))
+    if (firstMs < MIN_FIRST_MS) return NextResponse.json({ error: 'waking', ...(resealed ? { resealed } : {}) }, { status: 504, ...noStore })
     let results
     try {
-      results = await tavilySearch(fresh.tokens.access, query, { timeoutMs: TIMEOUT_MS })
+      results = await tavilySearch(fresh.tokens.access, query, { timeoutMs: firstMs })
     } catch (err) {
       if (!(err instanceof TavilyError && err.kind === 'timeout')) throw err
       const left = BUDGET_MS - (Date.now() - startedAt)

@@ -339,8 +339,9 @@ export async function searchWebViaApi(user: Pick<User, 'getIdToken'>, query: str
     if (!res.ok || !Array.isArray(d.results)) return fail('failed')
     if (!d.results.length) return { output: { results: [], instructions: 'Nothing useful was found. Say so briefly.' }, ...resealed }
     return { output: { results: d.results, instructions: SEARCH_RESULT_INSTRUCTIONS }, ...resealed }
-  } catch {
-    return fail('failed')
+  } catch (e) {
+    // Our own fetch timeout (cold start plus slow Tavily): the search is waking, not broken.
+    return fail((e as { name?: string })?.name === 'TimeoutError' ? 'waking' : 'failed')
   }
 }
 
