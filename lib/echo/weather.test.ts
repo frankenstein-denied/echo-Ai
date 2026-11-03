@@ -124,4 +124,44 @@ describe('formatWeather', () => {
     const text = formatWeather('P'.repeat(2000), FORECAST)
     expect(text.length).toBeLessThanOrEqual(600)
   })
+
+  const clean = (text: string) => {
+    expect(text).not.toMatch(/NaN|null|undefined|feels 0/)
+    expect(text).not.toContain(' 0% chance')
+  }
+  it('handles nulls in current, hourly and daily values', () => {
+    const data = structuredClone(FORECAST) as any
+    data.current.apparent_temperature = null
+    data.current.wind_speed_10m = null
+    data.hourly.precipitation_probability = data.hourly.precipitation_probability.map(() => null)
+    data.daily.precipitation_probability_max = [null, null, null, null]
+    const text = formatWeather('Manila', data)
+    clean(text)
+    expect(text).toContain('Now: 31°C, partly cloudy')
+    expect(text).toContain('Rest of today: up to 32°C')
+    expect(text).toContain('Wed: 26–32°C, rain')
+  })
+  it('handles missing hourly and daily arrays', () => {
+    const data = structuredClone(FORECAST) as any
+    delete data.hourly.temperature_2m
+    delete data.hourly.precipitation_probability
+    delete data.daily.weather_code
+    const text = formatWeather('Manila', data)
+    clean(text)
+    expect(text).not.toContain('Rest of today')
+    expect(text).toContain('Wed: 26–32°C, 80% chance')
+  })
+  it('skips days beyond a short daily array', () => {
+    const data = structuredClone(FORECAST) as any
+    for (const k of ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_probability_max']) data.daily[k] = data.daily[k].slice(0, 2)
+    const text = formatWeather('Manila', data)
+    clean(text)
+    expect(text).toContain('Wed:')
+    expect(text).not.toContain('Thu')
+  })
+  it('accepts a response with only current data', async () => {
+    const f = vi.fn(async (_url: string) => jsonRes({ current: FORECAST.current }))
+    const data = await fetchForecast(1, 2, f as unknown as typeof fetch)
+    clean(formatWeather('X', data))
+  })
 })

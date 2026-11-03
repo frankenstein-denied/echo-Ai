@@ -86,10 +86,8 @@ export async function fetchForecast(
   const data = (await res.json()) as Partial<ForecastData> | null
   if (
     !data ||
-    typeof data.current?.temperature_2m !== 'number' ||
-    typeof data.current.time !== 'string' ||
-    !Array.isArray(data.hourly?.time) ||
-    !Array.isArray(data.daily?.time)
+    !isNum(data.current?.temperature_2m) ||
+    typeof data.current.time !== 'string'
   ) {
     throw new Error('Weather data was malformed.')
   }
@@ -108,12 +106,15 @@ function localNowString(now: Date): string {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}T${p(now.getHours())}:00`
 }
 
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+
 export function formatWeather(place: string, data: ForecastData, now: Date = new Date()): string {
   const c = data.current
-  const lines = [
-    `Place: ${place}`,
-    `Now: ${Math.round(c.temperature_2m)}°C (feels ${Math.round(c.apparent_temperature)}°C), ${weatherCodeText(c.weather_code)}, wind ${Math.round(c.wind_speed_10m)} km/h`,
-  ]
+  const now1 = [`${Math.round(c.temperature_2m)}°C`]
+  if (isNum(c.apparent_temperature)) now1[0] += ` (feels ${Math.round(c.apparent_temperature)}°C)`
+  if (isNum(c.weather_code)) now1.push(weatherCodeText(c.weather_code))
+  if (isNum(c.wind_speed_10m)) now1.push(`wind ${Math.round(c.wind_speed_10m)} km/h`)
+  const lines = [`Place: ${place}`, `Now: ${now1.join(', ')}`]
 
   // Rest of today: hourly values from the current hour to midnight, in the forecast's local time.
   const nowLocal = typeof c.time === 'string' && c.time.length >= 13 ? c.time.slice(0, 13) + ':00' : localNowString(now)
@@ -121,29 +122,33 @@ export function formatWeather(place: string, data: ForecastData, now: Date = new
   let maxTemp: number | null = null
   let maxRain: number | null = null
   let rainHour = ''
-  data.hourly.time.forEach((t, i) => {
-    if (t.slice(0, 10) !== today || t < nowLocal) return
-    const temp = data.hourly.temperature_2m[i]
-    const rain = data.hourly.precipitation_probability[i]
-    if (typeof temp === 'number' && (maxTemp === null || temp > maxTemp)) maxTemp = temp
-    if (typeof rain === 'number' && (maxRain === null || rain > maxRain)) {
+  ;(data.hourly?.time ?? []).forEach((t, i) => {
+    if (typeof t !== 'string' || t.slice(0, 10) !== today || t < nowLocal) return
+    const temp = data.hourly?.temperature_2m?.[i]
+    const rain = data.hourly?.precipitation_probability?.[i]
+    if (isNum(temp) && (maxTemp === null || temp > maxTemp)) maxTemp = temp
+    if (isNum(rain) && (maxRain === null || rain > maxRain)) {
       maxRain = rain
       rainHour = t.slice(11, 16)
     }
   })
-  if (maxTemp !== null || maxRain !== null) {
-    const parts: string[] = []
-    if (maxTemp !== null) parts.push(`up to ${Math.round(maxTemp)}°C`)
-    if (maxRain !== null) parts.push(`rain chance up to ${Math.round(maxRain)}%${maxRain > 0 ? ` (highest around ${rainHour})` : ''}`)
-    lines.push(`Rest of today: ${parts.join('; ')}`)
-  }
+  const parts: string[] = []
+  if (maxTemp !== null) parts.push(`up to ${Math.round(maxTemp)}°C`)
+  if (maxRain !== null) parts.push(`rain chance up to ${Math.round(maxRain)}%${maxRain > 0 ? ` (highest around ${rainHour})` : ''}`)
+  if (parts.length) lines.push(`Rest of today: ${parts.join('; ')}`)
 
   const d = data.daily
-  d.time.forEach((date, i) => {
-    if (date <= today) return
-    lines.push(
-      `${dayName(date)}: ${Math.round(d.temperature_2m_min[i])}–${Math.round(d.temperature_2m_max[i])}°C, ${weatherCodeText(d.weather_code[i])}, ${Math.round(d.precipitation_probability_max[i])}% chance`,
-    )
+  ;(d?.time ?? []).forEach((date, i) => {
+    if (typeof date !== 'string' || date <= today) return
+    const lo = d?.temperature_2m_min?.[i]
+    const hi = d?.temperature_2m_max?.[i]
+    if (!isNum(lo) || !isNum(hi)) return
+    const code = d?.weather_code?.[i]
+    const pop = d?.precipitation_probability_max?.[i]
+    const bits = [`${Math.round(lo)}–${Math.round(hi)}°C`]
+    if (isNum(code)) bits.push(weatherCodeText(code))
+    if (isNum(pop)) bits.push(`${Math.round(pop)}% chance`)
+    lines.push(`${dayName(date)}: ${bits.join(', ')}`)
   })
 
   return lines.join('\n').slice(0, MAX_CHARS)
