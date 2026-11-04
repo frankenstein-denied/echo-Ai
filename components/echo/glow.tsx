@@ -25,7 +25,7 @@ export function ProgressRing({ value, size = 36, color = ORB_COLOR.goal, label }
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
   return (
-    <svg role="img" aria-label={label} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0, filter: `drop-shadow(0 0 4px ${color}80)` }}>
+    <svg role="img" aria-label={label} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={stroke} />
       <circle
         cx={size / 2}
@@ -34,6 +34,7 @@ export function ProgressRing({ value, size = 36, color = ORB_COLOR.goal, label }
         fill="none"
         stroke={color}
         strokeWidth={stroke}
+        style={v > 0 ? { filter: `drop-shadow(0 0 3px color-mix(in srgb, ${color} 60%, transparent))` } : undefined}
         strokeLinecap="round"
         strokeDasharray={circ}
         strokeDashoffset={circ * (1 - v / 100)}
@@ -44,16 +45,18 @@ export function ProgressRing({ value, size = 36, color = ORB_COLOR.goal, label }
 }
 
 const CHIP_COLOR = { upcoming: ORB_COLOR.goal, overdue: 'var(--color-danger)', done: 'var(--color-muted-foreground)' } as const
+// Danger red on its own tint is ~4.2:1; lift the text toward white so overdue chips pass AA (~5.4:1).
+const CHIP_TEXT = { ...CHIP_COLOR, overdue: 'color-mix(in srgb, var(--color-danger) 80%, white)' } as const
 
-export function TimeChip({ at, state }: { at: Date; state: 'upcoming' | 'overdue' | 'done' }) {
+export function TimeChip({ at, state, now }: { at: Date; state: 'upcoming' | 'overdue' | 'done'; now?: Date }) {
   const color = CHIP_COLOR[state]
   return (
     <span
       className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium"
-      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)`, borderColor: `color-mix(in srgb, ${color} 35%, transparent)` }}
+      style={{ color: CHIP_TEXT[state], background: `color-mix(in srgb, ${color} 14%, transparent)`, borderColor: `color-mix(in srgb, ${color} 35%, transparent)` }}
     >
       <Clock size={12} aria-hidden />
-      {timeChipLabel(at, new Date())}
+      {timeChipLabel(at, now ?? new Date())}
     </span>
   )
 }

@@ -15,8 +15,9 @@ import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
-import { Alert, Badge, Button, IconButton, Skeleton } from './ui'
-import type { NodeType } from '@/lib/echo/ui-classes'
+import { Alert, Button, IconButton, Skeleton } from './ui'
+import { kindForCategory } from '@/lib/echo/glow'
+import { KindTag } from './glow'
 import { CallBar, CallScreen, useEchoCall, type CallTurn, type LateResult } from './call-panel'
 import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
@@ -39,7 +40,6 @@ const VIEW_FOR: Record<string, HomeView> = {
   reminder: 'Reminders',
   connector: 'Connectors',
 }
-const NODE_FOR: Record<string, NodeType> = { note: 'diary', goal: 'goal', health: 'health', reminder: 'task', connector: 'connector' }
 const LABEL_FOR: Record<string, string> = { note: 'Note', goal: 'Goal', health: 'Health', reminder: 'Reminder', connector: 'Connector' }
 
 type BadgeItem = Pick<SavedItem, 'op' | 'kcal'> & { type: string }
@@ -67,7 +67,7 @@ function ActionBadges({ items, onNavigate }: { items: BadgeItem[]; onNavigate: (
     <div className="mt-2 flex flex-wrap gap-2">
       {shown.map((i, n) => (
         <button key={`${badgeLabel(i)}-${n}`} onClick={() => onNavigate(VIEW_FOR[i.type])} title={`Open ${VIEW_FOR[i.type]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <Badge type={NODE_FOR[i.type]}>{badgeLabel(i)}</Badge>
+          <KindTag kind={kindForCategory(i.type)}>{badgeLabel(i)}</KindTag>
         </button>
       ))}
     </div>

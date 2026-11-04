@@ -9,13 +9,11 @@ import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
+import { GlowDot, TimeChip } from './glow'
 
 type ReminderRow = Reminder & { id: string; dueMs: number }
 
 const SOURCE_LABEL: Record<string, string> = { chat: 'From chat', routine: 'Routine', manual: 'Added by you' }
-
-const dueText = (ms: number) =>
-  new Date(ms).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 function defaultDueValue(): string {
   const d = new Date(Date.now() + 3600000)
@@ -91,16 +89,19 @@ export function RemindersView({ uid }: { uid: string }) {
     run(() => deleteReminder(uid, r.id), 'Could not delete the reminder.')
   }
 
+  const nowDate = new Date()
+  const now = nowDate.getTime()
   const row = (r: ReminderRow) => (
     <div key={r.id} className="flex items-center gap-3 border-b border-border py-3 last:border-b-0 max-lg:gap-2 max-lg:py-2">
       {/* The label makes checkbox + text one tap target on touch screens. */}
       <HitRow className="flex min-w-0 flex-1 items-center gap-3">
         <input type="checkbox" className="size-4 shrink-0 accent-primary max-lg:size-5" checked={r.done} onChange={() => run(() => setReminderDone(uid, r.id, !r.done), 'Could not update the reminder.')} aria-label={`Done: ${r.title}`} />
+        <GlowDot kind="reminder" />
         <span className="block min-w-0 flex-1">
           <span className={`block truncate text-sm ${r.done ? 'text-muted-foreground line-through' : 'text-foreground'} max-lg:text-[15px]`}>{r.title}</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            {dueText(r.dueMs)}
-            <span className="sm:hidden"> · {SOURCE_LABEL[r.source] ?? r.source}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <TimeChip at={new Date(r.dueMs)} now={nowDate} state={r.done ? 'done' : r.dueMs < now ? 'overdue' : 'upcoming'} />
+            <span className="sm:hidden">{SOURCE_LABEL[r.source] ?? r.source}</span>
           </span>
         </span>
       </HitRow>

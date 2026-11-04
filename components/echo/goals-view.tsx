@@ -6,9 +6,11 @@ import { Plus, Target, Trash2, X } from 'lucide-react'
 import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/firestore'
 import { areaShares, debounce, goalsInPeriod, type Debounced } from '@/lib/echo/view-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
+import { Alert, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
+import { glowCardStyle, goalSubtitle } from '@/lib/echo/glow'
+import { KindTag, ProgressRing } from './glow'
 
 type GoalRow = Goal & { id: string }
 
@@ -56,22 +58,20 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
   }
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col" style={glowCardStyle('goal')}>
       <div className="flex items-center justify-between">
-        <Badge>{goal.category}</Badge>
+        <KindTag kind="goal">{goal.category}</KindTag>
         <IconButton icon={Trash2} label="Delete goal" size="sm" onClick={() => setConfirming(true)} />
       </div>
       {confirming && <ConfirmDialog title={`Delete “${goal.title}”?`} body="This can't be undone." confirmLabel="Delete" onCancel={() => setConfirming(false)} onConfirm={() => void remove()} />}
-      <h2 className="mt-4 text-base font-semibold text-foreground">{goal.title}</h2>
-      {goal.targetDate && <p className="mt-1 text-xs text-muted-foreground">Target {goal.targetDate}</p>}
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Progress</span>
-          <span className="font-medium text-foreground">{progress}%</span>
+      <div className="mt-4 flex items-center gap-3">
+        <ProgressRing value={progress} label={`${progress}% complete`} />
+        <div className="min-w-0 flex-1">
+          <h2 className="break-words text-base font-semibold text-foreground">{goal.title}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{goalSubtitle(progress, goal.targetDate)}</p>
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
-          <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
-        </div>
+      </div>
+      <div className="mt-3">
         <input
           type="range"
           min={0}

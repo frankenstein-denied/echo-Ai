@@ -55,3 +55,11 @@ export function timeChipLabel(at: Date, now: Date): string {
   const date = at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   return `${date}, ${time}`
 }
+
+/** Goal subtitle: "40% · due Mar 1", or "40%" with no (or an unreadable) target date. */
+export function goalSubtitle(progress: number, targetDate?: string): string {
+  const m = targetDate?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return `${progress}%`
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return `${progress}% · due ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+}

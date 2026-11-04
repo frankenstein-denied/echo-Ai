@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { doc, limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
-import { Bell, Droplet, HeartPulse, Moon, Smile, Target, X, Zap, type LucideIcon } from 'lucide-react'
+import { Bell, Droplet, Moon, Smile, Target, X, Zap, type LucideIcon } from 'lucide-react'
 import { goalsCol, healthLogsCol, remindersCol, type Goal, type HealthLog, type Reminder } from '@/lib/firestore'
 import { Button, IconButton, Skeleton } from './ui'
 import type { HomeView } from './home'
+import { GlowDot, ProgressRing, TimeChip } from './glow'
 
 export function localDateString(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -42,6 +43,7 @@ export function TodayReminders({ uid, day }: { uid: string; day: string }) {
       () => setItems([]),
     )
   }, [uid, day])
+  const now = new Date()
   return (
     <Section>
       <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
@@ -52,14 +54,16 @@ export function TodayReminders({ uid, day }: { uid: string; day: string }) {
         <p className="mt-2 text-sm text-muted-foreground">Nothing due today. Tell Echo what to remind you about.</p>
       ) : (
         <ul className="mt-4 flex flex-col gap-3 text-sm">
-          {items.map((r) => (
-            <li key={r.id} className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-foreground">{r.title}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {r.dueAt.toDate().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-              </span>
-            </li>
-          ))}
+          {items.map((r) => {
+            const at = r.dueAt.toDate()
+            return (
+              <li key={r.id} className="flex items-center gap-2.5">
+                <GlowDot kind="reminder" />
+                <span className="min-w-0 flex-1 truncate text-foreground">{r.title}</span>
+                <TimeChip at={at} now={now} state={at < now ? 'overdue' : 'upcoming'} />
+              </li>
+            )
+          })}
         </ul>
       )}
     </Section>
@@ -85,7 +89,7 @@ export function HealthToday({ uid, day, onNavigate }: { uid: string; day: string
   return (
     <Section>
       <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-        <HeartPulse size={16} aria-hidden="true" className="text-muted-foreground" />
+        <GlowDot kind="health" size={14} />
         Health today
       </h2>
       {log === undefined ? <Skeleton className="mt-4 h-8" /> : rows.length === 0 ? (
@@ -131,14 +135,10 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
         <p className="mt-2 text-sm text-muted-foreground">No goals yet. Tell Echo a goal and it will appear here.</p>
       ) : (
         goals.map((g) => (
-          <button key={g.id} onClick={() => onNavigate('Goals')} className="mt-4 block w-full rounded-md text-left max-lg:mt-2 max-lg:py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-            <div className="flex justify-between gap-3 text-xs">
-              <span className="min-w-0 truncate text-foreground">{g.title}</span>
-              <span className="shrink-0 text-muted-foreground">{Math.round(g.progress)}%</span>
-            </div>
-            <div className="mt-2 h-1.5 rounded-full bg-surface-2" aria-hidden="true">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, g.progress))}%` }} />
-            </div>
+          <button key={g.id} onClick={() => onNavigate('Goals')} className="mt-3 flex min-h-11 w-full items-center gap-3 rounded-md text-left max-lg:mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <ProgressRing value={g.progress} size={28} label={`${Math.round(g.progress)}% complete`} />
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{g.title}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{Math.round(g.progress)}%</span>
           </button>
         ))
       )}
@@ -159,7 +159,7 @@ export function TodayPanel({ uid, day, onNavigate }: { uid: string; day: string;
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
 
-/** Right-hand drawer (below xl): focus-trapped, Esc or the backdrop closes it, closes if the viewport grows to xl. */
+/** Right-hand drawer (below 2xl): focus-trapped, Esc or the backdrop closes it, closes if the viewport grows to 2xl. */
 export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; day: string; onNavigate: (v: HomeView) => void; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -167,7 +167,7 @@ export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; da
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     panel.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
-    const mq = window.matchMedia('(min-width: 1280px)')
+    const mq = window.matchMedia('(min-width: 1536px)')
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) onClose()
     }
@@ -202,7 +202,7 @@ export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; da
     }
   }
   return (
-    <div className="fixed inset-0 z-50 xl:hidden" onKeyDown={onKeyDown}>
+    <div className="fixed inset-0 z-50 2xl:hidden" onKeyDown={onKeyDown}>
       <div aria-hidden="true" className="absolute inset-0 bg-background/80" onClick={onClose} />
       <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Today" className="absolute inset-y-0 right-0 flex w-80 max-w-[90vw] flex-col overflow-y-auto border-l border-border bg-surface">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">

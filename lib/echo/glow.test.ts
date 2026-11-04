@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { glowCardStyle, isPersonTag, kindForCategory, personLabelSet, timeChipLabel } from './glow'
+import { glowCardStyle, goalSubtitle, isPersonTag, kindForCategory, personLabelSet, timeChipLabel } from './glow'
 
 describe('kindForCategory', () => {
   it('maps categories to kinds', () => {
@@ -37,5 +37,17 @@ describe('timeChipLabel', () => {
     expect(timeChipLabel(new Date(2026, 10, 4, 15), now)).toBe('3:00 PM')
     expect(timeChipLabel(new Date(2026, 10, 5, 15), now)).toBe('Tomorrow 3:00 PM')
     expect(timeChipLabel(new Date(2026, 10, 6, 15, 30), now)).toBe('Nov 6, 3:30 PM')
+  })
+})
+
+describe('goalSubtitle', () => {
+  it('adds the local due date when there is one', () => {
+    expect(goalSubtitle(40, '2027-03-01')).toBe('40% · due Mar 1')
+    expect(goalSubtitle(0, '2026-12-25')).toBe('0% · due Dec 25')
+  })
+  it('shows only the percent without a readable date', () => {
+    expect(goalSubtitle(75)).toBe('75%')
+    expect(goalSubtitle(75, '')).toBe('75%')
+    expect(goalSubtitle(75, 'next spring')).toBe('75%')
   })
 })
