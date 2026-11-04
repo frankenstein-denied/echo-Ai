@@ -6,6 +6,7 @@ import {
   addNote,
   addPageMessage,
   addReminder,
+  bumpPageMix,
   deleteGoal,
   deleteMeal,
   deleteNote,
@@ -24,6 +25,7 @@ import {
   watchCalorieSettings,
   type EchoCategory,
   type Milestone,
+  type PageMix,
 } from '@/lib/firestore'
 import { addRef, removeRef, resolveRef, type RefKind, type RefMap, type RefSource } from './context'
 import type { EchoAction, EchoMealType, EchoNutrition, EchoRequest, EchoResponse } from './types'
@@ -267,18 +269,43 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
         break
     }
   }
-  if (res.memories.length) {
-    await run('memory', '2nd Brain memories', async () => {
-      let pageId = opts.pageId
-      if (!pageId && opts.getPageId) {
+  // Counted for the page's orb colors; deletes don't add (meals are saved as 'health').
+  const delta: PageMix = {}
+  for (const it of saved) {
+    if (it.op === 'delete') continue
+    if (it.type === 'note' || it.type === 'goal' || it.type === 'reminder' || it.type === 'health') delta[it.type] = (delta[it.type] ?? 0) + 1
+  }
+  // Resolved at most once, shared by the memories and the mix, and only when one of them needs it.
+  let pageId = opts.pageId
+  let resolved = !!pageId
+  const resolvePageId = async () => {
+    if (!resolved) {
+      resolved = true
+      if (opts.getPageId) {
         try {
           pageId = await opts.getPageId()
         } catch (e) {
-          console.error('Echo: could not resolve the diary page for memories', e)
+          console.error('Echo: could not resolve the diary page', e)
         }
       }
-      await upsertMemories(uid, res.memories, pageId)
+    }
+    return pageId
+  }
+  if (res.memories.length) {
+    await run('memory', '2nd Brain memories', async () => {
+      await upsertMemories(uid, res.memories, await resolvePageId())
     })
+  }
+  if (Object.keys(delta).length) {
+    const id = await resolvePageId()
+    if (id) {
+      try {
+        await bumpPageMix(uid, id, delta)
+      } catch (e) {
+        // The items are saved; only the orb color is stale.
+        console.error('Echo: could not update the page mix', e)
+      }
+    }
   }
   return { saved, failed }
 }

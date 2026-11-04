@@ -63,7 +63,8 @@ export type ReminderSource = 'chat' | 'routine' | 'manual'
 export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source: ReminderSource; createdAt: Timestamp; updatedAt: Timestamp }
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
-export type DiaryPage = { title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
+export type PageMix = Partial<Record<'note' | 'goal' | 'reminder' | 'health', number>>
+export type DiaryPage = { mix?: PageMix; title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
 export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp; pages?: string[] }
 
@@ -198,6 +199,26 @@ export async function createDiaryPage(uid: string, title?: string): Promise<stri
   const ref = doc(diaryPagesCol(uid))
   await setDoc(ref, { title: normalizeTitle(title ?? '') ?? defaultPageTitle(), preview: '', messageCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), lastMessageAt: serverTimestamp() } as never)
   return ref.id
+}
+
+/** Keeps only positive-integer counts. */
+export function cleanMix(delta: PageMix): PageMix {
+  const out: PageMix = {}
+  for (const k of ['note', 'goal', 'reminder', 'health'] as const) {
+    const n = delta[k]
+    if (typeof n === 'number' && Number.isInteger(n) && n > 0) out[k] = n
+  }
+  return out
+}
+
+/** Adds to the page's per-kind saved-item counts (drives the orb colors). Writes nothing for an empty delta. */
+export async function bumpPageMix(uid: string, pageId: string, delta: PageMix): Promise<void> {
+  const clean = cleanMix(delta)
+  const kinds = Object.keys(clean) as (keyof PageMix)[]
+  if (!kinds.length) return
+  const upd: Record<string, unknown> = { updatedAt: serverTimestamp() }
+  for (const k of kinds) upd[`mix.${k}`] = increment(clean[k] as number)
+  await updateDoc(doc(diaryPagesCol(uid), pageId), upd as never)
 }
 
 export async function renameDiaryPage(uid: string, pageId: string, title: string): Promise<void> {
