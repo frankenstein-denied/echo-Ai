@@ -269,10 +269,11 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
         break
     }
   }
-  // Counted for the page's orb colors; deletes don't add (meals are saved as 'health').
+  // Counted for the page's orb colors: only newly created items (meals are saved as 'health').
+  // Updates and deletes carry an op and never add, so an edited reminder still counts once.
   const delta: PageMix = {}
   for (const it of saved) {
-    if (it.op === 'delete') continue
+    if (it.op) continue
     if (it.type === 'note' || it.type === 'goal' || it.type === 'reminder' || it.type === 'health') delta[it.type] = (delta[it.type] ?? 0) + 1
   }
   // Resolved at most once, shared by the memories and the mix, and only when one of them needs it.

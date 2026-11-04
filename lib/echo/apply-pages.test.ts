@@ -10,6 +10,8 @@ vi.mock('@/lib/firestore', async (importOriginal) => ({
   addReminder: vi.fn(async () => 'r1'),
   addMeal: vi.fn(async () => 'meal1'),
   deleteNote: vi.fn(async () => undefined),
+  updateNote: vi.fn(async () => undefined),
+  upsertHealthLog: vi.fn(async () => undefined),
   notesCol: vi.fn(() => ({})),
 }))
 vi.mock('firebase/firestore', async (importOriginal) => ({
@@ -60,6 +62,23 @@ describe('page mix', () => {
     expect(res.failed).toEqual([])
     expect(bumpPageMix).toHaveBeenCalledWith('u', 'p', { note: 1, reminder: 1, health: 1 })
   })
+  it('does not count updates, only newly created items', async () => {
+    const refs = { entries: {}, next: { reminder: 1, note: 1, goal: 1, meal: 1 } } as never
+    const ref = addRef(refs, 'note', 'old', 'Old')
+    const update = { type: 'note_update' as const, ref, title: 'Renamed' }
+    const health = { type: 'health_update' as const, date: '2030-01-01', mood: 4 }
+    const res = await applyActions('u', { actions: [note, update, health] as never, memories: [] }, { pageId: 'p', refs })
+    expect(res.failed).toEqual([])
+    expect(res.saved.filter((s) => s.op === 'update')).toHaveLength(2)
+    expect(bumpPageMix).toHaveBeenCalledWith('u', 'p', { note: 1 })
+  })
+  it('does not bump when only updates were saved', async () => {
+    const refs = { entries: {}, next: { reminder: 1, note: 1, goal: 1, meal: 1 } } as never
+    const ref = addRef(refs, 'note', 'old', 'Old')
+    const res = await applyActions('u', { actions: [{ type: 'note_update', ref, title: 'Renamed' }] as never, memories: [] }, { pageId: 'p', refs })
+    expect(res.saved).toHaveLength(1)
+    expect(bumpPageMix).not.toHaveBeenCalled()
+  })
   it('does not bump when nothing countable was saved', async () => {
     await applyActions('u', { actions: [], memories }, { pageId: 'p' })
     expect(bumpPageMix).not.toHaveBeenCalled()
@@ -73,8 +92,9 @@ describe('page mix', () => {
   })
   it('a failing bump does not fail the save', async () => {
     vi.mocked(bumpPageMix).mockRejectedValue(new Error('denied'))
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await applyActions('u', { actions: [note] as never, memories: [] }, { pageId: 'p' })
+    spy.mockRestore()
     expect(res.failed).toEqual([])
     expect(res.saved).toHaveLength(1)
   })
