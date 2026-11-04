@@ -208,14 +208,22 @@ service cloud.firestore {
       // Stamps may be any timestamp <= request.time so the one-time migration can preserve original times;
       // serverTimestamp() (== request.time) satisfies this too. createdAt is immutable.
       match /diaryPages/{pageId} {
+        function validMix(m) {
+          return m is map && m.keys().hasOnly(['note', 'goal', 'reminder', 'health'])
+            && (!('note' in m) || (m.note is int && m.note >= 0))
+            && (!('goal' in m) || (m.goal is int && m.goal >= 0))
+            && (!('reminder' in m) || (m.reminder is int && m.reminder >= 0))
+            && (!('health' in m) || (m.health is int && m.health >= 0));
+        }
         function validPage(d) {
-          return d.keys().hasOnly(['title', 'preview', 'messageCount', 'createdAt', 'updatedAt', 'lastMessageAt'])
+          return d.keys().hasOnly(['title', 'preview', 'messageCount', 'createdAt', 'updatedAt', 'lastMessageAt', 'mix'])
             && d.keys().hasAll(['title', 'preview', 'messageCount', 'createdAt', 'updatedAt', 'lastMessageAt'])
             && d.title is string && d.title.size() >= 1 && d.title.size() <= 120
             && isString(d.preview, 160)
             && d.messageCount is int && d.messageCount >= 0
             && d.updatedAt is timestamp && d.updatedAt <= request.time
-            && d.lastMessageAt is timestamp && d.lastMessageAt <= request.time;
+            && d.lastMessageAt is timestamp && d.lastMessageAt <= request.time
+            && (!('mix' in d) || validMix(d.mix));
         }
         allow read, delete: if isOwner(uid);
         allow create: if isOwner(uid) && validPage(request.resource.data)
