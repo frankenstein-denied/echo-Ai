@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Pencil, Plus, Trash2, Undo2, Utensils } from 'lucide-react'
+import { Pencil, Trash2, Undo2, Utensils } from 'lucide-react'
 import { deleteMeal, type MealDoc } from '@/lib/firestore'
-import { goalProgress, groupByMealType, itemsTotal, MEAL_TYPE_LABELS, type MealType } from '@/lib/echo/health-helpers'
+import { groupByMealType, itemsTotal, MEAL_TYPE_LABELS, type MealType } from '@/lib/echo/health-helpers'
 import { Alert, Badge, Button, Card, ConfirmDialog, IconButton } from '../ui'
 import { MealDialog } from './meal-editor'
 
@@ -11,9 +11,14 @@ const UNDO_MS = 10000
 
 type Pending = { meal: MealDoc; timer: ReturnType<typeof setTimeout> }
 
-export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: string; meals: MealDoc[]; goal?: number }) {
+/** The meal type a new meal defaults to: the first of breakfast, lunch, dinner not yet logged, else a snack. */
+export function nextMealType(meals: { mealType: MealType }[]): MealType {
+  return (['breakfast', 'lunch', 'dinner'] as const).find((t) => !meals.some((m) => m.mealType === t)) ?? 'snack'
+}
+
+// Today's meal list. The calories body above it shows the total and holds Add meal.
+export function CaloriesCard({ uid, day, meals }: { uid: string; day: string; meals: MealDoc[] }) {
   const [editing, setEditing] = useState<MealDoc | null>(null)
-  const [adding, setAdding] = useState(false)
   const [pending, setPending] = useState<Pending[]>([])
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState<MealDoc | null>(null)
@@ -59,44 +64,12 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
 
   const hidden = new Set(pending.map((p) => p.meal.id))
   const visible = meals.filter((m) => !hidden.has(m.id))
-  const total = visible.reduce((s, m) => s + m.totalCalories, 0)
-  const progress = goalProgress(total, goal)
   const groups = groupByMealType(visible)
   const anyEstimated = visible.some((m) => m.estimated)
-  const nextType: MealType = (['breakfast', 'lunch', 'dinner'] as const).find((t) => !visible.some((m) => m.mealType === t)) ?? 'snack'
 
   return (
     <Card className="mt-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-foreground">Calories today</h2>
-        <Button variant="secondary" icon={Plus} onClick={() => setAdding(true)} className="max-lg:h-11">
-          Add meal
-        </Button>
-      </div>
-
-      <div className="mt-4">
-        <p className="text-foreground">
-          <span className="text-3xl font-semibold tabular-nums">{total.toLocaleString('en-US')}</span>
-          <span className="ml-1.5 text-sm text-muted-foreground">{goal ? `of ${goal.toLocaleString('en-US')} kcal` : 'kcal'}</span>
-        </p>
-        {progress ? (
-          <>
-            <div
-              role="progressbar"
-              aria-label="Calories toward daily goal"
-              aria-valuemin={0}
-              aria-valuemax={goal}
-              aria-valuenow={Math.min(total, goal ?? total)}
-              className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
-            >
-              <div className={`h-full rounded-full ${progress.over > 0 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${progress.pct}%` }} />
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{progress.over > 0 ? `${progress.over.toLocaleString('en-US')} kcal over your goal` : `${progress.remaining.toLocaleString('en-US')} kcal remaining`}</p>
-          </>
-        ) : (
-          <p className="mt-1 text-sm text-muted-foreground">Set a daily goal in Settings to see what is left.</p>
-        )}
-      </div>
+      <h2 className="text-base font-semibold text-foreground">Meals today</h2>
 
       {error && (
         <div className="mt-4">
@@ -160,7 +133,6 @@ export function CaloriesCard({ uid, day, meals, goal }: { uid: string; day: stri
       )}
       {anyEstimated && <p className="mt-4 text-xs text-muted-foreground">Estimated amounts come from your description. Edit a meal to correct it.</p>}
 
-      <MealDialog uid={uid} day={day} defaultType={nextType} open={adding} onClose={() => setAdding(false)} />
       <MealDialog uid={uid} day={day} meal={editing ?? undefined} open={editing !== null} onClose={() => setEditing(null)} />
       {confirm && <ConfirmDialog title={`Delete “${confirm.description}”?`} body="You can undo for a few seconds." confirmLabel="Delete" onCancel={() => setConfirm(null)} onConfirm={() => remove(confirm)} />}
     </Card>

@@ -165,3 +165,14 @@ button, a, summary, label, [role='button'], [role='tab'], [role='radio'], [role=
 @media (prefers-reduced-motion: reduce) {
   .orb-breathe { animation: none; }
 }
+
+/* Health bodies: the fill rises to its level and the water surface rolls gently. */
+.body-fill { transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+.body-fade { transition: opacity 700ms ease-out; }
+@keyframes body-wave { from { transform: translateX(0); } to { transform: translateX(-40px); } }
+.body-wave { animation: body-wave 3.2s linear infinite; }
+.body-wave-slow { animation: body-wave 5.5s linear infinite reverse; }
+@media (prefers-reduced-motion: reduce) {
+  .body-fill, .body-fade { transition: none; }
+  .body-wave, .body-wave-slow { animation: none; }
+}
