@@ -15,13 +15,14 @@ import { MoodPicker } from './health/mood-picker'
 import { CaloriesCard, nextMealType } from './health/calories-card'
 import { MealDialog } from './health/meal-editor'
 import { BodyMeter } from './health/body-meter'
+import { SleepArc } from './health/sleep-arc'
+import { EnergyBar } from './health/energy-bar'
 import { BodyStrip, type StripDay } from './health/body-strip'
 import type { View } from './shell'
 import { CaloriesWeekChart, MoodWeekChart } from './health/week-charts'
 
 type Fields = Partial<Pick<HealthLog, 'mood' | 'moodTag' | 'sleepMinutes' | 'waterGlasses' | 'energy'>>
 
-const ENERGIES: Energy[] = ['low', 'medium', 'high']
 const SLEEP_STEP = 30
 
 type Edits = { moodTag?: MoodTag; energy?: Energy; water?: number; sleep?: { h: string; m: string } }
@@ -273,6 +274,7 @@ function TodayForm({ uid, day, live, calories, onAddMeal, onSetGoal }: { uid: st
         </Tile>
         <div className="grid gap-4 md:grid-cols-2">
           <Tile icon={Moon} title="Sleep">
+            <SleepArc minutes={parseSleepInput(sleepH, sleepM) ?? 0} />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <IconButton icon={Minus} label="Less sleep" variant="secondary" onClick={() => stepSleep(-SLEEP_STEP)} />
               <Input type="number" inputMode="numeric" min={0} max={24} value={sleepH} placeholder="0" aria-label="Sleep hours" onChange={(e) => changeSleep(e.target.value, sleepM)} className="w-16 text-center" />
@@ -284,18 +286,14 @@ function TodayForm({ uid, day, live, calories, onAddMeal, onSetGoal }: { uid: st
           </Tile>
           <div>
             <Tile icon={Zap} title="Energy">
-              <Segmented
-                ariaLabel="Energy"
-                fullWidth
-                value={energy ?? ''}
-                onChange={(v) => {
-                  const e = v as Energy
+              <EnergyBar
+                value={energy ?? null}
+                onChange={(e) => {
                   touch('energy')
                   setEdits((p) => ({ ...p, energy: e }))
                   pending.current = { ...pending.current, energy: e }
                   queue()
                 }}
-                options={ENERGIES.map((e) => ({ value: e, label: e.charAt(0).toUpperCase() + e.slice(1) }))}
               />
             </Tile>
           </div>
