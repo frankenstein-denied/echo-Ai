@@ -155,3 +155,35 @@ button, a, summary, label, [role='button'], [role='tab'], [role='radio'], [role=
     }
   }
 }
+
+/* Today's orb on a new page: a slow breath while it is still empty. */
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(203, 213, 225, 0)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 18px rgba(203, 213, 225, 0.45)); }
+}
+.orb-breathe { animation: orb-breathe 3s ease-in-out infinite; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+  .orb-breathe { animation: none; }
+}
+
+/* Health bodies: the fill rises to its level and the water surface rolls gently. */
+.body-fill { transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+.body-fade { transition: opacity 700ms ease-out; }
+@keyframes body-wave { from { transform: translateX(0); } to { transform: translateX(-40px); } }
+.body-wave { animation: body-wave 3.2s linear infinite; }
+.body-wave-slow { animation: body-wave 5.5s linear infinite reverse; }
+@media (prefers-reduced-motion: reduce) {
+  .body-fill, .body-fade { transition: none; }
+  .body-wave, .body-wave-slow { animation: none; }
+}
+
+/* Landing: sample memory orbs float gently, each on its own loop. */
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(3px, -7px); }
+  66% { transform: translate(-3px, -3px); }
+}
+.orb-drift { animation: orb-drift 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .orb-drift { animation: none; }
+}

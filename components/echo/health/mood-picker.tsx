@@ -5,6 +5,16 @@ import { Angry, Annoyed, BatteryLow, Frown, Laugh, Meh, Smile, type LucideIcon }
 import { MOOD_LABELS, MOOD_TAGS, type MoodTag } from '@/lib/echo/health-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 
+export const MOOD_COLORS: Record<MoodTag, string> = {
+  great: '#fbbf24',
+  happy: '#34d399',
+  okay: '#94a3b8',
+  tired: '#818cf8',
+  sad: '#60a5fa',
+  anxious: '#a78bfa',
+  angry: '#f87171',
+}
+
 export const MOOD_ICONS: Record<MoodTag, LucideIcon> = {
   great: Laugh,
   happy: Smile,
@@ -28,6 +38,7 @@ export function MoodPicker({ value, onChange }: { value: MoodTag | null; onChang
       {MOOD_TAGS.map((tag, i) => {
         const on = tag === value
         const Icon = MOOD_ICONS[tag]
+        const c = MOOD_COLORS[tag]
         return (
           <button
             key={tag}
@@ -46,9 +57,14 @@ export function MoodPicker({ value, onChange }: { value: MoodTag | null; onChang
                 go(next)
               }
             }}
-            className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium transition-colors ${FOCUS_RING} ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`}
+            style={
+              on
+                ? { background: `color-mix(in srgb, ${c} 18%, transparent)`, borderColor: c, boxShadow: `0 0 14px color-mix(in srgb, ${c} 45%, transparent), inset 0 0 10px color-mix(in srgb, ${c} 15%, transparent)` }
+                : { borderColor: `color-mix(in srgb, ${c} 28%, var(--color-border))` }
+            }
+            className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs font-medium transition-[background-color,box-shadow,border-color] motion-reduce:transition-none ${FOCUS_RING} ${on ? 'text-foreground' : 'bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`}
           >
-            <Icon size={24} aria-hidden="true" />
+            <Icon size={24} aria-hidden="true" style={{ color: c }} />
             {MOOD_LABELS[tag]}
           </button>
         )

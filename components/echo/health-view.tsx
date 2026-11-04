@@ -1,21 +1,28 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { documentId, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { Droplet, Flame, Minus, Moon, Plus, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
+import { averageLogged, calorieFill, waterFill } from '@/lib/echo/body-fill'
+import { KCAL_TO, WATER_COLOR } from '@/lib/echo/glow'
 import { healthLogsCol, mealsInRange, saveHealthChanges, watchCalorieSettings, type Energy, type HealthLog, type MealDoc } from '@/lib/firestore'
 import { chartDays, debounce, healthPeriodDates, healthPeriodStats, localDateKey, mealsByDay, parseSleepInput, splitSleep, stepWater, type Debounced } from '@/lib/echo/view-helpers'
 import { dailyTotals, MEAL_TYPE_LABELS, moodFromScore, MOOD_LABELS, moodScore, moodTagOf, type HealthWeekPoint, type MoodTag } from '@/lib/echo/health-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
-import { Alert, Card, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { Alert, Button, Card, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { MoodPicker } from './health/mood-picker'
-import { CaloriesCard } from './health/calories-card'
+import { CaloriesCard, nextMealType } from './health/calories-card'
+import { MealDialog } from './health/meal-editor'
+import { BodyMeter } from './health/body-meter'
+import { SleepArc } from './health/sleep-arc'
+import { EnergyBar } from './health/energy-bar'
+import { BodyStrip, type StripDay } from './health/body-strip'
+import type { View } from './shell'
 import { CaloriesWeekChart, MoodWeekChart } from './health/week-charts'
 
 type Fields = Partial<Pick<HealthLog, 'mood' | 'moodTag' | 'sleepMinutes' | 'waterGlasses' | 'energy'>>
 
-const ENERGIES: Energy[] = ['low', 'medium', 'high']
 const SLEEP_STEP = 30
 
 type Edits = { moodTag?: MoodTag; energy?: Energy; water?: number; sleep?: { h: string; m: string } }
@@ -33,8 +40,132 @@ function Tile({ icon: Icon, title, children }: { icon: LucideIcon; title: string
   )
 }
 
+const SMALL_QUERY = '(max-width: 639px)'
+function subscribeSmall(cb: () => void) {
+  const mq = window.matchMedia(SMALL_QUERY)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+/** Phones: the bodies shrink and the numbers move below them. */
+function useSmallScreen(): boolean {
+  return useSyncExternalStore(subscribeSmall, () => window.matchMedia(SMALL_QUERY).matches, () => false)
+}
+
+type CalorieInfo = { kcal: number; goal?: number }
+
+function Figures({ icon: Icon, title, color, text, sub, children }: { icon: LucideIcon; title: string; color: string; text: string; sub: string; children?: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Icon size={15} aria-hidden="true" />
+        {title}
+      </p>
+      <p className="mt-1 text-lg font-semibold leading-snug tabular-nums" style={{ color }}>
+        {text}
+      </p>
+      {sub && <p className="text-sm tabular-nums text-muted-foreground">{sub}</p>}
+      {children}
+    </div>
+  )
+}
+
+function BodiesLayout({ bodies, figures, two }: { bodies: React.ReactNode; figures: React.ReactNode; two: boolean }) {
+  return (
+    <div className="flex items-center justify-center gap-10 max-sm:flex-col max-sm:items-stretch max-sm:gap-5">
+      <div className="flex items-end justify-center gap-8">{bodies}</div>
+      <div className={`grid min-w-0 gap-6 sm:w-56 ${two ? 'max-sm:grid-cols-2 max-sm:gap-4' : ''}`}>{figures}</div>
+    </div>
+  )
+}
+
+const bodyLabel = (what: string, text: string, sub: string) => `${what}: ${text}${sub ? `, ${sub}` : ''}`
+
+// Today's water and calorie bodies, with the water stepper and Add meal beside their numbers.
+function TodayBodies({ water, onStepWater, calories, onAddMeal, onSetGoal }: { water: number; onStepWater: (delta: number) => void; calories: CalorieInfo | null; onAddMeal: () => void; onSetGoal?: () => void }) {
+  const h = useSmallScreen() ? 180 : 260
+  const w = waterFill(water)
+  const k = calories ? calorieFill(calories.kcal, calories.goal) : null
+  return (
+    <Card className="mb-5">
+      <h2 className="sr-only">Water and calories today</h2>
+      <BodiesLayout
+        two={k !== null}
+        bodies={
+          <>
+            <BodyMeter kind="water" level={w.level} height={h} label={bodyLabel('Water', w.text, w.sub)} />
+            {k && <BodyMeter kind="calories" level={k.level} over={k.over} height={h} label={bodyLabel('Calories', k.text, k.sub)} />}
+          </>
+        }
+        figures={
+          <>
+            <Figures icon={Droplet} title="Water" color={WATER_COLOR} text={w.text} sub={w.sub}>
+              <div className="mt-2 flex gap-2">
+                <IconButton icon={Minus} label="Fewer glasses" variant="secondary" onClick={() => onStepWater(-1)} />
+                <IconButton icon={Plus} label="More glasses" variant="secondary" onClick={() => onStepWater(1)} />
+              </div>
+            </Figures>
+            {k && (
+              <Figures icon={Flame} title="Calories" color={KCAL_TO} text={k.text} sub={k.sub}>
+                {k.noGoal &&
+                  (onSetGoal ? (
+                    <button type="button" onClick={onSetGoal} className="-my-2 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      Set a goal
+                    </button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Set a goal in Settings.</p>
+                  ))}
+                <div className="mt-2">
+                  <Button variant="secondary" icon={Plus} onClick={onAddMeal} className="max-lg:h-11">
+                    Add meal
+                  </Button>
+                </div>
+              </Figures>
+            )}
+          </>
+        }
+      />
+    </Card>
+  )
+}
+
+// Week, month or all: the bodies show the average logged day; week and month add a strip of mini bodies.
+function AverageBodies({ water, kcal, goal, showCalories, strip }: { water: number | null; kcal: number | null; goal?: number; showCalories: boolean; strip: StripDay[] | null }) {
+  const h = useSmallScreen() ? 180 : 260
+  const w = water != null ? waterFill(water) : null
+  const k = kcal != null ? calorieFill(kcal, goal) : null
+  const wText = w ? `Average day: ${w.text}` : 'No logs yet'
+  const kText = k ? `Average day: ${k.text.replace(' today', '')}` : 'No logs yet'
+  return (
+    <Card className="mb-5">
+      <h2 className="text-base font-semibold text-foreground">Average day</h2>
+      <div className="mt-4">
+        <BodiesLayout
+          two={showCalories}
+          bodies={
+            <>
+              <BodyMeter kind="water" level={w?.level ?? 0} height={h} label={bodyLabel('Water', wText, w?.sub ?? '')} />
+              {showCalories && <BodyMeter kind="calories" level={k?.level ?? 0} over={k?.over} height={h} label={bodyLabel('Calories', kText, k?.sub ?? '')} />}
+            </>
+          }
+          figures={
+            <>
+              <Figures icon={Droplet} title="Water" color={WATER_COLOR} text={wText} sub={w?.sub ?? ''} />
+              {showCalories && <Figures icon={Flame} title="Calories" color={KCAL_TO} text={kText} sub={k?.sub ?? ''} />}
+            </>
+          }
+        />
+      </div>
+      {strip && (
+        <div className="mt-5 border-t border-border pt-4">
+          <BodyStrip days={strip} />
+        </div>
+      )}
+    </Card>
+  )
+}
+
 // Displayed values come from the live snapshot, overlaid by local edits that are still unsaved or in flight.
-function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields }) {
+function TodayForm({ uid, day, live, calories, onAddMeal, onSetGoal }: { uid: string; day: string; live: Fields; calories: CalorieInfo | null; onAddMeal: () => void; onSetGoal?: () => void }) {
   const [edits, setEdits] = useState<Edits>({})
   const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [error, setError] = useState('')
@@ -125,6 +256,8 @@ function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields 
   }
 
   return (
+    <>
+    <TodayBodies water={water} onStepWater={stepGlass} calories={calories} onAddMeal={onAddMeal} onSetGoal={onSetGoal} />
     <Card>
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">Today</h2>
@@ -141,6 +274,7 @@ function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields 
         </Tile>
         <div className="grid gap-4 md:grid-cols-2">
           <Tile icon={Moon} title="Sleep">
+            <SleepArc minutes={parseSleepInput(sleepH, sleepM) ?? 0} />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <IconButton icon={Minus} label="Less sleep" variant="secondary" onClick={() => stepSleep(-SLEEP_STEP)} />
               <Input type="number" inputMode="numeric" min={0} max={24} value={sleepH} placeholder="0" aria-label="Sleep hours" onChange={(e) => changeSleep(e.target.value, sleepM)} className="w-16 text-center" />
@@ -150,36 +284,23 @@ function TodayForm({ uid, day, live }: { uid: string; day: string; live: Fields 
               <IconButton icon={Plus} label="More sleep" variant="secondary" onClick={() => stepSleep(SLEEP_STEP)} />
             </div>
           </Tile>
-          <Tile icon={Droplet} title="Water">
-            <div className="flex items-center gap-3">
-              <IconButton icon={Minus} label="Fewer glasses" variant="secondary" onClick={() => stepGlass(-1)} />
-              <span className="min-w-24 text-center text-foreground">
-                <span className="text-2xl font-semibold tabular-nums">{water}</span>
-                <span className="ml-1 text-sm text-muted-foreground">{water === 1 ? 'glass' : 'glasses'}</span>
-              </span>
-              <IconButton icon={Plus} label="More glasses" variant="secondary" onClick={() => stepGlass(1)} />
-            </div>
-          </Tile>
-          <div className="md:col-span-2">
+          <div>
             <Tile icon={Zap} title="Energy">
-              <Segmented
-                ariaLabel="Energy"
-                fullWidth
-                value={energy ?? ''}
-                onChange={(v) => {
-                  const e = v as Energy
+              <EnergyBar
+                value={energy ?? null}
+                onChange={(e) => {
                   touch('energy')
                   setEdits((p) => ({ ...p, energy: e }))
                   pending.current = { ...pending.current, energy: e }
                   queue()
                 }}
-                options={ENERGIES.map((e) => ({ value: e, label: e.charAt(0).toUpperCase() + e.slice(1) }))}
               />
             </Tile>
           </div>
         </div>
       </div>
     </Card>
+    </>
   )
 }
 
@@ -213,15 +334,16 @@ function Stat({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: str
   )
 }
 
-export function HealthView({ uid }: { uid: string }) {
+export function HealthView({ uid, onNavigate }: { uid: string; onNavigate?: (v: View) => void }) {
   const day = useDay()
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const [today, setToday] = useState<Fields | null | undefined>(undefined)
-  const [logs, setLogs] = useState<{ date: string; mood?: number; moodTag?: string; sleepMinutes?: number }[] | null>(null)
+  const [logs, setLogs] = useState<{ date: string; mood?: number; moodTag?: string; sleepMinutes?: number; waterGlasses?: number }[] | null>(null)
   const [meals, setMeals] = useState<MealDoc[] | null>(null)
   const [cal, setCal] = useState<{ enabled: boolean; goal?: number } | null>(null)
   const [error, setError] = useState('')
   const [mealError, setMealError] = useState('')
+  const [addingMeal, setAddingMeal] = useState(false)
 
   // Today's doc stays live so the form reflects what Echo chat logs while the page is open.
   useEffect(() => {
@@ -250,7 +372,7 @@ export function HealthView({ uid }: { uid: string }) {
     const q = query(healthLogsCol(uid), where(documentId(), '>=', startKey), where(documentId(), '<=', endKey), orderBy(documentId()))
     return onSnapshot(
       q,
-      (snap) => setLogs(snap.docs.map((s) => ({ date: s.id, mood: s.data().mood, moodTag: s.data().moodTag, sleepMinutes: s.data().sleepMinutes }))),
+      (snap) => setLogs(snap.docs.map((s) => ({ date: s.id, mood: s.data().mood, moodTag: s.data().moodTag, sleepMinutes: s.data().sleepMinutes, waterGlasses: s.data().waterGlasses }))),
       (e) => {
         setLogs([])
         setError(e.message || 'Could not load your health logs.')
@@ -288,6 +410,25 @@ export function HealthView({ uid }: { uid: string }) {
   const span = SPAN[period]
   const avgTag = stats.avgMood != null ? moodFromScore(stats.avgMood) : null
   const avgSleep = stats.avgSleepMinutes != null ? splitSleep(stats.avgSleepMinutes) : null
+  const todayKcal = todayMeals.reduce((sum, m) => sum + m.totalCalories, 0)
+  const calInfo: CalorieInfo | null = calEnabled && cal ? { kcal: todayKcal, goal: cal.goal } : null
+
+  // Week/month/all: water from the day's log, calories from the day's meals; unlogged days are null.
+  const perDay = useMemo(() => {
+    const water = new Map((logs ?? []).filter((l) => typeof l.waterGlasses === 'number').map((l) => [l.date, l.waterGlasses as number]))
+    const kcalDays = new Map(mealDays.map((g) => [g.date, g.total]))
+    return keys.map((k) => ({ key: k, water: water.get(k) ?? null, kcal: kcalDays.get(k) ?? null }))
+  }, [keys, logs, mealDays])
+  const strip = useMemo<StripDay[] | null>(() => {
+    if (period !== 'week' && period !== 'month') return null
+    return perDay.map((d) => {
+      const [y, m, dd] = d.key.split('-').map(Number)
+      const date = new Date(y, m - 1, dd)
+      const label = period === 'week' ? date.toLocaleDateString('en-US', { weekday: 'short' }) : String(dd)
+      return { ...d, label, goal: cal?.goal, showCalories: calEnabled }
+    })
+  }, [perDay, period, cal, calEnabled])
+
   const nothingLogged = logs !== null && (!calEnabled || meals !== null) && !stats.moodDays && !stats.sleepDays && !stats.mealDays
 
   return (
@@ -301,7 +442,19 @@ export function HealthView({ uid }: { uid: string }) {
           <Alert variant="danger">{error}</Alert>
         </div>
       )}
-      {isToday && (today === undefined ? <Skeleton className="h-64" /> : <TodayForm key={`${uid}-${day}`} uid={uid} day={day} live={today ?? {}} />)}
+      {isToday &&
+        (today === undefined ? (
+          <Skeleton className="h-64" />
+        ) : (
+          <TodayForm key={`${uid}-${day}`} uid={uid} day={day} live={today ?? {}} calories={calInfo} onAddMeal={() => setAddingMeal(true)} onSetGoal={onNavigate ? () => onNavigate('Settings') : undefined} />
+        ))}
+      {isToday && calEnabled && <MealDialog uid={uid} day={day} defaultType={nextMealType(todayMeals)} open={addingMeal} onClose={() => setAddingMeal(false)} />}
+      {!isToday &&
+        (logs === null || (calEnabled && meals === null) ? (
+          <Skeleton className="mb-5 h-80" />
+        ) : (
+          <AverageBodies water={averageLogged(perDay.map((d) => d.water))} kcal={averageLogged(perDay.map((d) => d.kcal))} goal={cal?.goal} showCalories={calEnabled} strip={strip} />
+        ))}
       {!isToday &&
         (logs === null ? (
           <Skeleton className="h-40" />
@@ -335,7 +488,7 @@ export function HealthView({ uid }: { uid: string }) {
                 <Alert variant="danger">{mealError}</Alert>
               </div>
             )}
-            {meals === null ? <Skeleton className="mt-5 h-48" /> : <CaloriesCard uid={uid} day={day} meals={todayMeals} goal={cal.goal} />}
+            {meals === null ? <Skeleton className="mt-5 h-48" /> : <CaloriesCard uid={uid} day={day} meals={todayMeals} />}
           </>
         )
       )}

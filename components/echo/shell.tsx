@@ -195,7 +195,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           ) : view === 'Goals' ? (
             <GoalsView uid={user.uid} />
           ) : view === 'Health' ? (
-            <HealthView uid={user.uid} />
+            <HealthView uid={user.uid} onNavigate={navigate} />
           ) : view === 'Reminders' ? (
             <RemindersView uid={user.uid} />
           ) : view === 'Connectors' ? (
