@@ -32,11 +32,12 @@ describe('listenbrainz', () => {
     expect(await listenbrainzUserExists('rj', ok)).toBe(true)
     expect(String((ok as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0])).toContain('/user/rj/listen-count')
     expect(await listenbrainzUserExists('nobody', (async () => res({}, 404)) as unknown as typeof fetch)).toBe(false)
-    expect(
-      await listenbrainzUserExists('x', (async () => {
-        throw new Error('net')
-      }) as unknown as typeof fetch),
-    ).toBe(false)
+  })
+  it('throws when the check itself fails (network error, abort, other non-OK)', async () => {
+    await expect(listenbrainzUserExists('x', (async () => { throw new Error('net') }) as unknown as typeof fetch)).rejects.toThrow()
+    await expect(listenbrainzUserExists('x', (async () => { throw new DOMException('aborted', 'AbortError') }) as unknown as typeof fetch)).rejects.toThrow()
+    await expect(listenbrainzUserExists('x', (async () => res({}, 500)) as unknown as typeof fetch)).rejects.toThrow()
+    await expect(listenbrainzUserExists('x', (async () => res({}, 429)) as unknown as typeof fetch)).rejects.toThrow()
   })
   it('parses listens and top artists', async () => {
     const f = vi.fn(async (url: string) =>

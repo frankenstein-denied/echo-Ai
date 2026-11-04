@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, Network, PanelLeftClose, PanelLeftOpen, Settings, Target, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { setConnectorSecret, setMusicAccount, type UserProfile } from '@/lib/firestore'
-import { revokeTavilyLogin, startLastfmLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
-import { parseMusicFragment } from '@/lib/echo/music'
+import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
+import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { EchoMark, IconButton } from './ui'
 import { DiaryView } from './diary-view'
@@ -106,12 +105,6 @@ const TAVILY_NOTICES: Record<string, ConnectorNotice> = {
   failed: { variant: 'danger', text: "Couldn't connect Web search. Try again." },
 }
 
-const MUSIC_NOTICES: Record<string, ConnectorNotice> = {
-  cancelled: { variant: 'warning', text: 'Last.fm login was cancelled.' },
-  expired: { variant: 'warning', text: 'That login took too long. Try again.' },
-  failed: { variant: 'danger', text: "Couldn't connect Last.fm. Try again." },
-}
-
 function daysWithEcho(profile: UserProfile): number | null {
   const created = profile.createdAt?.toDate?.()
   if (!created) return null
@@ -138,21 +131,10 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     const v = url.searchParams.get('view')
     const outcome = url.searchParams.get('tavily')
     const sealed = /^#web-search=([A-Za-z0-9._-]{1,8192})$/.exec(url.hash)?.[1]
-    const musicOutcome = url.searchParams.get('music')
-    const musicHash = url.hash.startsWith('#music=')
-    if (!v && !outcome && !musicOutcome && !url.hash.startsWith('#web-search=') && !musicHash) return
+    if (!v && !outcome && !url.hash.startsWith('#web-search=')) return
     window.history.replaceState(null, '', url.pathname)
     if (NAV.some((n) => n.name === v)) setView(v as View)
-    if (musicHash) {
-      // A Last.fm login handed back as #music=lastfm:<username> (the username is only ever in the fragment).
-      const account = parseMusicFragment(url.hash)
-      if (!account) return setConnectorNotice(MUSIC_NOTICES.failed)
-      setMusicAccount(user.uid, account.service, account.username)
-        .then(() => setConnectorNotice({ variant: 'success', text: 'Music connected' }))
-        .catch(() => setConnectorNotice({ variant: 'danger', text: "Couldn't save your Last.fm account. Try again." }))
-    } else if (musicOutcome) {
-      setConnectorNotice(MUSIC_NOTICES[musicOutcome] ?? MUSIC_NOTICES.failed)
-    } else if (sealed) {
+    if (sealed) {
       // Only save a value the server confirms opens for this account (a crafted link must not replace a login).
       verifyTavilyLogin(user, sealed)
         .then(async (ok) => {
@@ -171,10 +153,6 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const tavilyLogin = useCallback(async () => {
     if (!user) return
     window.location.assign(await startTavilyLogin(user))
-  }, [user])
-  const lastfmLogin = useCallback(async () => {
-    if (!user) return
-    window.location.assign(await startLastfmLogin(user))
   }, [user])
   const tavilyDisconnect = useCallback(
     async (sealed?: string) => {
@@ -221,7 +199,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           ) : view === 'Reminders' ? (
             <RemindersView uid={user.uid} />
           ) : view === 'Connectors' ? (
-            <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onLastfmLogin={lastfmLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
+            <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
             <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
           ) : (

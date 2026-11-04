@@ -53,22 +53,22 @@ describe('isConnected', () => {
 
   it('catalogs music (not spotify) as an available connector', () => {
     const m = CONNECTORS.find((c) => c.id === 'music')
-    expect(m?.name).toBe('Music (Last.fm / ListenBrainz)')
+    expect(m?.name).toBe('Music (ListenBrainz)')
     expect(m?.available).toBe(true)
     expect(CONNECTORS.some((c) => (c.id as string) === 'spotify')).toBe(false)
   })
 
-  it('counts music as connected only with a valid service and a username', () => {
+  it('counts music as connected only with service listenbrainz and a username', () => {
     const m = (docs: { id: string; connected?: boolean; service?: unknown; username?: unknown }[]) => status(docs, 'music')
     expect(m([])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'lastfm' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz' }])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true, username: 'bob' }])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true, service: 'spotify', username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: '   ' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 5 }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: false, service: 'lastfm', username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 'bob' }])).toBe('connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: '   ' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 5 }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: false, service: 'listenbrainz', username: 'bob' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 'bob' }])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 'bob' }])).toBe('connected')
   })
 })

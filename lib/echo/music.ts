@@ -31,37 +31,20 @@ export function formatListening({ recent, topArtists }: Listening): string {
   return lines.join('\n').slice(0, MUSIC_MAX_CHARS)
 }
 
-export type MusicService = 'lastfm' | 'listenbrainz'
+export type MusicService = 'listenbrainz'
 export const MUSIC_USERNAME_MAX = 100
-
-/** URL fragment the Last.fm callback hands back: `#music=lastfm:<encoded username>`. */
-export const musicFragment = (service: MusicService, username: string) => `#music=${service}:${encodeURIComponent(username)}`
-
-/** Parses that fragment; null for anything else (wrong prefix/service, empty, undecodable or oversized name). */
-export function parseMusicFragment(hash: string): { service: MusicService; username: string } | null {
-  const m = /^#music=lastfm:([^:]*)$/.exec(hash)
-  if (!m) return null
-  let username: string
-  try {
-    username = decodeURIComponent(m[1]).trim()
-  } catch {
-    return null
-  }
-  return username && username.length <= MUSIC_USERNAME_MAX ? { service: 'lastfm', username } : null
-}
 
 export const youtubeEmbedUrl = (id: string, autoplay: boolean) =>
   `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=${autoplay ? 1 : 0}`
 
 export const youtubeMusicUrl = (id: string) => `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`
 
+/** true when the user exists, false on 404. Throws when the check itself fails (network error, abort, other non-OK). */
 export async function listenbrainzUserExists(name: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  try {
-    const res = await fetchImpl(`${LB}/user/${encodeURIComponent(name)}/listen-count`, { cache: 'no-store' })
-    return res.ok
-  } catch {
-    return false
-  }
+  const res = await fetchImpl(`${LB}/user/${encodeURIComponent(name)}/listen-count`, { cache: 'no-store' })
+  if (res.status === 404) return false
+  if (!res.ok) throw new Error('listenbrainz check failed')
+  return true
 }
 
 /** Recent listens plus this week's top artists. Throws on network/HTTP failure of the listens call. */
