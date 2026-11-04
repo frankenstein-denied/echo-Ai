@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   AudioLines, BellRing, BookOpen, Brain, HeartPulse, Mic, Network, NotebookPen, Target, ShieldCheck, Lock, Stethoscope,
 } from 'lucide-react'
@@ -8,6 +8,8 @@ import type { LucideIcon } from 'lucide-react'
 import { AuthCard, type AuthMode } from '@/components/echo/login'
 import { Badge, Button, Card, EchoMark } from '@/components/echo/ui'
 import { InstallAppButton } from '@/components/echo/pwa'
+import { OrbConstellation } from '@/components/echo/orb-constellation'
+import { Sheet } from '@/components/echo/sheet'
 
 const features: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: BookOpen, title: 'Diary pages', text: 'Write or talk through your day and keep every entry in one place.' },
@@ -42,31 +44,6 @@ function Section({ id, title, intro, children }: { id: string; title: string; in
   )
 }
 
-const nodes = [
-  { x: 150, y: 90, r: 14, type: 'diary', label: 'Today' },
-  { x: 60, y: 40, r: 10, type: 'person', label: 'Mum' },
-  { x: 250, y: 40, r: 10, type: 'goal', label: 'Run 5k' },
-  { x: 260, y: 140, r: 10, type: 'health', label: 'Sleep' },
-  { x: 50, y: 140, r: 10, type: 'task', label: 'Call' },
-  { x: 150, y: 175, r: 8, type: 'interest', label: 'Music' },
-] as const
-
-function BrainMock() {
-  return (
-    <svg viewBox="0 0 310 200" role="img" aria-label="Example 2nd Brain: today's diary linked to a person, a goal, a health log, a task and an interest" className="w-full">
-      {nodes.slice(1).map(n => (
-        <line key={n.label} x1={150} y1={90} x2={n.x} y2={n.y} stroke="var(--color-border-strong)" strokeWidth={1.5} />
-      ))}
-      {nodes.map(n => (
-        <g key={n.label}>
-          <circle cx={n.x} cy={n.y} r={n.r} fill={`var(--color-node-${n.type})`} />
-          <text x={n.x} y={n.y + n.r + 13} textAnchor="middle" fontSize={11} fill="var(--color-muted-foreground)">{n.label}</text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
 function Preview() {
   return (
     <div aria-hidden="true" className="grid gap-4 md:grid-cols-5">
@@ -86,7 +63,7 @@ function Preview() {
       </Card>
       <Card className="p-5 md:col-span-2">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground"><Network size={16} /> 2nd Brain</div>
-        <BrainMock />
+        <OrbConstellation className="mx-auto block h-[200px] w-full max-w-[320px]" />
       </Card>
     </div>
   )
@@ -94,27 +71,16 @@ function Preview() {
 
 export function Landing() {
   const [mode, setMode] = useState<AuthMode>('signin')
-
-  const [focusTick, setFocusTick] = useState(0)
-  const [announce, setAnnounce] = useState('')
-
-  useEffect(() => {
-    if (focusTick === 0) return
-    document.getElementById('auth-card')?.querySelector<HTMLElement>('input')?.focus()
-  }, [focusTick])
+  const [authOpen, setAuthOpen] = useState(false)
 
   const openAuth = (m: AuthMode) => {
     setMode(m)
-    setAnnounce(m === 'signup' ? 'Create account form' : 'Sign in form')
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    document.getElementById('auth-card')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
-    setFocusTick(t => t + 1)
+    setAuthOpen(true)
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <div role="status" aria-live="polite" className="sr-only">{announce}</div>
       <header className="sticky top-0 z-40 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6 max-md:h-14 max-md:px-4">
           <a href="#main" className="touch-hit flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -134,10 +100,10 @@ export function Landing() {
       </header>
 
       <main id="main" tabIndex={-1} className="focus:outline-none">
-        <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 max-md:gap-8 max-md:px-4 max-md:py-8 lg:grid-cols-2 lg:items-center lg:py-24">
+        <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl gap-12 px-6 py-16 max-md:gap-6 max-md:px-4 max-md:py-6 lg:grid-cols-2 lg:items-center lg:py-24">
           <div className="landing-fade">
             <h1 id="hero-title" className="text-4xl font-semibold leading-tight text-foreground md:text-5xl">A diary that speaks back.</h1>
-            <p className="mt-4 max-w-xl text-base text-muted-foreground">Echo is your virtual companion. Call it like a friend, tell it about your day, and it remembers your life for you: notes, reminders, goals and how you feel.</p>
+            <p className="mt-4 max-w-xl text-base text-muted-foreground">Talk about your day. Echo remembers it, and every day becomes a glowing memory.</p>
             <div className="mt-8 flex flex-wrap gap-3 max-md:mt-6 max-md:grid max-md:grid-cols-2">
               <Button onClick={() => openAuth('signup')}>Start talking to Echo</Button>
               <Button variant="secondary" onClick={() => openAuth('signin')}>Sign in</Button>
@@ -145,10 +111,14 @@ export function Landing() {
             {/* Mobile only; renders nothing when installed or not installable. */}
             <InstallAppButton dismissible className="mt-4 lg:hidden max-lg:*:h-11 max-lg:*:min-w-11" />
           </div>
-          <div className="landing-fade mx-auto w-full max-w-[400px] lg:ml-auto">
-            <AuthCard mode={mode} onModeChange={setMode} />
+          <div className="landing-fade order-first mx-auto w-full max-w-[520px] lg:order-last lg:ml-auto">
+            <OrbConstellation className="mx-auto block h-[220px] w-full md:h-[340px] lg:h-[400px]" />
           </div>
         </section>
+
+        <Sheet open={authOpen} onClose={() => setAuthOpen(false)} title={mode === 'signup' ? 'Create your account' : 'Sign in to Echo'}>
+          <AuthCard mode={mode} onModeChange={setMode} />
+        </Sheet>
 
         <Section id="preview" title="See how it looks" intro="One conversation becomes a diary entry, a reminder, a goal and a new link in your 2nd Brain.">
           <Preview />

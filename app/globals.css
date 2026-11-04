@@ -176,3 +176,14 @@ button, a, summary, label, [role='button'], [role='tab'], [role='radio'], [role=
   .body-fill, .body-fade { transition: none; }
   .body-wave, .body-wave-slow { animation: none; }
 }
+
+/* Landing: sample memory orbs float gently, each on its own loop. */
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(3px, -7px); }
+  66% { transform: translate(-3px, -3px); }
+}
+.orb-drift { animation: orb-drift 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .orb-drift { animation: none; }
+}
