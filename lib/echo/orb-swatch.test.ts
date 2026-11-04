@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { orbSwatchStyle } from '@/components/echo/memory-orb'
+import { orbBakeBox, orbBakeKey, orbSwatchStyle } from '@/components/echo/memory-orb'
 import { ORB_COLOR, orbShares, PEARL, type OrbKind } from './orbs'
 
 const zero: Record<OrbKind, number> = { note: 0, goal: 0, reminder: 0, health: 0, person: 0, interest: 0 }
@@ -27,5 +27,26 @@ describe('orbSwatchStyle', () => {
   it('is deterministic', () => {
     const counts = { ...zero, goal: 2, person: 1 }
     expect(orbSwatchStyle(counts)).toEqual(orbSwatchStyle({ ...counts }))
+  })
+})
+
+describe('lite orb bake', () => {
+  it('covers the halo and stays within the pixel budget', () => {
+    const small = orbBakeBox(16, 1)
+    expect(small.half).toBeGreaterThanOrEqual(16 * 2)
+    expect(small.scale).toBe(1.5)
+    const big = orbBakeBox(60, 3)
+    expect(big.half * 2 * big.scale).toBeLessThanOrEqual(320)
+    expect(big.scale).toBeGreaterThanOrEqual(1)
+    expect(orbBakeBox(20, 3).scale).toBe(3)
+  })
+  it('keys on everything that changes the picture', () => {
+    const orb = { id: 'orb-a', radius: 24, counts: { ...zero, note: 2, goal: 1 } }
+    const k = orbBakeKey(orb, 1.5)
+    expect(orbBakeKey({ ...orb }, 1.5)).toBe(k)
+    expect(orbBakeKey({ ...orb, id: 'orb-b' }, 1.5)).not.toBe(k)
+    expect(orbBakeKey({ ...orb, radius: 25 }, 1.5)).not.toBe(k)
+    expect(orbBakeKey({ ...orb, counts: { ...orb.counts, goal: 2 } }, 1.5)).not.toBe(k)
+    expect(orbBakeKey(orb, 3)).not.toBe(k)
   })
 })

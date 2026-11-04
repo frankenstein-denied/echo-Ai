@@ -37,6 +37,11 @@ const MIN_K = 0.2
 const MAX_K = 4
 /** Above this many orbs on screen the color swirl stops, so drag, pan and zoom stay smooth. */
 const SWIRL_LIMIT = 40
+/**
+ * Above this many orbs each one is baked once into a bitmap (MemoryOrb `lite`): two blur
+ * filters per orb, redrawn every pan, zoom and simulation frame, dropped 200 orbs to ~10 fps.
+ */
+const LITE_LIMIT = SWIRL_LIMIT
 const LABEL_MAX = 28
 
 // Orb props stay stable between simulation frames (only the parent <g> moves), so memo skips their re-render.
@@ -525,6 +530,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const linkedIds = new Set(linked.map((l) => l.orb.id))
   const searching = search.trim().length > 0
   const swirl = !prefersReduced && shown.length <= SWIRL_LIMIT
+  const lite = shown.length > LITE_LIMIT
 
   const header = <PageHeader title="2nd Brain" description="Each diary page is a memory orb. Its colors show what's inside." />
 
@@ -733,7 +739,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
                     {mobile && <circle r={Math.max(orb.radius, 22 / k)} fill="transparent" />}
                     {/* Opaque backing so threads never show through a dimmed (see-through) orb. */}
                     <circle r={orb.radius} style={{ fill: 'var(--color-surface)' }} />
-                    <StableOrb orb={orb} selected={isSel} highlighted={isMatch || isHover} dimmed={dimmed} reducedMotion={!swirl} />
+                    <StableOrb orb={orb} selected={isSel} highlighted={isMatch || isHover} dimmed={dimmed} reducedMotion={!swirl} lite={lite} />
                     {n.fx != null && <circle r={orb.radius + 8} fill="none" strokeWidth={1.5} strokeDasharray="3 3" pointerEvents="none" style={{ stroke: 'var(--color-muted-foreground)' }} />}
                     {showLabel && (
                       <text
