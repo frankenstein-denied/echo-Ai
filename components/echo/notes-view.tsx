@@ -1,17 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { onSnapshot, orderBy, query } from 'firebase/firestore'
+import { onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { Check, FileText, Plus, Search, SlidersHorizontal } from 'lucide-react'
-import { addNote, notesCol, type Note } from '@/lib/firestore'
+import { addNote, memoriesCol, notesCol, type Note } from '@/lib/firestore'
 import { filterNotes, notesInPeriod } from '@/lib/echo/view-helpers'
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { filterByCategory, noteCategories, previewText, relativeDate, sortByUpdated } from '@/lib/echo/notes-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { Alert, Badge, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { glowCardStyle, isPersonTag, personLabelSet } from '@/lib/echo/glow'
+import { Alert, Button, EmptyState, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { NoteEditor } from './note-editor'
 import { Sheet, SheetItem } from './sheet'
+import { GlowDot, KindTag } from './glow'
 
 type NoteRow = Note & { id: string }
 
@@ -28,22 +30,28 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-function NoteCard({ note, onOpen }: { note: NoteRow; onOpen: () => void }) {
+const NO_PEOPLE = new Set<string>()
+
+function NoteCard({ note, people, onOpen }: { note: NoteRow; people: Set<string>; onOpen: () => void }) {
   const preview = previewText(note.body)
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`flex h-full min-h-40 flex-col rounded-xl border border-border bg-surface p-5 text-left max-sm:min-h-0 max-sm:w-full max-sm:p-4 transition-colors hover:border-border-strong hover:bg-surface-2 ${FOCUS_RING}`}
+      style={glowCardStyle('note')}
+      className={`flex h-full min-h-40 w-full flex-col rounded-xl border p-5 text-left max-sm:min-h-0 max-sm:p-4 transition-[filter] hover:brightness-125 ${FOCUS_RING}`}
     >
-      <span className="block w-full truncate text-base font-semibold text-foreground">{note.title || 'Untitled'}</span>
+      <span className="flex w-full items-center gap-2">
+        <GlowDot kind="note" />
+        <span className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{note.title || 'Untitled'}</span>
+      </span>
       <span className={`mt-2 line-clamp-3 text-sm leading-5 ${preview ? 'text-muted-foreground' : 'text-subtle'}`}>{preview || 'No content yet'}</span>
       <span className="mt-auto flex w-full flex-wrap items-center gap-1.5 pt-4">
-        <Badge variant="primary">{note.category}</Badge>
+        <KindTag kind="note">{note.category}</KindTag>
         {note.tags.slice(0, 3).map((t) => (
-          <Badge key={t} variant="neutral">{t}</Badge>
+          <KindTag key={t} kind={isPersonTag(t, people) ? 'person' : null}>{t}</KindTag>
         ))}
-        {note.tags.length > 3 && <Badge variant="neutral">+{note.tags.length - 3}</Badge>}
+        {note.tags.length > 3 && <KindTag kind={null}>+{note.tags.length - 3}</KindTag>}
         <span className="ml-auto text-xs text-muted-foreground">{relativeDate(updatedMs(note), Date.now())}</span>
       </span>
     </button>
@@ -64,6 +72,7 @@ export function NotesView({ uid }: { uid: string }) {
   const root = useRef<HTMLDivElement>(null)
   const savedScroll = useRef<{ el: HTMLElement | null; top: number } | null>(null)
   const seenOpen = useRef(false)
+  const [people, setPeople] = useState<Set<string>>(NO_PEOPLE)
 
   useEffect(() => {
     const q = query(notesCol(uid), orderBy('createdAt', 'desc'))
@@ -77,6 +86,15 @@ export function NotesView({ uid }: { uid: string }) {
         setNotes([])
         setLoadError(e.message || 'Could not load your notes.')
       },
+    )
+  }, [uid])
+
+  // Tags naming a known person memory are tinted rose.
+  useEffect(() => {
+    return onSnapshot(
+      query(memoriesCol(uid), where('type', '==', 'person')),
+      (snap) => setPeople(personLabelSet(snap.docs.map((s) => s.data().label))),
+      () => setPeople(NO_PEOPLE),
     )
   }, [uid])
 
@@ -204,7 +222,7 @@ export function NotesView({ uid }: { uid: string }) {
         <ul className="grid gap-4 max-sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((n) => (
             <li key={n.id}>
-              <NoteCard note={n} onOpen={() => open(n.id)} />
+              <NoteCard note={n} people={people} onOpen={() => open(n.id)} />
             </li>
           ))}
         </ul>
