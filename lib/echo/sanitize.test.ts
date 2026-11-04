@@ -427,3 +427,47 @@ describe('parseEchoContext weather', () => {
     expect(parseEchoContext({})).not.toHaveProperty('weather')
   })
 })
+
+describe('play_music action', () => {
+  it('keeps a lone play_music with its trimmed query', () => {
+    expect(resp([{ type: 'play_music', query: '  lofi beats  ' }]).actions).toEqual([{ type: 'play_music', query: 'lofi beats' }])
+  })
+  it('drops an empty query', () => {
+    expect(resp([{ type: 'play_music', query: '  ' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music', query: 42 }]).actions).toEqual([])
+  })
+  it('cuts the query to 200 characters', () => {
+    expect(resp([{ type: 'play_music', query: 'q'.repeat(300) }]).actions).toEqual([{ type: 'play_music', query: 'q'.repeat(200) }])
+  })
+  it('keeps a pasted link as the query', () => {
+    expect(resp([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }]).actions).toEqual([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }])
+  })
+  it('stands alone: one play_music, over general, connector and web_search; memories kept', () => {
+    const out = sanitizeEchoResponse(
+      {
+        reply: 'Playing it.',
+        actions: [
+          { type: 'connector', provider: 'Spotify', request: 'play lofi' },
+          { type: 'play_music', query: 'lofi' },
+          { type: 'play_music', query: 'jazz' },
+          { type: 'web_search', query: 'lofi' },
+          { type: 'general' },
+        ],
+        memories: [{ label: 'Lofi', type: 'interest', links: [] }],
+        trace: [],
+      },
+      NOW,
+      '09:00',
+    )
+    expect(out.actions).toEqual([{ type: 'play_music', query: 'lofi' }])
+    expect(out.memories.map((m) => m.label)).toEqual(['Lofi'])
+  })
+  it('gives way to real saves (never mixes)', () => {
+    const out = resp([
+      { type: 'play_music', query: 'lofi' },
+      { type: 'note', title: 'Idea', body: 'Write more', category: 'Personal', tags: [] },
+    ])
+    expect(out.actions.map((a) => a.type)).toEqual(['note'])
+  })
+})

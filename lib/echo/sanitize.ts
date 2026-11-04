@@ -26,6 +26,7 @@ export const LIMITS = {
   provider: 40,
   request: 500,
   searchQuery: 300,
+  musicQuery: 200,
   memoryLinks: 8,
   itemTitle: 100,
   milestones: 8,
@@ -355,6 +356,10 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
       const query = str(a.query, LIMITS.searchQuery)
       return query ? { type: 'web_search', query } : null
     }
+    case 'play_music': {
+      const query = str(a.query, LIMITS.musicQuery)
+      return query ? { type: 'play_music', query } : null
+    }
     case 'reminder_update': {
       const ref = knownRef(a.ref, 'reminder', opts.items)
       if (!ref) return null
@@ -597,13 +602,14 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
       if (s) actions.push(s)
     }
   }
-  // A web search stands alone (only memories may come with it): search answers never save items.
+  // A web search or play_music stands alone (only memories may come with it): neither saves items.
   const searches = actions.filter((a) => a.type === 'web_search')
-  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search')
-  // A connector action next to a search means an information question for a missing connector: search instead.
-  if (searches.length && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
-  // A pending delete confirmation wins over a search, so the question reaches the user.
-  const real = saving.length || confirmations.length ? saving : searches.slice(0, 1)
+  const plays = actions.filter((a) => a.type === 'play_music')
+  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'play_music')
+  // A connector action next to a search or a play means a missing connector: search or play instead.
+  if ((searches.length || plays.length) && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
+  // A pending delete confirmation wins over a search or a play, so the question reaches the user; a play wins over a search.
+  const real = saving.length || confirmations.length ? saving : plays.length ? plays.slice(0, 1) : searches.slice(0, 1)
   const finalActions: EchoAction[] = real.length ? real : actions.filter((a) => a.type === 'general').slice(0, 1)
   const trace = Array.isArray(obj.trace)
     ? obj.trace.map((t) => str(t, LIMITS.traceLine)).filter(Boolean).slice(0, LIMITS.trace)

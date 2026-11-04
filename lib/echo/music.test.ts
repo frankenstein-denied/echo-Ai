@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { formatListening, listenbrainzListening, listenbrainzUserExists, youtubeEmbedUrl, youtubeMusicUrl } from './music'
+import { formatListening, listenbrainzListening, listenbrainzUserExists, parseYoutubeLink, youtubeEmbedUrl, youtubeMusicUrl } from './music'
 
 const res = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as unknown as Response
 
@@ -51,5 +51,55 @@ describe('listenbrainz', () => {
     const f = (async (url: string) =>
       String(url).includes('/listens') ? res({ payload: { listens: [] } }) : res(null, 204)) as unknown as typeof fetch
     expect(await listenbrainzListening('rj', f)).toEqual({ recent: [], topArtists: [] })
+  })
+})
+
+describe('parseYoutubeLink', () => {
+  const ID = 'dQw4w9WgXcQ'
+  it('accepts every YouTube and YouTube Music URL shape', () => {
+    for (const url of [
+      `https://www.youtube.com/watch?v=${ID}`,
+      `https://youtube.com/watch?v=${ID}`,
+      `http://m.youtube.com/watch?v=${ID}`,
+      `https://music.youtube.com/watch?v=${ID}&si=abc123`,
+      `https://www.youtube.com/watch?feature=share&v=${ID}&t=42s`,
+      `https://youtu.be/${ID}`,
+      `https://youtu.be/${ID}?si=xyz&t=10`,
+      `https://www.youtube.com/shorts/${ID}`,
+      `https://m.youtube.com/shorts/${ID}?feature=share`,
+      `https://www.youtube.com/embed/${ID}`,
+      `https://youtube.com/embed/${ID}?autoplay=1`,
+      `youtu.be/${ID}`,
+      `music.youtube.com/watch?v=${ID}`,
+    ]) {
+      expect(parseYoutubeLink(url), url).toBe(ID)
+    }
+  })
+  it('finds a link inside a message, with punctuation around it', () => {
+    expect(parseYoutubeLink(`play this https://youtu.be/${ID} please`)).toBe(ID)
+    expect(parseYoutubeLink(`Play (https://music.youtube.com/watch?v=${ID}).`)).toBe(ID)
+    expect(parseYoutubeLink(`<https://www.youtube.com/watch?v=${ID}>`)).toBe(ID)
+  })
+  it('rejects junk and wrong-length IDs', () => {
+    for (const t of ['', 'play lofi beats', 'https://', 'youtube', `https://www.youtube.com/watch?v=${ID}x`, 'https://www.youtube.com/watch?v=short', 'https://youtu.be/abc', `https://youtu.be/${ID}extra`, 'https://www.youtube.com/watch', `https://www.youtube.com/channel/${ID}`, `https://youtu.be/${ID.slice(0, 10)}!`, 'https://www.youtube.com/watch?v=dQw4w9WgXc$']) {
+      expect(parseYoutubeLink(t), t).toBeNull()
+    }
+  })
+  it('rejects non-YouTube hosts and look-alikes', () => {
+    for (const t of [
+      `https://vimeo.com/watch?v=${ID}`,
+      `https://notyoutube.com/watch?v=${ID}`,
+      `notyoutube.com/watch?v=${ID}`,
+      `https://youtube.com.evil.example/watch?v=${ID}`,
+      `https://youtube.com@evil.example/watch?v=${ID}`,
+      `https://evil.example/?u=https://youtu.be`,
+      `ftp://youtube.com/watch?v=${ID}`,
+      `javascript:alert(1)//youtu.be/${ID}`,
+    ]) {
+      expect(parseYoutubeLink(t), t).toBeNull()
+    }
+  })
+  it('ignores non-strings', () => {
+    expect(parseYoutubeLink(undefined as unknown as string)).toBeNull()
   })
 })

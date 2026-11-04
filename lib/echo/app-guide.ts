@@ -9,5 +9,6 @@ export const APP_GUIDE = `- About Echo: a virtual companion and diary you talk t
 - Calorie tracking: on or off with "Track calories" in Settings > Calorie tracking, which also sets the daily kcal goal. When off, Echo does not log meals.
 - Reminders: upcoming reminders (add one with "Remind me to...", mark done, delete) and routines Echo has learned.
 - 2nd Brain: a map of everything Echo remembers (people, interests, topics, goals) and how they connect; search by name, tap a dot for details.
+- Music: ask Echo to play a song, artist or mood, or paste a YouTube or YouTube Music link; it plays in a small player in Echo with "Open in app" (YouTube Music). In a call the player opens paused; tap play.
 - Connectors: the services Echo can use. Nutrition (USDA) is connected by default and can be disconnected; Web search needs "Log in with Tavily" (free); others are coming soon.
 - Settings: profile (name, email), Voice, Calorie tracking, and Account (sign out, install the app when the browser offers it).`

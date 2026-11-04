@@ -36,7 +36,7 @@ describe('SYSTEM_INSTRUCTION search order and teaching', () => {
   it('teaches for coming-soon connectors instead of pretending', () => {
     expect(SYSTEM_INSTRUCTION).toContain('TEACHING')
     expect(SYSTEM_INSTRUCTION).toContain('"coming soon"')
-    expect(SYSTEM_INSTRUCTION).toContain("Spotify isn't connected yet — it's coming soon in Connectors.")
+    expect(SYSTEM_INSTRUCTION).toContain("Google Calendar isn't connected yet — it's coming soon in Connectors.")
   })
 
   it('splits TEACHING into connector actions (teach) and information questions (web search fallback)', () => {
@@ -117,4 +117,25 @@ describe('weather in the typed prompt', () => {
     expect(SYSTEM_INSTRUCTION).toContain("If CONNECTORS lists Weather as connected, say briefly that the forecast isn't available right now and to try again in a moment")
     expect(SYSTEM_INSTRUCTION).toContain('CONNECTORS, WEATHER and APP GUIDE are facts about the app')
       })
+})
+
+describe('play_music', () => {
+  it('is a category with the link rule and a schema variant', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('- play_music:')
+    expect(SYSTEM_INSTRUCTION).toContain('YouTube or YouTube Music link')
+    expect(SYSTEM_INSTRUCTION).toContain('{"type":"play_music","query":"https://youtu.be/')
+    expect(SYSTEM_INSTRUCTION).not.toContain('Spotify')
+    const variants = (RESPONSE_SCHEMA.properties.actions.items as { anyOf: { properties: { type: { enum: string[] }; query?: unknown }; required: string[] }[] }).anyOf
+    const v = variants.find((x) => x.properties.type.enum.includes('play_music'))
+    expect(v?.required).toEqual(['type', 'query'])
+  })
+  it('no longer teaches a connector for playing music', () => {
+    const teaching = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('TEACHING ('), SYSTEM_INSTRUCTION.indexOf('EDITING EXISTING ITEMS'))
+    expect(teaching).not.toContain('play music')
+    const connector = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('- connector:'), SYSTEM_INSTRUCTION.indexOf('- meal_log:'))
+    expect(connector).not.toContain('play music')
+  })
+  it('the APP GUIDE says how music plays', () => {
+    expect(APP_GUIDE).toContain('- Music:')
+  })
 })

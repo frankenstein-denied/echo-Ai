@@ -263,7 +263,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
         break
       }
       default:
-        // web_search is resolved on the server; it and unknown types save nothing.
+        // web_search is resolved on the server and play_music by the caller (the music player); they and unknown types save nothing.
         break
     }
   }

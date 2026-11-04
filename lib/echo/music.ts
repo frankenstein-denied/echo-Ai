@@ -39,6 +39,39 @@ export const youtubeEmbedUrl = (id: string, autoplay: boolean) =>
 
 export const youtubeMusicUrl = (id: string) => `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`
 
+const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/
+const YT_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'])
+const SCHEMELESS_RE = /^(?:(?:www\.|m\.|music\.)?youtube\.com|youtu\.be)\//i
+
+/** The 11-character video ID of the first YouTube / YouTube Music link in `text` (watch, youtu.be, shorts, embed), or null. */
+export function parseYoutubeLink(text: string): string | null {
+  if (typeof text !== 'string') return null
+  for (const raw of text.slice(0, 4000).split(/\s+/)) {
+    // Strip wrapping punctuation from a pasted or quoted link: (<"link">), "link." etc.
+    const token = raw.replace(/^[<(["'“‘]+/, '').replace(/[>)\]"'”’.,!?;:]+$/, '')
+    if (!token) continue
+    const candidate = /^https?:\/\//i.test(token) ? token : SCHEMELESS_RE.test(token) ? `https://${token}` : null
+    if (!candidate) continue
+    let url: URL
+    try {
+      url = new URL(candidate)
+    } catch {
+      continue
+    }
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) continue
+    const host = url.hostname.toLowerCase()
+    const parts = url.pathname.split('/').filter(Boolean)
+    let id: string | null = null
+    if (host === 'youtu.be') id = parts.length === 1 ? parts[0] : null
+    else if (YT_HOSTS.has(host)) {
+      if (parts.length === 1 && parts[0] === 'watch') id = url.searchParams.get('v')
+      else if (parts.length === 2 && (parts[0] === 'shorts' || parts[0] === 'embed')) id = parts[1]
+    }
+    if (id && YT_ID_RE.test(id)) return id
+  }
+  return null
+}
+
 /** true when the user exists, false on 404. Throws when the check itself fails (network error, abort, other non-OK). */
 export async function listenbrainzUserExists(name: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
   const res = await fetchImpl(`${LB}/user/${encodeURIComponent(name)}/listen-count`, { cache: 'no-store' })
