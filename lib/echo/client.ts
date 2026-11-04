@@ -37,6 +37,7 @@ import {
   SEARCH_WAKING_REPLY,
 } from './search-replies'
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
+import { resolvePlayMusic, type FindOutcome, type MusicTrack } from './music-play'
 import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
 
@@ -87,6 +88,8 @@ export type ApplyOptions = {
   onDeleted?: (e: UndoInput) => void
   /** Calls: estimate a meal that arrives without nutrition (POST /api/nutrition). */
   estimateMeal?: (description: string, mealType: EchoMealType) => Promise<EchoNutrition>
+  /** Typed play_music: text added after the reply (or after the save confirmation when the reply is empty). */
+  replySuffix?: string
 }
 
 const CATEGORY_OF: Record<RefKind, EchoCategory> = { reminder: 'reminder', note: 'note', goal: 'goal', meal: 'health' }
@@ -427,13 +430,30 @@ export async function saveReply(uid: string, pageId: string, reply: string, cate
 export async function applyEchoResponse(uid: string, pageId: string, res: EchoResponse, opts: ApplyOptions = {}): Promise<ApplyResult> {
   const { saved, failed } = await applyActions(uid, res, { ...opts, pageId })
   const category = deriveCategory(saved)
-  const reply = res.reply || fallbackReply(saved)
+  const reply = [res.reply || fallbackReply(saved), opts.replySuffix].filter(Boolean).join(' ')
   let messageId: string | undefined
   if (reply) {
     messageId = await saveReply(uid, pageId, reply, category, res.sources)
     if (!messageId) failed.push('reply')
   }
   return { saved, failed, category, reply, messageId, sources: res.sources }
+}
+
+/**
+ * Typed chat: finds the song for a play_music action and opens the player, then applies the other actions and saves
+ * the reply. A failed search never leaves a "playing" claim in the reply (see resolvePlayMusic).
+ */
+export async function applyEchoResponseWithMusic(
+  uid: string,
+  pageId: string,
+  res: EchoResponse,
+  find: (query: string) => Promise<FindOutcome>,
+  open: (track: MusicTrack) => void,
+  opts: ApplyOptions = {},
+): Promise<ApplyResult> {
+  const played = await resolvePlayMusic(res, find)
+  if (played.track) open(played.track)
+  return applyEchoResponse(uid, pageId, played.res, { ...opts, ...(played.replySuffix ? { replySuffix: played.replySuffix } : {}) })
 }
 
 /** Web search: asks the server for Tavily's login URL (POST /api/connectors/web-search/start). */

@@ -46,18 +46,25 @@ export async function findTrack(user: { getIdToken: () => Promise<string> }, que
   }
 }
 
-/** Typed chat: resolves a play_music action. On failure Echo's reply becomes the fixed error text (nothing opens). */
-export async function resolvePlayMusic(res: EchoResponse, find: (query: string) => Promise<FindOutcome>): Promise<{ res: EchoResponse; track?: MusicTrack }> {
+/**
+ * Typed chat: resolves a play_music action. Alone, a failure makes Echo's reply the fixed error text (nothing opens).
+ * With saves too, a failure drops the router's reply (it may claim music is playing): the reply becomes the save
+ * confirmation built after applying (fallbackReply) followed by `replySuffix`, the error text.
+ */
+export async function resolvePlayMusic(res: EchoResponse, find: (query: string) => Promise<FindOutcome>): Promise<{ res: EchoResponse; track?: MusicTrack; replySuffix?: string }> {
   const action = res.actions.find((a) => a.type === 'play_music')
   if (!action) return { res }
+  const withSaves = res.actions.some((a) => a.type !== 'play_music' && a.type !== 'general')
   let out: FindOutcome
   try {
     out = await find(action.query)
   } catch {
     out = fail('failed')
   }
-  if (!out.ok) return { res: { ...res, reply: out.reply } }
-  return { res: res.reply.trim() ? res : { ...res, reply: `Playing ${out.track.title}.` }, track: out.track }
+  if (!out.ok) return withSaves ? { res: { ...res, reply: '' }, replySuffix: out.reply } : { res: { ...res, reply: out.reply } }
+  if (res.reply.trim()) return { res, track: out.track }
+  const playing = `Playing ${out.track.title}.`
+  return withSaves ? { res, track: out.track, replySuffix: playing } : { res: { ...res, reply: playing }, track: out.track }
 }
 
 /** Calls: the play_music tool result (the player opened paused). */

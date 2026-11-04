@@ -5,13 +5,13 @@ import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
-import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
-import { findTrack, resolvePlayMusic, type MusicTrack } from '@/lib/echo/music-play'
+import { findTrack, type MusicTrack } from '@/lib/echo/music-play'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -498,10 +498,15 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           return
         }
         // play_music: a pasted link plays directly, a name is searched; typed chat autoplays (the send tap is the gesture).
-        // If the song can't be found, Echo's reply becomes the fixed error text and nothing opens.
-        const played = await resolvePlayMusic(res, (q) => findTrack(user, q, { text: msg }))
-        if (played.track) playMusic(played.track, { autoplay: true })
-        const applied = await applyEchoResponse(uid, page, played.res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
+        // Saves next to it still apply. If the song can't be found, nothing opens and the reply carries the error text.
+        const applied = await applyEchoResponseWithMusic(
+          uid,
+          page,
+          res,
+          (q) => findTrack(user, q, { text: msg }),
+          (t) => playMusic(t, { autoplay: true }),
+          { refs: built?.refs, source: 'chat', onDeleted: pushUndo },
+        )
         void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {

@@ -86,6 +86,25 @@ describe('resolvePlayMusic', () => {
     expect(out.track).toBeUndefined()
     expect(out.res.reply).toBe("I couldn't find that song.")
   })
+  it('with saves too: success keeps the reply, failure drops the playing claim and adds the error after the save confirmation', async () => {
+    const both: EchoResponse = {
+      reply: "Done, I'll remind you at 8 — playing lofi now.",
+      actions: [{ type: 'reminder', title: 'Call Mama', dueAt: '2026-10-25T20:00:00+08:00' }, { type: 'play_music', query: 'lofi' }],
+      memories: [],
+      trace: [],
+    }
+    const ok = await resolvePlayMusic(both, async () => ({ ok: true, track: { videoId: ID, title: 'Lofi Girl' } }))
+    expect(ok.res.reply).toBe(both.reply)
+    expect(ok.replySuffix).toBeUndefined()
+    const bad = await resolvePlayMusic(both, async () => ({ ok: false, error: 'not_found', reply: MUSIC_REPLIES.not_found }))
+    expect(bad.track).toBeUndefined()
+    expect(bad.res.reply).toBe('')
+    expect(bad.replySuffix).toBe(MUSIC_REPLIES.not_found)
+    expect(bad.res.actions).toEqual(both.actions)
+    const quiet = await resolvePlayMusic({ ...both, reply: '' }, async () => ({ ok: true, track: { videoId: ID, title: 'Lofi Girl' } }))
+    expect(quiet.res.reply).toBe('')
+    expect(quiet.replySuffix).toBe('Playing Lofi Girl.')
+  })
   it('never throws: a failing finder is a failed reply', async () => {
     const out = await resolvePlayMusic(res('zzz'), async () => {
       throw new Error('x')

@@ -463,11 +463,25 @@ describe('play_music action', () => {
     expect(out.actions).toEqual([{ type: 'play_music', query: 'lofi' }])
     expect(out.memories.map((m) => m.label)).toEqual(['Lofi'])
   })
-  it('gives way to real saves (never mixes)', () => {
+  it('coexists with real saves: reminder + one play_music (play saves nothing)', () => {
     const out = resp([
+      { type: 'reminder', title: 'Call Mama', dueAt: '2026-10-25T20:00:00+08:00' },
       { type: 'play_music', query: 'lofi' },
-      { type: 'note', title: 'Idea', body: 'Write more', category: 'Personal', tags: [] },
+      { type: 'play_music', query: 'jazz' },
+      { type: 'web_search', query: 'lofi' },
     ])
-    expect(out.actions.map((a) => a.type)).toEqual(['note'])
+    expect(out.actions.map((a) => a.type)).toEqual(['reminder', 'play_music'])
+    expect(out.actions[1]).toEqual({ type: 'play_music', query: 'lofi' })
+  })
+  it('is dropped when a delete needs confirming, so the question reaches the user', () => {
+    const out = sanitizeEchoResponse(
+      { reply: 'Deleted it and playing lofi.', actions: [{ type: 'reminder_delete', ref: 'r1' }, { type: 'play_music', query: 'lofi' }], memories: [], trace: [] },
+      NOW,
+      '09:00',
+      [],
+      { items: { reminders: [{ ref: 'r1', title: 'Stretch', due: 'Mon' }], goals: [], notes: [], health: '', meals: [], caloriesEnabled: true }, recentMessages: [] },
+    )
+    expect(out.actions.some((a) => a.type === 'play_music')).toBe(false)
+    expect(out.reply).not.toMatch(/playing/i)
   })
 })
