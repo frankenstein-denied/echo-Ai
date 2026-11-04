@@ -82,7 +82,7 @@ export function MemoryOrb({ orb, selected = false, highlighted = false, dimmed =
   return (
     <g opacity={dimmed ? 0.25 : 1} style={{ transition: 'opacity 200ms ease' }}>
       {/* 1. Outer glow halo in the dominant color. */}
-      <circle r={r * 1.25} fill={base} opacity={lit ? 0.62 : 0.32} filter={`url(#${GLOW_BLUR})`} style={{ transition: 'opacity 200ms ease' }} />
+      <circle r={r * 1.25} fill={base} opacity={lit ? 0.62 : 0.32} filter={`url(#${GLOW_BLUR})`} style={{ transition: 'opacity 200ms ease', pointerEvents: 'none' }} />
 
       {/* 2. Clipped body: dominant base plus blurred, slowly turning color blobs. */}
       <clipPath id={clipId}>
@@ -114,10 +114,10 @@ export function MemoryOrb({ orb, selected = false, highlighted = false, dimmed =
         <circle r={r} fill={`url(#${SHADE})`} />
         <circle r={r} fill={`url(#${SHINE})`} />
       </g>
-      <circle r={r - 0.5} fill="none" stroke={RIM} strokeWidth={1} />
+      <circle r={r - 0.5} fill="none" stroke={RIM} strokeWidth={1} pointerEvents="none" />
 
       {/* 4. Crisp selection ring outside the orb. */}
-      {selected && <circle r={r + 4} fill="none" stroke="#f8fafc" strokeOpacity={0.9} strokeWidth={2} />}
+      {selected && <circle r={r + 4} fill="none" stroke="#f8fafc" strokeOpacity={0.9} strokeWidth={2} pointerEvents="none" />}
     </g>
   )
 }

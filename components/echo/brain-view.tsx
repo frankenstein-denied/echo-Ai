@@ -1,50 +1,73 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
 import { BookOpen, Brain, Maximize2, Minus, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { diaryPagesCol, memoriesCol, pageMessagesCol, type Message } from '@/lib/firestore'
 import {
-  buildGraph,
-  edgeKey,
-  filterGraph,
-  isPageNodeId,
-  PAGE_PREFIX,
-  neighbours,
-  NODE_TYPES,
-  relativeTime,
-  searchNodes,
-  traitStrength,
-  typeCounts,
-  type GraphNode,
-  type GraphNodeType,
-  type MemoryDoc,
-  type PageDoc,
-} from '@/lib/echo/graph'
-import { Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, RadioGroup, Skeleton } from './ui'
+  buildOrbs,
+  buildThreads,
+  filterOrbs,
+  orbAriaLabel,
+  orbSummary,
+  searchOrbs,
+  ORB_COLOR,
+  ORB_KINDS,
+  ORB_MEANING,
+  ORB_NOUN,
+  type Orb,
+  type OrbKind,
+  type OrbMemory,
+  type OrbPage,
+  type Thread,
+} from '@/lib/echo/orbs'
+import { PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
+import { MemoryOrb, OrbDefs, OrbSwatch } from './memory-orb'
+import { Button, Card, EmptyState, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { Sheet } from './sheet'
 import { useIsMobile } from './use-mobile'
 
-type SimNode = GraphNode & SimulationNodeDatum
+type SimNode = { id: string; radius: number } & SimulationNodeDatum
 type Transform = { x: number; y: number; k: number }
 type Sim = Simulation<SimNode, SimulationLinkDatum<SimNode>>
 
-const TYPE_LABEL: Record<GraphNodeType, string> = {
-  person: 'People',
-  topic: 'Topics',
-  interest: 'Interests',
-  goal: 'Goals',
-  health: 'Health',
-  task: 'Tasks',
-  diary: 'Diary pages',
-  connector: 'Connectors',
-  trait: 'Personality',
-}
-const typeColor = (t: GraphNodeType) => `var(--color-node-${t})`
 const MAX_TICKS = 400
 const MIN_K = 0.2
 const MAX_K = 4
+/** Above this many orbs on screen the color swirl stops, so drag, pan and zoom stay smooth. */
+const SWIRL_LIMIT = 40
+const LABEL_MAX = 28
+
+// Orb props stay stable between simulation frames (only the parent <g> moves), so memo skips their re-render.
+const StableOrb = memo(MemoryOrb)
+
+const SINGLE = Object.fromEntries(
+  ORB_KINDS.map((k) => [k, Object.fromEntries(ORB_KINDS.map((x) => [x, x === k ? 1 : 0]))]),
+) as Record<OrbKind, Record<OrbKind, number>>
+
+const DATE_FMT = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+const formatDate = (ms: number) => (ms ? DATE_FMT.format(ms) : 'No date')
+const shortLabel = (s: string) => (s.length > LABEL_MAX ? `${s.slice(0, LABEL_MAX - 1).trimEnd()}…` : s)
+
+function noPagesText(period: Period): string {
+  switch (period) {
+    case 'today': return 'No pages today.'
+    case 'week': return 'No pages this week.'
+    case 'month': return 'No pages this month.'
+    case 'all': return 'No pages yet.'
+  }
+}
+
+const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
+function subscribeReduce(cb: () => void) {
+  const mq = window.matchMedia(REDUCE_QUERY)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReduce, () => window.matchMedia(REDUCE_QUERY).matches, () => false)
+}
 
 /** Read-only transcript (last 50 messages) of one diary page. */
 function PageTranscript({ uid, pageId }: { uid: string; pageId: string }) {
@@ -84,15 +107,16 @@ function PageTranscript({ uid, pageId }: { uid: string; pageId: string }) {
 }
 
 export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (pageId: string) => void }) {
-  const [docs, setDocs] = useState<MemoryDoc[] | null>(null)
-  const [pageDocs, setPageDocs] = useState<PageDoc[]>([])
+  const [memories, setMemories] = useState<OrbMemory[] | null>(null)
+  const [pages, setPages] = useState<OrbPage[]>([])
   const [error, setError] = useState('')
-  const [filter, setFilter] = useState<'all' | GraphNodeType>('all')
+  const [period, setPeriod] = useState<Period>('week')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
   const mobile = useIsMobile()
+  const prefersReduced = usePrefersReducedMotion()
   const [tf, setTf] = useState<Transform>({ x: 0, y: 0, k: 1 })
   const [, setFrame] = useState(0)
 
@@ -108,20 +132,22 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const loopRef = useRef(0)
   const fittedRef = useRef(false)
   const userMovedRef = useRef(false)
+  const pendingCentreRef = useRef<string | null>(null)
   const lastTapRef = useRef<{ id: string; t: number } | null>(null)
   const dragRef = useRef<{ id: string; pointerId: number; moved: number; ox: number; oy: number; pinned: boolean } | null>(null)
   const panRef = useRef<{ x: number; y: number; moved: number } | null>(null)
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map())
   const pinchRef = useRef<{ dist: number; k: number } | null>(null)
+  const wheelIdleRef = useRef(0)
 
   useEffect(() => {
     return onSnapshot(
       memoriesCol(uid),
       (snap) => {
-        setDocs(
+        setMemories(
           snap.docs.map((s) => {
             const d = s.data({ serverTimestamps: 'estimate' })
-            return { id: s.id, label: d.label, type: d.type, links: d.links, mentions: d.mentions, createdMs: d.createdAt?.toMillis?.(), lastSeenMs: d.lastSeenAt?.toMillis?.(), pages: Array.isArray(d.pages) ? d.pages : undefined }
+            return { id: s.id, label: d.label, type: d.type, mentions: d.mentions, pages: Array.isArray(d.pages) ? d.pages : undefined }
           }),
         )
         setError('')
@@ -133,16 +159,23 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   useEffect(() => {
     return onSnapshot(
       diaryPagesCol(uid),
-      (snap) => setPageDocs(snap.docs.map((s) => ({ id: s.id, title: s.data().title, lastMessageMs: s.data({ serverTimestamps: 'estimate' }).lastMessageAt?.toMillis?.() }))),
-      () => setPageDocs([]),
+      (snap) =>
+        setPages(
+          snap.docs.map((s) => {
+            const d = s.data({ serverTimestamps: 'estimate' })
+            return { id: s.id, title: d.title, lastMessageMs: d.lastMessageAt?.toMillis?.(), messageCount: typeof d.messageCount === 'number' ? d.messageCount : undefined, mix: d.mix }
+          }),
+        ),
+      () => setPages([]),
     )
   }, [uid])
 
-  const graph = useMemo(() => buildGraph(docs ?? [], pageDocs), [docs, pageDocs])
-  const counts = useMemo(() => typeCounts(graph), [graph])
-  const { visible, edges: litEdges } = useMemo(() => filterGraph(graph, filter), [graph, filter])
-  const matches = useMemo(() => new Set(searchNodes(graph.nodes, search).map((n) => n.id)), [graph, search])
-  const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
+  const orbs = useMemo(() => buildOrbs(memories ?? [], pages), [memories, pages])
+  const shown = useMemo(() => filterOrbs(orbs, period), [orbs, period])
+  const threads = useMemo(() => buildThreads(shown), [shown])
+  const byId = useMemo(() => new Map(shown.map((o) => [o.id, o])), [shown])
+  const matches = useMemo(() => searchOrbs(shown, search), [shown, search])
+  const allMatches = useMemo(() => searchOrbs(orbs, search), [orbs, search])
 
   const requestFrame = useCallback(() => {
     if (rafRef.current) return
@@ -150,6 +183,15 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
       rafRef.current = 0
       setFrame((f) => f + 1)
     })
+  }, [])
+
+  // The color swirl is paused (not reset) while the user drags, pans, pinches or zooms,
+  // so the blurred color layers are not redrawn for the swirl on top of the movement.
+  const setInteracting = useCallback((on: boolean) => {
+    const svg = svgRef.current
+    if (!svg) return
+    if (on) svg.pauseAnimations?.()
+    else svg.unpauseAnimations?.()
   }, [])
 
   const fit = useCallback(() => {
@@ -161,67 +203,97 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
     let x1 = -Infinity
     let y1 = -Infinity
     for (const n of ns) {
-      x0 = Math.min(x0, n.x! - n.radius)
-      x1 = Math.max(x1, n.x! + n.radius)
-      y0 = Math.min(y0, n.y! - n.radius)
-      y1 = Math.max(y1, n.y! + n.radius)
+      // room for the halo around each orb and the label under it
+      x0 = Math.min(x0, n.x! - n.radius * 1.3)
+      x1 = Math.max(x1, n.x! + n.radius * 1.3)
+      y0 = Math.min(y0, n.y! - n.radius * 1.3)
+      y1 = Math.max(y1, n.y! + n.radius + 28)
     }
     const pad = 48
     const k = Math.min(MAX_K, Math.max(MIN_K, Math.min((w - pad * 2) / Math.max(1, x1 - x0), (h - pad * 2) / Math.max(1, y1 - y0), 1.5)))
     setTf({ k, x: w / 2 - ((x0 + x1) / 2) * k, y: h / 2 - ((y0 + y1) / 2) * k })
   }, [])
 
-  // Size tracking (wrapRef only exists once the graph is shown)
-  const hasGraph = graph.nodes.length > 0
+  const centreOn = useCallback((id: string) => {
+    const n = nodesRef.current.get(id)
+    if (!n || n.x == null || n.y == null) return
+    userMovedRef.current = true
+    const { w, h } = sizeRef.current
+    setTf((t) => ({ ...t, x: w / 2 - n.x! * t.k, y: h / 2 - n.y! * t.k }))
+  }, [])
+
+  // Size tracking (wrapRef only exists once there are orbs)
+  const hasOrbs = orbs.length > 0
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const measure = () => {
       const r = el.getBoundingClientRect()
+      const changed = Math.abs(r.width - sizeRef.current.w) > 1 || Math.abs(r.height - sizeRef.current.h) > 1
       sizeRef.current = { w: r.width, h: r.height }
+      // keep the orbs in view when the box is resized, unless the user has panned or zoomed
+      if (changed && fittedRef.current && !userMovedRef.current) fit()
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [hasGraph])
+  }, [hasOrbs, fit])
 
-  // Simulation: rebuilt only when the graph data changes; previous positions and pins are kept (reheat).
+  // A new period gets a fresh fit once its layout settles. Declared before the simulation effect so it runs first.
+  useEffect(() => {
+    fittedRef.current = false
+    userMovedRef.current = false
+  }, [period])
+
+  // Simulation: rebuilt when the shown orbs or threads change; previous positions and pins are kept (reheat).
   useEffect(() => {
     const prev = nodesRef.current
     const next = new Map<string, SimNode>()
-    graph.nodes.forEach((n, i) => {
-      const old = prev.get(n.id)
+    shown.forEach((o, i) => {
+      const old = prev.get(o.id)
       const angle = i * 2.4
-      next.set(n.id, { ...n, x: old?.x ?? Math.cos(angle) * (30 + i * 4), y: old?.y ?? Math.sin(angle) * (30 + i * 4), vx: 0, vy: 0, fx: old?.fx ?? null, fy: old?.fy ?? null })
+      const spread = 40 + i * 12
+      next.set(o.id, { id: o.id, radius: o.radius, x: old?.x ?? Math.cos(angle) * spread, y: old?.y ?? Math.sin(angle) * spread, vx: 0, vy: 0, fx: old?.fx ?? null, fy: old?.fy ?? null })
     })
     nodesRef.current = next
     const nodes = [...next.values()]
     if (!nodes.length) {
       fittedRef.current = false
+      requestFrame()
       return
     }
     if (prev.size === 0 || nodes.length > prev.size * 2 + 5) fittedRef.current = false
-    const links = graph.edges.map((e) => ({ source: e.source, target: e.target }))
+    const links = threads.map((t) => ({ source: t.source, target: t.target }))
     const sim: Sim = forceSimulation<SimNode>(nodes)
-      .force('link', forceLink<SimNode, SimulationLinkDatum<SimNode>>(links).id((d) => d.id).distance(70).strength(0.6))
+      .force(
+        'link',
+        forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
+          .id((d) => d.id)
+          .distance((l) => (l.source as SimNode).radius + (l.target as SimNode).radius + 50)
+          .strength(0.6),
+      )
       .force('charge', forceManyBody<SimNode>().strength(-160))
-      .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 4))
+      .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 10))
       .force('center', forceCenter(0, 0))
       .force('x', forceX<SimNode>(0).strength(0.05))
       .force('y', forceY<SimNode>(0).strength(0.05))
       .alpha(prev.size ? 0.5 : 1)
       .stop()
     simRef.current = sim
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reduce = window.matchMedia(REDUCE_QUERY).matches
     let budget = reduce ? 0 : MAX_TICKS
     const warm = reduce ? MAX_TICKS : 120
     for (let i = 0; i < warm && sim.alpha() > sim.alphaMin(); i++) {
       sim.tick()
       budget--
     }
-    const needFit = !fittedRef.current
-    if (needFit) fit()
+    const pending = pendingCentreRef.current
+    if (pending && next.has(pending)) {
+      pendingCentreRef.current = null
+      fittedRef.current = true
+      centreOn(pending)
+    } else if (!fittedRef.current) fit()
     requestFrame()
     wakeRef.current = () => {}
     let stopped = false
@@ -256,12 +328,13 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
       sim.stop()
       cancelAnimationFrame(loopRef.current)
     }
-  }, [graph, fit, requestFrame])
+  }, [shown, threads, fit, centreOn, requestFrame])
 
   useEffect(
     () => () => {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = 0
+      window.clearTimeout(wheelIdleRef.current)
     },
     [],
   )
@@ -284,19 +357,17 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      setInteracting(true)
+      window.clearTimeout(wheelIdleRef.current)
+      wheelIdleRef.current = window.setTimeout(() => {
+        if (!pointers.current.size) setInteracting(false)
+      }, 200)
       const r = el.getBoundingClientRect()
       zoomAt(Math.exp(-(e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1)) * 0.0015), e.clientX - r.left, e.clientY - r.top)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt, hasGraph])
-
-  const centreOn = useCallback((id: string) => {
-    const n = nodesRef.current.get(id)
-    if (!n || n.x == null || n.y == null) return
-    const { w, h } = sizeRef.current
-    setTf((t) => ({ ...t, x: w / 2 - n.x! * t.k, y: h / 2 - n.y! * t.k }))
-  }, [])
+  }, [zoomAt, setInteracting, hasOrbs])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -314,6 +385,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const onBgDown = (e: React.PointerEvent) => {
     svgRef.current?.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, toLocal(e))
+    setInteracting(true)
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()]
       pinchRef.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), k: tfRef.current.k }
@@ -326,6 +398,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
     e.stopPropagation()
     svgRef.current?.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, toLocal(e))
+    setInteracting(true)
     if (pointers.current.size > 1) return
     const n = nodesRef.current.get(id)
     dragRef.current = { id, pointerId: e.pointerId, moved: 0, ox: e.clientX, oy: e.clientY, pinned: !!n && n.fx != null }
@@ -380,6 +453,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const onUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) pinchRef.current = null
+    if (pointers.current.size === 0) setInteracting(false)
     const drag = dragRef.current
     if (drag) {
       if (e.pointerId !== drag.pointerId) return
@@ -419,37 +493,42 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
     requestFrame()
   }
 
+  const selectAndCentre = (id: string) => {
+    setSelectedId(id)
+    centreOn(id)
+  }
+
   const onSearchKey = (e: React.KeyboardEvent) => {
     if (e.key !== 'Enter') return
-    const first = searchNodes(graph.nodes, search)[0]
-    if (first) {
-      setFilter('all')
-      setSelectedId(first.id)
-      centreOn(first.id)
+    const here = shown.find((o) => matches.has(o.id))
+    if (here) return selectAndCentre(here.id)
+    const elsewhere = orbs.find((o) => allMatches.has(o.id))
+    if (elsewhere) {
+      // Found outside this period: show all pages and centre on it once it is laid out.
+      pendingCentreRef.current = elsewhere.id
+      setPeriod('all')
+      setSelectedId(elsewhere.id)
     }
   }
 
-  const options = useMemo(
-    () => [
-      { value: 'all', label: `All (${graph.nodes.length})` },
-      ...NODE_TYPES.filter((t) => (counts[t] ?? 0) > 0).map((t) => ({ value: t, label: `${TYPE_LABEL[t]} (${counts[t]})`, swatch: typeColor(t) })),
-    ],
-    [graph, counts],
-  )
-
-  useEffect(() => {
-    if (filter !== 'all' && !counts[filter]) setFilter('all')
-  }, [counts, filter])
-
   const selected = selectedId ? byId.get(selectedId) ?? null : null
-  const connected = selected ? neighbours(graph, selected.id).map((id) => byId.get(id)).filter((n): n is GraphNode => !!n) : []
-  const selNeighbours = new Set(connected.map((c) => c.id))
-  const isPage = !!selected && isPageNodeId(selected.id)
+  const linked = useMemo(() => {
+    if (!selected) return []
+    const out: { thread: Thread; orb: Orb }[] = []
+    for (const t of threads) {
+      if (t.source !== selected.id && t.target !== selected.id) continue
+      const orb = byId.get(t.source === selected.id ? t.target : t.source)
+      if (orb) out.push({ thread: t, orb })
+    }
+    return out
+  }, [selected, threads, byId])
+  const linkedIds = new Set(linked.map((l) => l.orb.id))
   const searching = search.trim().length > 0
+  const swirl = !prefersReduced && shown.length <= SWIRL_LIMIT
 
-  const header = <PageHeader title="2nd Brain" description="Everything Echo remembers about you, and how it connects." />
+  const header = <PageHeader title="2nd Brain" description="Each diary page is a memory orb. Its colors show what's inside." />
 
-  if (docs === null && !error) {
+  if (memories === null && !error) {
     return (
       <div>
         {header}
@@ -465,32 +544,39 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
       </div>
     )
   }
-  if (!hasGraph) {
+  if (!hasOrbs) {
     return (
       <div>
         {header}
-        <EmptyState icon={Brain} title="Nothing here yet" description="Chat with Echo and the people, goals and topics you mention will appear as a connected map." />
+        <EmptyState icon={Brain} title="Nothing here yet" description="Chat with Echo and each diary page will appear here as a glowing memory orb." />
       </div>
     )
   }
 
-  const present = NODE_TYPES.filter((t) => (counts[t] ?? 0) > 0)
-
-  const filterControl = <RadioGroup label="Show" name="brain-filter" value={filter} onChange={(v) => setFilter(v as 'all' | GraphNodeType)} options={options} />
+  // Tighter segments so the four periods fit on one line in the side panel; full width in the mobile sheet.
+  const periodControl = (
+    <div className="[&_button]:whitespace-nowrap [&_button]:px-2">
+      <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} fullWidth={mobile} />
+    </div>
+  )
   const legend = (
     <>
-      <h2 className="mb-2 text-sm font-medium text-foreground">Legend</h2>
-      <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-        {present.map((t) => (
-          <li key={t} className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="size-2.5 rounded-full" style={{ background: typeColor(t) }} aria-hidden="true" />
-            {TYPE_LABEL[t]}
+      <h2 className="mb-2 text-sm font-medium text-foreground">What the colors mean</h2>
+      <ul className="grid gap-2">
+        {ORB_KINDS.map((kind) => (
+          <li key={kind} className="flex items-center gap-2.5 text-sm">
+            <OrbSwatch counts={SINGLE[kind]} size={16} />
+            <span className="min-w-0 text-foreground">{ORB_MEANING[kind]}</span>
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">{ORB_NOUN[kind][1]}</span>
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-xs text-muted-foreground">Bigger dots are mentioned more often.</p>
+      <p className="mt-3 text-xs text-muted-foreground">Bigger orbs: more happened on that page. Threads: pages that share a person, interest or goal.</p>
     </>
   )
+
+  const summary = selected ? orbSummary(selected.counts) : []
+  const people = selected ? selected.members.filter((m) => m.kind === 'person' || m.kind === 'interest') : []
   const details = selected ? (
     <>
       {nodesRef.current.get(selected.id)?.fx != null && (
@@ -499,62 +585,69 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <Button variant="secondary" size="sm" icon={PinOff} onClick={() => releaseNode(selected.id)}>Release position</Button>
         </div>
       )}
-      <dl className="grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <dt className="text-xs text-muted-foreground">{isPage ? 'Memories' : 'Mentions'}</dt>
-          <dd className="text-foreground">{selected.mentions}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{isPage ? 'Last message' : 'Last seen'}</dt>
-          <dd className="text-foreground">{relativeTime(selected.lastSeenMs)}</dd>
-        </div>
-        {selected.type === 'trait' && (
-          <div>
-            <dt className="text-xs text-muted-foreground">Strength</dt>
-            <dd className="text-foreground">{traitStrength(selected.mentions ?? 1)}</dd>
-          </div>
-        )}
-      </dl>
       <div>
-        <h3 className="mb-1 text-sm font-medium text-foreground">Connected ({connected.length})</h3>
-        {connected.length ? (
+        <h3 className="mb-1.5 text-sm font-medium text-foreground">What&apos;s inside</h3>
+        {summary.length ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {summary.map((s) => (
+              <li key={s.kind} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-foreground">
+                <span className="size-2 rounded-full" style={{ background: ORB_COLOR[s.kind], boxShadow: `0 0 4px ${ORB_COLOR[s.kind]}` }} aria-hidden="true" />
+                {s.text}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">Just conversation so far.</p>
+        )}
+      </div>
+      {people.length > 0 && (
+        <div>
+          <h3 className="mb-1.5 text-sm font-medium text-foreground">People &amp; interests</h3>
+          <ul className="grid max-h-40 gap-1 overflow-y-auto">
+            {people.map((m) => (
+              <li key={m.id} className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                <span className="size-2.5 shrink-0 rounded-full" style={{ background: ORB_COLOR[m.kind] }} aria-hidden="true" />
+                <span className="truncate">{m.label}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">{ORB_NOUN[m.kind][0]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div>
+        <h3 className="mb-1 text-sm font-medium text-foreground">Linked pages ({linked.length})</h3>
+        {linked.length ? (
           <ul className="grid max-h-56 gap-1 overflow-y-auto">
-            {connected.map((c) => (
-              <li key={c.id}>
+            {linked.map(({ thread, orb }) => (
+              <li key={orb.id}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setFilter('all')
-                    setSelectedId(c.id)
-                    centreOn(c.id)
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-lg:min-h-11"
+                  onClick={() => selectAndCentre(orb.id)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-lg:min-h-11"
                 >
-                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: typeColor(c.type) }} aria-hidden="true" />
-                  <span className="truncate">{c.label}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{c.type}</span>
+                  <OrbSwatch counts={orb.counts} size={14} />
+                  <span className="min-w-0">
+                    <span className="block truncate">{orb.label}</span>
+                    <span className="block truncate text-xs text-muted-foreground">via {thread.via.join(', ')}</span>
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">No connections yet.</p>
+          <p className="text-sm text-muted-foreground">No linked pages{period === 'all' ? '' : ' in this period'}.</p>
         )}
       </div>
-      {isPage && (
-        <>
-          <p className="text-xs text-muted-foreground">{selected.lastSeenMs ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(selected.lastSeenMs) : 'No date'}</p>
-          <PageTranscript uid={uid} pageId={selected.id.slice(PAGE_PREFIX.length)} />
-          {onOpenPage && (
-            <Button icon={BookOpen} onClick={() => onOpenPage(selected.id.slice(PAGE_PREFIX.length))}>
-              Open in Diary
-            </Button>
-          )}
-        </>
+      <PageTranscript uid={uid} pageId={selected.pageId} />
+      {onOpenPage && (
+        <Button icon={BookOpen} onClick={() => onOpenPage(selected.pageId)}>
+          Open in Diary
+        </Button>
       )}
     </>
   ) : null
-  const filterLabel = filter === 'all' ? 'All' : TYPE_LABEL[filter]
+  const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? 'All'
+  const k = tf.k
 
   return (
     <div>
@@ -567,70 +660,94 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={onSearchKey}
-          hint={searching ? `${matches.size} match${matches.size === 1 ? '' : 'es'}. Press Enter to jump to the first.` : undefined}
+          hint={
+            searching
+              ? matches.size || !allMatches.size
+                ? `${matches.size} match${matches.size === 1 ? '' : 'es'}. Press Enter to jump to the first.`
+                : `No matches in this period, ${allMatches.size} in All. Press Enter to jump to the first.`
+              : undefined
+          }
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div ref={wrapRef} className="relative h-[560px] overflow-hidden rounded-xl border border-border bg-surface max-lg:h-[max(320px,calc(100dvh-var(--topbar-h)-var(--tabbar-h)-12.5rem))]">
           <svg
             ref={svgRef}
             className="size-full cursor-grab touch-none select-none"
             role="group"
-            aria-label="Memory graph. Use Tab to move between memories and Enter to select."
+            aria-label="Memory orbs. Use Tab to move between diary pages and Enter to select."
             onPointerDown={onBgDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
           >
-            <g transform={`translate(${tf.x} ${tf.y}) scale(${tf.k})`}>
-              {graph.edges.map((e) => {
-                const a = nodesRef.current.get(e.source)
-                const b = nodesRef.current.get(e.target)
-                if (!a || !b) return null
-                const lit = litEdges.has(edgeKey(e.source, e.target))
-                const onSel = !!selected && (e.source === selected.id || e.target === selected.id)
-                const stroke = onSel ? 'var(--color-primary)' : lit && filter !== 'all' ? 'var(--color-muted-foreground)' : 'var(--color-border-strong)'
-                return <line key={`${e.source}|${e.target}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={(onSel ? 2 : 1) / tf.k} style={{ stroke }} opacity={lit ? 1 : 0.15} />
-              })}
-              {graph.nodes.map((gn) => {
-                const n = nodesRef.current.get(gn.id)
+            <OrbDefs />
+            <g transform={`translate(${tf.x} ${tf.y}) scale(${k})`}>
+              <g pointerEvents="none" strokeLinecap="round">
+                {threads.map((t) => {
+                  const a = nodesRef.current.get(t.source)
+                  const b = nodesRef.current.get(t.target)
+                  if (!a || !b) return null
+                  const onSel = !!selected && (t.source === selected.id || t.target === selected.id)
+                  const faded = searching && !matches.has(t.source) && !matches.has(t.target)
+                  const color = ORB_COLOR[t.kind]
+                  return (
+                    <g key={`${t.source}|${t.target}`} opacity={faded ? 0.3 : 1}>
+                      {/* soft glow under the thread (a wide faint stroke, no filter, so it stays cheap) */}
+                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={(onSel ? 10 : 7) / k} opacity={onSel ? 0.22 : 0.08} />
+                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={(onSel ? 3.5 : 2.5) / k} opacity={onSel ? 0.9 : 0.35} />
+                    </g>
+                  )
+                })}
+              </g>
+              {shown.map((orb) => {
+                const n = nodesRef.current.get(orb.id)
                 if (!n) return null
-                const isVisible = visible.has(gn.id)
-                const isSel = gn.id === selectedId
-                const isHover = gn.id === hoverId
-                const isMatch = searching && matches.has(gn.id)
-                const showLabel = isVisible && (graph.nodes.length <= 40 || gn.radius >= 12 || isSel || isHover || isMatch || selNeighbours.has(gn.id) || tf.k >= 1.6)
+                const isSel = orb.id === selectedId
+                const isHover = orb.id === hoverId
+                const isMatch = searching && matches.has(orb.id)
+                const dimmed = searching && !isMatch
+                const showLabel = shown.length <= SWIRL_LIMIT || orb.radius >= 30 || isSel || isHover || isMatch || linkedIds.has(orb.id) || k >= 1.6
                 return (
                   <g
-                    key={gn.id}
+                    key={orb.id}
                     transform={`translate(${n.x ?? 0} ${n.y ?? 0})`}
-                    opacity={isVisible ? (searching && !isMatch ? 0.45 : 1) : 0.15}
-                    style={{ pointerEvents: isVisible ? 'auto' : 'none', cursor: dragRef.current?.id === gn.id ? 'grabbing' : 'grab', outline: 'none' }}
-                    aria-hidden={isVisible ? undefined : true}
+                    style={{ cursor: dragRef.current?.id === orb.id ? 'grabbing' : 'grab', outline: 'none' }}
                     role="button"
-                    tabIndex={isVisible ? 0 : -1}
-                    aria-label={`${gn.label}, ${gn.type}, mentioned ${gn.mentions} time${gn.mentions === 1 ? '' : 's'}`}
+                    tabIndex={0}
+                    aria-label={orbAriaLabel(orb)}
                     aria-pressed={isSel}
-                    onPointerDown={(e) => onNodeDown(e, gn.id)}
-                    onPointerEnter={() => setHoverId(gn.id)}
+                    onPointerDown={(e) => onNodeDown(e, orb.id)}
+                    onPointerEnter={() => setHoverId(orb.id)}
                     onPointerLeave={() => setHoverId(null)}
-                    onFocus={() => setHoverId(gn.id)}
+                    onFocus={() => setHoverId(orb.id)}
                     onBlur={() => setHoverId(null)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        setSelectedId(gn.id)
+                        setSelectedId(orb.id)
                       }
                     }}
                   >
-                    {nodesRef.current.get(gn.id)?.fx != null && <circle r={gn.radius + 7} fill="none" strokeWidth={1.5} strokeDasharray="3 3" style={{ stroke: 'var(--color-muted-foreground)' }} />}
-                    {(isSel || isMatch || isHover) && <circle r={gn.radius + 4} fill="none" strokeWidth={2} style={{ stroke: isSel ? 'var(--color-foreground)' : 'var(--color-primary)' }} />}
-                    {/* Touch: invisible 44 px hit area around small dots. */}
-                    {mobile && <circle r={Math.max(gn.radius, 22 / tf.k)} fill="transparent" />}
-                    <circle r={gn.radius} strokeWidth={1.5} style={{ fill: typeColor(gn.type), stroke: 'var(--color-surface)' }} />
+                    {/* Touch: invisible 44 px hit area around small orbs. */}
+                    {mobile && <circle r={Math.max(orb.radius, 22 / k)} fill="transparent" />}
+                    {/* Opaque backing so threads never show through a dimmed (see-through) orb. */}
+                    <circle r={orb.radius} style={{ fill: 'var(--color-surface)' }} />
+                    <StableOrb orb={orb} selected={isSel} highlighted={isMatch || isHover} dimmed={dimmed} reducedMotion={!swirl} />
+                    {n.fx != null && <circle r={orb.radius + 8} fill="none" strokeWidth={1.5} strokeDasharray="3 3" pointerEvents="none" style={{ stroke: 'var(--color-muted-foreground)' }} />}
                     {showLabel && (
-                      <text x={gn.radius + 6 / tf.k} y={4 / tf.k} fontSize={12 / tf.k} paintOrder="stroke" strokeWidth={3 / tf.k} style={{ fill: 'var(--color-foreground)', stroke: 'var(--color-surface)' }}>
-                        {gn.label}
+                      <text
+                        y={orb.radius + 14 / k}
+                        textAnchor="middle"
+                        dominantBaseline="hanging"
+                        fontSize={12 / k}
+                        paintOrder="stroke"
+                        strokeWidth={3 / k}
+                        strokeLinejoin="round"
+                        opacity={dimmed ? 0.45 : 1}
+                        style={{ fill: 'var(--color-foreground)', stroke: 'var(--color-surface)', fontWeight: isSel ? 600 : 400 }}
+                      >
+                        {shortLabel(orb.label)}
                       </text>
                     )}
                   </g>
@@ -638,26 +755,38 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
               })}
             </g>
           </svg>
+          {shown.length === 0 && (
+            <div className="absolute inset-0 grid place-items-center p-6">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <p className="text-sm text-muted-foreground">{noPagesText(period)}</p>
+                <Button variant="secondary" onClick={() => setPeriod('all')}>Show all</Button>
+              </div>
+            </div>
+          )}
           <div className="absolute right-3 top-3 flex flex-col gap-1 rounded-lg border border-border bg-surface-2 p-1">
             <IconButton icon={Plus} label="Zoom in" size="sm" onClick={() => zoomAt(1.3)} />
             <IconButton icon={Minus} label="Zoom out" size="sm" onClick={() => zoomAt(1 / 1.3)} />
             <IconButton icon={Maximize2} label="Fit to view" size="sm" onClick={fit} />
           </div>
-          <Button variant="secondary" icon={SlidersHorizontal} className="absolute left-3 top-3 bg-surface-2 lg:hidden" aria-label="Filter and legend" aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
-            {filterLabel}
+          <Button variant="secondary" icon={SlidersHorizontal} className="absolute left-3 top-3 bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter and color key`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
+            {periodLabel}
           </Button>
-          <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground max-lg:hidden">Drag nodes to arrange · double-tap or use Release position to unpin · drag the background to pan · scroll to zoom</p>
-          <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap a dot for details · pinch to zoom · drag to pan</p>
+          <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground max-lg:hidden">Drag orbs to arrange · double-tap to unpin · drag the background to pan · scroll to zoom</p>
+          <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap an orb for details · pinch to zoom · drag to pan</p>
         </div>
         <div className="grid content-start gap-4 max-lg:hidden">
-          <Card as="div">{filterControl}</Card>
+          <Card as="div">
+            <h2 className="mb-2 text-sm font-medium text-foreground">Show pages from</h2>
+            {periodControl}
+          </Card>
           {selected ? (
-            <Card as="div" className="grid gap-3">
+            <Card as="div" className="grid gap-4">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="break-words text-base font-semibold text-foreground">{selected.label}</h2>
-                  <div className="mt-1">
-                    <Badge type={selected.type}>{selected.type}</Badge>
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span className="mt-0.5 flex"><OrbSwatch counts={selected.counts} size={22} /></span>
+                  <div className="min-w-0">
+                    <h2 className="break-words text-base font-semibold text-foreground">{selected.label}</h2>
+                    <p className="text-xs text-muted-foreground">{formatDate(selected.ms)}</p>
                   </div>
                 </div>
                 <IconButton icon={X} label="Close details" size="sm" onClick={() => setSelectedId(null)} />
@@ -666,19 +795,19 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
             </Card>
           ) : (
             <Card as="div">
-              <p className="text-sm text-muted-foreground">Select a memory to see its details and connections.</p>
+              <p className="text-sm text-muted-foreground">Tap an orb to see what&apos;s inside.</p>
             </Card>
           )}
           <Card as="div">{legend}</Card>
         </div>
       </div>
-      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter and legend">
+      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter and color key">
         <div className="grid gap-5 px-2 pb-2">
-          {filterControl}
+          {periodControl}
           <div>{legend}</div>
         </div>
       </Sheet>
-      <Sheet open={mobile && !filterSheet && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Memory'} description={selected ? `${selected.type.charAt(0).toUpperCase()}${selected.type.slice(1)}` : undefined}>
+      <Sheet open={mobile && !filterSheet && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Diary page'} description={selected ? formatDate(selected.ms) : undefined}>
         <div className="grid gap-4 px-2 pb-2">{details}</div>
       </Sheet>
     </div>
