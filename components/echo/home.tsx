@@ -11,6 +11,7 @@ import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/se
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
+import { findTrack, resolvePlayMusic, type MusicTrack } from '@/lib/echo/music-play'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -21,6 +22,7 @@ import { CallBar, CallScreen, useEchoCall, type CallTurn, type LateResult } from
 import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
+import { useMusicPlayer } from './music-player'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -184,6 +186,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
+  const { play: playMusic } = useMusicPlayer()
   const callBtnRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     try {
@@ -494,7 +497,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
         }
-        const applied = await applyEchoResponse(uid, page, res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
+        // play_music: a pasted link plays directly, a name is searched; typed chat autoplays (the send tap is the gesture).
+        // If the song can't be found, Echo's reply becomes the fixed error text and nothing opens.
+        const played = await resolvePlayMusic(res, (q) => findTrack(user, q, { text: msg }))
+        if (played.track) playMusic(played.track, { autoplay: true })
+        const applied = await applyEchoResponse(uid, page, played.res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
         void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
@@ -524,7 +531,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic],
   )
   useEffect(() => {
     sendRef.current = send
@@ -622,7 +629,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid],
   )
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo })
+  // Calls open the player paused so it never plays over Echo's voice.
+  const playCallMusic = useCallback((t: MusicTrack) => playMusic(t, { autoplay: false }), [playMusic])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, onPlayMusic: playCallMusic })
   useCallFlag(call.active)
   useEffect(() => {
     onCallActiveChange?.(call.active)

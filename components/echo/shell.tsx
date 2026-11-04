@@ -16,6 +16,7 @@ import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
+import { MusicPlayerProvider } from './music-player'
 import { useMobileViewportSync } from './use-mobile'
 
 export type View = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Settings'
@@ -182,33 +183,36 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} />
-      <div className="min-w-0 flex-1">
-        <main className={`${view === 'Diary' ? DIARY_MAIN : DEFAULT_MAIN} p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]`}>
-          {/* Diary draws its own full-height mobile header (list / page bar). */}
-          {view !== 'Diary' && <MobileTitleBar title={view} />}
-          {!user ? null : view === 'Diary' ? (
-            <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} />
-          ) : view === 'Notes' ? (
-            <NotesView uid={user.uid} />
-          ) : view === 'Goals' ? (
-            <GoalsView uid={user.uid} />
-          ) : view === 'Health' ? (
-            <HealthView uid={user.uid} />
-          ) : view === 'Reminders' ? (
-            <RemindersView uid={user.uid} />
-          ) : view === 'Connectors' ? (
-            <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
-          ) : view === '2nd Brain' ? (
-            <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
-          ) : (
-            <SettingsView user={user} profile={profile} signOut={signOut} />
-          )}
-        </main>
+    // One music player for the whole shell, so it keeps playing across views.
+    <MusicPlayerProvider>
+      <div className="flex min-h-screen bg-background">
+        <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} />
+        <div className="min-w-0 flex-1">
+          <main className={`${view === 'Diary' ? DIARY_MAIN : DEFAULT_MAIN} p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]`}>
+            {/* Diary draws its own full-height mobile header (list / page bar). */}
+            {view !== 'Diary' && <MobileTitleBar title={view} />}
+            {!user ? null : view === 'Diary' ? (
+              <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} />
+            ) : view === 'Notes' ? (
+              <NotesView uid={user.uid} />
+            ) : view === 'Goals' ? (
+              <GoalsView uid={user.uid} />
+            ) : view === 'Health' ? (
+              <HealthView uid={user.uid} />
+            ) : view === 'Reminders' ? (
+              <RemindersView uid={user.uid} />
+            ) : view === 'Connectors' ? (
+              <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
+            ) : view === '2nd Brain' ? (
+              <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
+            ) : (
+              <SettingsView user={user} profile={profile} signOut={signOut} />
+            )}
+          </main>
+        </div>
+        <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
+        <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
       </div>
-      <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
-      <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
-    </div>
+    </MusicPlayerProvider>
   )
 }
