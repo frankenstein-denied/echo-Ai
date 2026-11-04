@@ -57,3 +57,28 @@ Files: `app/api/music/search/route.ts`, `lib/echo/types.ts` (`play_music` action
 - Player: docked above the mobile tab bar / bottom-right on desktop, 16:9 thumbnail-size iframe (`allow="autoplay; encrypted-media"`, title attribute), track title, "Open in app" link (`target="_blank" rel="noopener"`), close button; one player at a time (a new song replaces the old); survives view changes within the app shell.
 - Prompts: "play music" requests use `play_music` (no longer "connect Spotify"); never claim music is playing unless the tool/action succeeded.
 - Tests: sanitize keeps/caps `play_music` query; route param validation with mocked `searchSong`; tool mapping; prompt/schema contain `play_music`.
+
+## Plan amendment (2026-11-04, user direction)
+
+User: "disregard last fm for now, work on play with link" and chose "Player in Echo + link". Task 3 is deferred. Task 4 is superseded by Task 6. Last.fm comes back later as its own task.
+
+## Task 5: Remove the Last.fm login (keep ListenBrainz)
+
+The committed Last.fm login (Task 2) hands the username back in an unverified `#music=` fragment, so a crafted link could silently bind someone else's Last.fm account. It must not ship. Remove it; keep ListenBrainz.
+
+- Delete `app/api/connectors/music/lastfm/` (start + callback routes), the Last.fm login helpers (e.g. `lib/server/lastfm-login.ts`) and their tests, the `#music=` / `?music=` handling in `components/echo/shell.tsx` (and its client helpers/parsers in `lib/echo/*`), and the "Log in with Last.fm" button and Last.fm copy in the Music card. Keep `lib/server/lastfm.ts` only if something still imports it; otherwise delete it and its test.
+- Catalog: name `Music (ListenBrainz)`, description `See what you listen to on ListenBrainz (ArchiveTune can scrobble there).` `connectorStatuses` for music requires `service === 'listenbrainz'` (a stored `lastfm` service no longer counts as connected).
+- `setMusicAccount` keeps its signature but the UI only ever passes `'listenbrainz'`. Firestore rules stay as they are (the `'lastfm'` enum value is harmless and already deployed).
+- Fix: `listenbrainzUserExists` must distinguish not found (404 → `false`) from couldn't check (network error, abort, other non-OK → throw); the card shows `Couldn't reach ListenBrainz. Try again.` for the latter and keeps the not-found message for `false`. Tests: 404 → false; network error/abort → rejects.
+- Remove `LASTFM_API_KEY` / `LASTFM_API_SECRET` mentions from code and docs added on this branch.
+- Tests: delete tests for removed code; update connectors/music tests; full suite + tsc clean.
+
+## Task 6: Play music — player in Echo + "Open in app" link
+
+Same as Task 4 (route, `play_music` action and call tool, docked player, prompts, tests), plus:
+
+- **Pasted links play without the API key.** Add `parseYoutubeLink(text): string | null` to `lib/echo/music.ts`: accepts `youtube.com/watch?v=ID`, `music.youtube.com/watch?v=ID`, `youtu.be/ID`, `youtube.com/shorts/ID`, `youtube.com/embed/ID` (http/https, with or without `www.`/`m.`), extra query params allowed; returns the 11-char ID (`[A-Za-z0-9_-]{11}`) or null. When `play_music`'s query contains such a link (or the user's typed message is a link and asks to play it), the client opens the player with that ID directly — no `/api/music/search` call — and the title shows as "YouTube video" until the iframe loads (no extra API call for the title).
+- **Search by name** still uses `/api/music/search` (needs `YOUTUBE_API_KEY`); without the key the reply is `Searching by song name isn't set up yet — paste a YouTube or YouTube Music link and I'll play it.`
+- The "Open in app" link always uses `https://music.youtube.com/watch?v=<id>`.
+- Typed router: a message that is (or contains) a YouTube/YouTube Music link with a play intent returns `play_music` with the link as the query.
+- Tests: `parseYoutubeLink` (each URL shape, junk, wrong-length IDs, non-YouTube hosts); client path skips the search route for links; the no-key reply.
