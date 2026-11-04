@@ -396,6 +396,11 @@ export async function saveHealthChanges(
   }
 }
 
+/** +1 glass of water on healthLogs/{day}: an increment on an existing log, a concrete 1 on a new one. */
+export function addWaterGlass(uid: string, day: string): Promise<void> {
+  return saveHealthChanges(uid, day, {}, 1)
+}
+
 // ---------- edit helpers (every write stamps updatedAt and never touches createdAt) ----------
 export async function updateNote(uid: string, id: string, fields: Partial<Pick<Note, 'title' | 'body' | 'tags' | 'category'>>): Promise<void> {
   await updateDoc(doc(notesCol(uid), id), { ...fields, updatedAt: serverTimestamp() } as never)

@@ -22,6 +22,8 @@ import { CallBar, CallScreen, useEchoCall, type CallTurn, type LateResult } from
 import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
+import { TodayOrbWelcome } from './today-orb'
+import { hasUserMessage } from '@/lib/echo/today-orb'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -185,6 +187,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
   const callBtnRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     try {
       setTodayCollapsed(localStorage.getItem(TODAY_KEY) === '1')
@@ -666,6 +669,21 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     void send(t)
   }
 
+  // Quick-start chips on a fresh page: send a question, or prefill the composer and focus it.
+  const ask = (t: string) => {
+    if (disabled || thinking || call.active) return
+    void send(t)
+  }
+  const fillComposer = (t: string) => {
+    setText(t)
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(t.length, t.length)
+    })
+  }
+
   const status = call.active ? '' : speaking ? 'Echo is speaking...' : thinking ? 'Echo is thinking...' : ''
   // Mobile call screen transcript: this page's messages written since the call started.
   const callStart = call.active ? call.startedAt : null
@@ -688,21 +706,24 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6 max-lg:gap-4 max-lg:py-4">
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
-            {messages?.length === 0 && !thinking && !error && !call.active && !pendingTurns.length && (
-              <div className="flex flex-col items-center py-12 text-center">
-                <EchoAvatar />
-                <p className="mt-4 text-xl font-semibold text-foreground">{companionGreeting(profile.preferredName)}</p>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  {hint ? `${hint} ` : ''}I&apos;m Echo, your companion. Tell me about your day and I&apos;ll remember what matters.
-                </p>
-                {prefs?.enabled ? (
-                  <Button icon={Phone} onClick={startCall} disabled={disabled || thinking} className="mt-6 h-12 rounded-full px-6 text-base">
-                    Talk to Echo
-                  </Button>
-                ) : (
-                  <p className="mt-6 max-w-sm text-xs text-muted-foreground">Turn on voice in Settings to talk with Echo out loud.</p>
-                )}
-              </div>
+            {messages !== null && !hasUserMessage(messages) && !thinking && !error && !call.active && !pendingTurns.length && (
+              <TodayOrbWelcome
+                uid={uid}
+                pageId={pageId ?? undefined}
+                greeting={companionGreeting(profile.preferredName)}
+                hint={hint}
+                onAsk={ask}
+                onFillComposer={fillComposer}
+                callButton={
+                  prefs?.enabled ? (
+                    <Button icon={Phone} onClick={startCall} disabled={disabled || thinking} className="h-12 rounded-full px-6 text-base">
+                      Talk to Echo
+                    </Button>
+                  ) : (
+                    <p className="max-w-sm text-xs text-muted-foreground">Turn on voice in Settings to talk with Echo out loud.</p>
+                  )
+                }
+              />
             )}
             {(messages ?? []).map((m) => {
               const at = m.createdAt?.toDate?.() ?? null
@@ -784,6 +805,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 max-lg:gap-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
                 <input
+                  ref={inputRef}
                   aria-label="Message Echo"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
