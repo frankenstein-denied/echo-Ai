@@ -14,7 +14,8 @@ import {
   type User,
 } from 'firebase/auth'
 import { Capacitor } from '@capacitor/core'
-import { auth, initAnalytics } from '@/lib/firebase'
+import { app, auth, initAnalytics } from '@/lib/firebase'
+import { clearNativeSession, refreshNativeNotification, setNativeSession } from '@/lib/native/echo-bridge'
 
 type AuthContextValue = {
   user: User | null
@@ -64,7 +65,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return onAuthStateChanged(auth, (u) => {
       setUser(u)
       setLoading(false)
+      if (Capacitor.isNativePlatform()) {
+        if (u) {
+          const { apiKey, projectId } = app.options
+          if (apiKey && projectId) {
+            setNativeSession({ uid: u.uid, refreshToken: u.refreshToken, apiKey, projectId }).catch(() => null)
+          }
+        } else {
+          clearNativeSession().catch(() => null)
+        }
+      }
     })
+  }, [])
+
+  // Let the pinned notification pick up edits made in the app when it is backgrounded.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') refreshNativeNotification().catch(() => null)
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => document.removeEventListener('visibilitychange', onHide)
   }, [])
 
   const signIn = useCallback(async (email: string, password: string) => {
