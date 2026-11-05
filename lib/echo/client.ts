@@ -41,6 +41,7 @@ import {
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
+import { withDone } from './goals-helpers'
 
 export function localIsoWithOffset(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -111,13 +112,13 @@ const healthFields = (a: Extract<EchoAction, { type: 'health' | 'health_update' 
 })
 
 /** Milestones after marking (or adding) one: matched by normalized text, either way contained. */
-export function applyMilestone(list: Milestone[], m: { text: string; done: boolean }): Milestone[] {
+export function applyMilestone(list: Milestone[], m: { text: string; done: boolean }, nowMs = Date.now()): Milestone[] {
   const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
   const target = n(m.text)
   const idx = list.findIndex((x) => n(x.text) === target)
   const loose = idx >= 0 ? idx : list.findIndex((x) => !!target && (n(x.text).includes(target) || target.includes(n(x.text))))
-  if (loose >= 0) return list.map((x, i) => (i === loose ? { ...x, done: m.done } : x))
-  return [...list, { text: m.text, done: m.done }].slice(0, 100)
+  if (loose >= 0) return list.map((x, i) => (i === loose && x.done !== m.done ? withDone(x, m.done, nowMs) : x))
+  return [...list, withDone({ text: m.text, done: m.done }, m.done, nowMs)].slice(0, 100)
 }
 
 // Applies actions and memories (no reply); a failure in one never blocks the others. Used by typed chat and calls.
