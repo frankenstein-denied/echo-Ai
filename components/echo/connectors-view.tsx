@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { Apple, Calendar, CloudSun, FileText, GitBranch, Globe, Mail, Music, Plug, type LucideIcon } from 'lucide-react'
 import { connectorsCol, disconnectWeather, setConnectorConnected, setWeatherLocation } from '@/lib/firestore'
-import { searchPlaces, type Place } from '@/lib/echo/weather'
+import { fetchForecast, searchPlaces, type Place } from '@/lib/echo/weather'
+import { connectedSummary, TILE_COLOR, weatherTileFacts } from '@/lib/echo/connector-tiles'
 import { CONNECTORS, connectorStatuses, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
-import { Alert, Badge, Button, Card, Input, PageHeader, Skeleton } from './ui'
+import { Alert, Button, Card, Input, PageHeader, Skeleton } from './ui'
 
 const ICONS: Record<ConnectorId, LucideIcon> = {
   nutrition: Apple,
@@ -17,12 +18,6 @@ const ICONS: Record<ConnectorId, LucideIcon> = {
   gmail: Mail,
   github: GitBranch,
   notion: FileText,
-}
-
-const BADGES: Record<ConnectorStatus, { label: string; variant: 'success' | 'neutral' }> = {
-  connected: { label: 'Connected', variant: 'success' },
-  not_connected: { label: 'Not connected', variant: 'neutral' },
-  coming_soon: { label: 'Coming soon', variant: 'neutral' },
 }
 
 export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text: string }
@@ -74,6 +69,8 @@ export function ConnectorsView({
   const toggle = (id: ConnectorId, name: string, connected: boolean) => run(id, () => setConnectorConnected(uid, id, name, connected))
   const webSealed = docs?.find((d) => d.id === 'web-search')?.sealed
   const weatherPlace = docs?.find((d) => d.id === 'weather')?.place
+  const statusOf = (id: ConnectorId): ConnectorStatus => statuses.find((s) => s.id === id)?.status ?? 'coming_soon'
+  const comingSoon = CONNECTORS.filter((c) => statusOf(c.id) === 'coming_soon')
 
   return (
     <div className="animate-in">
@@ -95,50 +92,113 @@ export function ConnectorsView({
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {CONNECTORS.map((c) => {
-            const status = statuses.find((s) => s.id === c.id)?.status ?? 'coming_soon'
-            const badge = BADGES[status]
-            const Icon = ICONS[c.id] ?? Plug
-            return (
-              <Card key={c.id} className="flex flex-col">
-                <div className="flex items-start justify-between">
-                  <span className="grid size-10 place-items-center rounded-lg bg-surface-2 text-muted-foreground">
-                    <Icon size={20} aria-hidden="true" />
-                  </span>
-                  <Badge variant={badge.variant}>{badge.label}</Badge>
-                </div>
-                <h2 className="mt-4 text-base font-semibold text-foreground">{c.name}</h2>
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description}</p>
-                {c.id === 'nutrition' ? (
-                  <Button variant={status === 'connected' ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, status !== 'connected')} className="mt-4 w-full">
-                    {status === 'connected' ? 'Disconnect' : 'Connect'}
-                  </Button>
-                ) : c.id === 'web-search' ? (
-                  status === 'connected' ? (
-                    <Button variant="secondary" loading={busy === c.id} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(c.id, () => onTavilyDisconnect(webSealed))} className="mt-4 w-full">
-                      Disconnect
-                    </Button>
-                  ) : (
+        <>
+          <p className="-mt-3 mb-4 text-sm text-muted-foreground">{connectedSummary(statuses)}</p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {CONNECTORS.filter((c) => statusOf(c.id) !== 'coming_soon').map((c) => {
+              const status = statusOf(c.id)
+              const connected = status === 'connected'
+              const Icon = ICONS[c.id] ?? Plug
+              const color = TILE_COLOR[c.id] ?? 'var(--color-accent)'
+              const weatherDoc = docs.find((d) => d.id === 'weather')
+              return (
+                <Card
+                  key={c.id}
+                  className={`flex flex-col ${connected ? '' : 'border-dashed'}`}
+                  style={
+                    connected
+                      ? {
+                          background: `linear-gradient(160deg, color-mix(in srgb, ${color} 18%, transparent), transparent 60%), var(--color-surface)`,
+                          borderColor: `color-mix(in srgb, ${color} 35%, var(--color-border))`,
+                          boxShadow: `0 0 22px -12px ${color}`,
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted-foreground" style={connected ? { color } : undefined}>
+                        <Icon size={18} aria-hidden="true" />
+                      </span>
+                      <h2 className="truncate text-base font-semibold text-foreground">{c.name}</h2>
+                    </div>
+                    {connected && (
+                      <span className="size-2 shrink-0 rounded-full bg-success" style={{ boxShadow: '0 0 8px var(--color-success)' }}>
+                        <span className="sr-only">Connected</span>
+                      </span>
+                    )}
+                  </div>
+                  {connected && c.id === 'weather' && <WeatherLive place={weatherDoc?.place} lat={weatherDoc?.lat} lon={weatherDoc?.lon} />}
+                  {connected && c.id !== 'weather' && (
                     <>
-                      <Button variant="primary" loading={busy === c.id} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(c.id, onTavilyLogin)} className="mt-4 w-full">
-                        Log in with Tavily
-                      </Button>
-                      <p className="mt-2 text-xs text-muted-foreground">Opens Tavily&apos;s login. Searches use your own Tavily account (free: 1,000 a month).</p>
+                      <p className="mt-4 text-lg font-semibold text-foreground">Ready</p>
+                      <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description}</p>
                     </>
-                  )
-                ) : c.id === 'weather' ? (
-                  <WeatherBody uid={uid} connected={status === 'connected'} place={weatherPlace} />
-                ) : (
-                  <Button variant="secondary" disabled className="mt-4 w-full">
-                    Coming soon
-                  </Button>
-                )}
-              </Card>
-            )
-          })}
-        </div>
+                  )}
+                  {!connected && <p className="mt-3 flex-1 text-sm text-muted-foreground">{c.description}</p>}
+                  {c.id === 'nutrition' ? (
+                    <Button variant={connected ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, !connected)} className="mt-4 w-full">
+                      {connected ? 'Disconnect' : 'Connect'}
+                    </Button>
+                  ) : c.id === 'web-search' ? (
+                    connected ? (
+                      <Button variant="secondary" loading={busy === c.id} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(c.id, () => onTavilyDisconnect(webSealed))} className="mt-4 w-full">
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <>
+                        <Button variant="primary" loading={busy === c.id} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(c.id, onTavilyLogin)} className="mt-4 w-full">
+                          Log in with Tavily
+                        </Button>
+                        <p className="mt-2 text-xs text-muted-foreground">Opens Tavily&apos;s login. Searches use your own Tavily account (free: 1,000 a month).</p>
+                      </>
+                    )
+                  ) : c.id === 'weather' ? (
+                    <WeatherBody uid={uid} connected={connected} place={weatherPlace} />
+                  ) : null}
+                </Card>
+              )
+            })}
+          </div>
+          {comingSoon.length > 0 && <p className="mt-4 text-sm text-muted-foreground">Coming soon: {comingSoon.map((c) => c.name).join(', ')}</p>}
+        </>
       )}
+    </div>
+  )
+}
+
+/** Live temperature, condition and a rain/high-low hint for the saved location. Fetched once per location. */
+function WeatherLive({ place, lat, lon }: { place?: string; lat?: number; lon?: number }) {
+  const [facts, setFacts] = useState<ReturnType<typeof weatherTileFacts> | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (typeof lat !== 'number' || typeof lon !== 'number') return
+    let live = true
+    setFacts(null)
+    setFailed(false)
+    fetchForecast(lat, lon)
+      .then((data) => {
+        if (live) setFacts(weatherTileFacts(data, new Date()))
+      })
+      .catch(() => {
+        if (live) setFailed(true)
+      })
+    return () => {
+      live = false
+    }
+  }, [lat, lon])
+
+  const name = place || 'Your location'
+  if (failed) return <p className="mt-4 text-sm text-muted-foreground">{name}</p>
+  if (!facts) return <Skeleton className="mt-4 h-16" />
+  return (
+    <div className="mt-4">
+      <p className="text-3xl font-semibold text-foreground">{facts.temp}</p>
+      <p className="mt-1 text-sm text-foreground">
+        {name} · {facts.condition}
+      </p>
+      {facts.hint && <p className="mt-1 text-sm text-muted-foreground">{facts.hint}</p>}
     </div>
   )
 }
