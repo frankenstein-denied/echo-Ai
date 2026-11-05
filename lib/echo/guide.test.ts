@@ -27,7 +27,7 @@ describe('guide slides', () => {
     expect(INSTALL_SLIDE).toBe(GUIDE_SLIDES.length - 1)
     expect(WEB_LINK).toBe('https://echo-ai-blue.vercel.app')
     expect(ANDROID_LINK).toBe('https://github.com/frankenstein-denied/echo-Ai/releases/latest')
-    expect(INSTALL_OPTIONS.map((o) => o.link)).toEqual([WEB_LINK, WEB_LINK, ANDROID_LINK])
+    expect(INSTALL_OPTIONS.map((o) => o.link)).toEqual([WEB_LINK, ANDROID_LINK])
     for (const browser of ['Chrome', 'Brave', 'Safari', 'Edge']) expect(INSTALL_NOTE).toContain(browser)
   })
 })

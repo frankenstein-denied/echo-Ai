@@ -9,20 +9,10 @@ export type InstallOption = { title: string; link: string; steps: string[]; pwa?
 
 export const INSTALL_OPTIONS: InstallOption[] = [
   {
-    title: 'On a laptop or desktop',
-    link: WEB_LINK,
-    steps: ['Copy the link', 'Paste it into your browser and sign in'],
-  },
-  {
-    title: 'Install as a web app (PWA)',
+    title: 'Open Echo in your browser',
     link: WEB_LINK,
     pwa: true,
-    steps: [
-      'Copy the link and paste it into your browser',
-      'iPhone or iPad (Safari): tap Share, then Add to Home Screen',
-      'Android (Chrome): tap the ⋮ menu, then Add to Home screen',
-      'Laptop or desktop (Chrome or Edge): click the install icon in the address bar',
-    ],
+    steps: ['Copy the link', 'Paste it into your browser and sign in', "Optional: add it to your home screen from your browser's Share or ⋮ menu"],
   },
   {
     title: 'Install the Android app',
