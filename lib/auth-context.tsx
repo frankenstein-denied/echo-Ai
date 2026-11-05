@@ -7,11 +7,13 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithCredential,
   signInWithPopup,
   signOut as firebaseSignOut,
   updateProfile,
   type User,
 } from 'firebase/auth'
+import { Capacitor } from '@capacitor/core'
 import { auth, initAnalytics } from '@/lib/firebase'
 
 type AuthContextValue = {
@@ -76,6 +78,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signInWithGoogle = useCallback(async () => {
+    // Google blocks OAuth pages inside app WebViews (disallowed_useragent), so the
+    // Android app gets the Google credential natively and hands it to the web SDK.
+    if (Capacitor.isNativePlatform()) {
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+      const result = await FirebaseAuthentication.signInWithGoogle()
+      const idToken = result.credential?.idToken
+      if (!idToken) throw Object.assign(new Error('No Google ID token'), { code: 'auth/popup-closed-by-user' })
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
+      return
+    }
     await signInWithPopup(auth, new GoogleAuthProvider())
   }, [])
 
@@ -84,6 +96,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      // Also clear the native Google session so the account picker shows next time.
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication')
+      await FirebaseAuthentication.signOut().catch(() => null)
+    }
     await firebaseSignOut(auth)
   }, [])
 
