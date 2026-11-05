@@ -104,4 +104,42 @@ public class FirestoreJsonTest {
         assertTrue(w.getJSONObject("currentDocument").getBoolean("exists"));
         assertFalse(upd.getJSONObject("fields").has("updatedAt"));
     }
+
+    private static final String RQ = "[{\"document\":{\"name\":\"projects/p/databases/(default)/documents/users/u/reminders/q1\",\"fields\":{"
+        + "\"title\":{\"stringValue\":\"Pay rent\"},\"dueAt\":{\"timestampValue\":\"2026-11-05T10:00:00Z\"},\"done\":{\"booleanValue\":false}}},\"readTime\":\"t\"},"
+        + "{\"document\":{\"name\":\"projects/p/databases/(default)/documents/users/u/reminders/q2\",\"fields\":{}},\"readTime\":\"t\"}]";
+
+    @Test public void parseRemindersRunQueryReadsDocuments() {
+        List<Reminder> l = FirestoreJson.parseRemindersRunQuery(RQ);
+        assertEquals(2, l.size());
+        assertEquals("q1", l.get(0).id);
+        assertEquals("Pay rent", l.get(0).title);
+        assertEquals(1793872800000L, l.get(0).dueAtMs);
+        assertFalse(l.get(0).done);
+    }
+
+    @Test public void parseRemindersRunQueryEmptyResultHasNoDocument() {
+        assertTrue(FirestoreJson.parseRemindersRunQuery("[{\"readTime\":\"2026-11-05T10:00:00Z\"}]").isEmpty());
+        assertTrue(FirestoreJson.parseRemindersRunQuery("[]").isEmpty());
+    }
+
+    @Test public void parseRemindersRunQueryMissingFieldsAndBadInput() {
+        Reminder r = FirestoreJson.parseRemindersRunQuery(RQ).get(1);
+        assertEquals("q2", r.id);
+        assertEquals("", r.title);
+        assertEquals(Long.MAX_VALUE, r.dueAtMs);
+        assertTrue(FirestoreJson.parseRemindersRunQuery(null).isEmpty());
+        assertTrue(FirestoreJson.parseRemindersRunQuery("{\"error\":{}}").isEmpty());
+    }
+
+    @Test public void remindersQueryBodyFiltersOpenAndLimits() throws Exception {
+        JSONObject q = new JSONObject(FirestoreJson.remindersQueryBody()).getJSONObject("structuredQuery");
+        assertEquals("reminders", q.getJSONArray("from").getJSONObject(0).getString("collectionId"));
+        JSONObject f = q.getJSONObject("where").getJSONObject("fieldFilter");
+        assertEquals("done", f.getJSONObject("field").getString("fieldPath"));
+        assertEquals("EQUAL", f.getString("op"));
+        assertFalse(f.getJSONObject("value").getBoolean("booleanValue"));
+        assertEquals(100, q.getInt("limit"));
+        assertFalse(q.has("orderBy"));
+    }
 }

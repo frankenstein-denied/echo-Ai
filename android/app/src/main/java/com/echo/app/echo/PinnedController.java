@@ -34,6 +34,19 @@ public final class PinnedController {
         start(ctx);
     }
 
+    /**
+     * Runs Done / Snooze on the service's background executor, then refreshes. Returns immediately.
+     * If the service is not running it is started (start failures are swallowed, as for refresh).
+     */
+    static void runReminderAction(Context ctx, String action, String id) {
+        if (id == null || id.isEmpty()) return;
+        Context app = ctx.getApplicationContext();
+        Intent i = new Intent(app, EchoNotificationService.class)
+            .putExtra(EchoNotificationService.EXTRA_CMD, action)
+            .putExtra(ActionReceiver.EXTRA_ID, id);
+        startWith(app, i);
+    }
+
     /** Stops the service and drops cached data (used on sign-out). Keeps the pinned pref. */
     public static void stop(Context ctx) {
         EchoNotificationService.clearCache();
@@ -53,7 +66,10 @@ public final class PinnedController {
 
     private static void start(Context ctx) {
         Context app = ctx.getApplicationContext();
-        Intent i = new Intent(app, EchoNotificationService.class);
+        startWith(app, new Intent(app, EchoNotificationService.class));
+    }
+
+    private static void startWith(Context app, Intent i) {
         try {
             if (EchoNotificationService.isRunning()) {
                 // Already foreground: a plain start command is allowed and triggers a reload.

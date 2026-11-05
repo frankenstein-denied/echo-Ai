@@ -33,6 +33,16 @@ public class DeepLinksTest {
         assertNull(DeepLinks.resolve(BASE, "/@evil.example"));
     }
 
+    @Test public void rejectsPathsOutsideViewLinks() {
+        assertNull(DeepLinks.resolveViewPath(BASE, "/"));
+        assertNull(DeepLinks.resolveViewPath(BASE, "/api/secret"));
+        assertNull(DeepLinks.resolveViewPath(BASE, "/login?view=Goals"));
+        assertNull(DeepLinks.resolveViewPath(BASE, "//evil.example/?view=x"));
+        assertNull(DeepLinks.resolveViewPath(BASE, null));
+        assertEquals(BASE + "/?view=Reminders", DeepLinks.resolveViewPath(BASE, DeepLinks.REMINDERS));
+        assertEquals(BASE + "/?view=Goals&goal=abc", DeepLinks.resolveViewPath(BASE, "/?view=Goals&goal=abc"));
+    }
+
     @Test public void goalPathEncodesId() {
         assertEquals("/?view=Goals&goal=a%26b%3Dc", DeepLinks.goalPath("a&b=c"));
         assertEquals("/?view=Goals&goal=abc123", DeepLinks.goalPath("abc123"));

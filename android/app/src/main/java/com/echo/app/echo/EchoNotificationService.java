@@ -28,6 +28,9 @@ public class EchoNotificationService extends Service {
     private static int generation;
     private static volatile boolean running;
 
+    /** Start-command extra: ActionReceiver.ACTION_DONE or ACTION_SNOOZE (id in ActionReceiver.EXTRA_ID). */
+    static final String EXTRA_CMD = "cmd";
+
     private ExecutorService executor;
 
     public static boolean isRunning() {
@@ -84,7 +87,24 @@ public class EchoNotificationService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        executor.execute(this::load);
+        final String cmd = intent == null ? null : intent.getStringExtra(EXTRA_CMD);
+        final String id = intent == null ? null : intent.getStringExtra(ActionReceiver.EXTRA_ID);
+        if (cmd != null && id != null) {
+            // Same single-thread executor as load(), so commands and reloads run in order. A foreground
+            // service has no broadcast-style time limit, so slow network cannot ANR the process.
+            executor.execute(() -> {
+                try {
+                    EchoApi api = new EchoApi(this);
+                    if (ActionReceiver.ACTION_DONE.equals(cmd)) api.markDone(id);
+                    else if (ActionReceiver.ACTION_SNOOZE.equals(cmd)) api.snooze(id);
+                } catch (RuntimeException ignored) {
+                    // Failure just means the reload below shows the unchanged state.
+                }
+                load();
+            });
+        } else {
+            executor.execute(this::load);
+        }
         return START_STICKY;
     }
 

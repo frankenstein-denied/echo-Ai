@@ -8,6 +8,8 @@ public final class DeepLinks {
     public static final String LIVE_SITE = "https://echo-ai-blue.vercel.app";
     public static final String EXTRA_PATH = "echo_path";
     public static final String DIARY = "/?view=Diary";
+    public static final String REMINDERS = "/?view=Reminders";
+    private static final String VIEW_PREFIX = "/?view=";
 
     private DeepLinks() {}
 
@@ -17,6 +19,12 @@ public final class DeepLinks {
         } catch (UnsupportedEncodingException e) {
             throw new AssertionError(e);
         }
+    }
+
+    /** Like {@link #resolve} but only accepts in-app view links (paths starting with {@code /?view=}). */
+    public static String resolveViewPath(String base, String path) {
+        if (path == null || !path.startsWith(VIEW_PREFIX)) return null;
+        return resolve(base, path);
     }
 
     /**

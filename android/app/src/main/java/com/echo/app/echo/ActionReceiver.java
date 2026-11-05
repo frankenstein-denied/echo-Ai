@@ -4,8 +4,6 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /** Handles taps on the pinned notification: tab switches (no network) and Done / Snooze. */
 public class ActionReceiver extends BroadcastReceiver {
@@ -15,9 +13,7 @@ public class ActionReceiver extends BroadcastReceiver {
     public static final String ACTION_SNOOZE = "com.echo.app.action.SNOOZE";
     /** Fired by the notification's delete intent, i.e. only when the user dismisses it. */
     public static final String ACTION_DISMISSED = "com.echo.app.action.DISMISSED";
-    private static final String EXTRA_ID = "id";
-
-    private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
+    static final String EXTRA_ID = "id";
 
     /** Explicit, immutable broadcast to this receiver. {@code requestCode} must be unique per row/action. */
     static PendingIntent pending(Context ctx, String action, String id, int requestCode) {
@@ -44,7 +40,8 @@ public class ActionReceiver extends BroadcastReceiver {
                 break;
             case ACTION_DONE:
             case ACTION_SNOOZE:
-                runReminderAction(ctx, action, intent.getStringExtra(EXTRA_ID));
+                // No network here: hand off to the foreground service (no broadcast time limit).
+                PinnedController.runReminderAction(ctx, action, intent.getStringExtra(EXTRA_ID));
                 break;
             default:
                 break;
@@ -58,26 +55,5 @@ public class ActionReceiver extends BroadcastReceiver {
             return;
         }
         if (!EchoNotificationService.renderFromCache(ctx)) PinnedController.refresh(ctx);
-    }
-
-    private void runReminderAction(final Context ctx, final String action, final String id) {
-        if (id == null || id.isEmpty()) return;
-        final PendingResult result = goAsync();
-        NETWORK.execute(() -> {
-            try {
-                EchoApi api = new EchoApi(ctx);
-                boolean ok = ACTION_DONE.equals(action) ? api.markDone(id) : api.snooze(id);
-                if (ok) {
-                    PinnedController.refresh(ctx);
-                } else if (!EchoNotificationService.renderFromCache(ctx)) {
-                    // Failure: keep the current state on screen (re-render, no reload).
-                    PinnedController.refresh(ctx);
-                }
-            } catch (RuntimeException ignored) {
-                // Never crash the process from a notification tap.
-            } finally {
-                result.finish();
-            }
-        });
     }
 }

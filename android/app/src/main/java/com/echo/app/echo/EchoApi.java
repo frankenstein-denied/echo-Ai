@@ -18,10 +18,27 @@ public final class EchoApi {
         this.ctx = ctx.getApplicationContext();
     }
 
-    /** All reminders, or null on failure. */
+    /** Open (not done) reminders, up to 100, or null on failure. Unordered; caller sorts. */
     public List<Reminder> listReminders() {
-        String json = list("reminders");
-        return json == null ? null : FirestoreJson.parseReminders(json);
+        HttpURLConnection c = null;
+        try {
+            SessionStore s = SessionStore.get(ctx);
+            String token = TokenProvider.getIdToken(ctx);
+            if (token == null) return null;
+            URL url = new URL("https://firestore.googleapis.com/v1/" + base(s) + "/users/" + s.getUid() + ":runQuery");
+            c = open(url, "POST", token);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json");
+            OutputStream os = c.getOutputStream();
+            os.write(FirestoreJson.remindersQueryBody().getBytes("UTF-8"));
+            os.close();
+            if (c.getResponseCode() != 200) return null;
+            return FirestoreJson.parseRemindersRunQuery(TokenProvider.read(c.getInputStream()));
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     /** All goals, or null on failure. */

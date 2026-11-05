@@ -154,7 +154,7 @@ public final class NotificationRenderer {
                 ActionReceiver.pending(ctx, ActionReceiver.ACTION_DONE, r.id, RC_DONE_BASE + i));
             row.setOnClickPendingIntent(R.id.row_snooze,
                 ActionReceiver.pending(ctx, ActionReceiver.ACTION_SNOOZE, r.id, RC_SNOOZE_BASE + i));
-            row.setOnClickPendingIntent(R.id.row, openApp(ctx, RC_REMINDER_BASE + i, null));
+            row.setOnClickPendingIntent(R.id.row, openApp(ctx, RC_REMINDER_BASE + i, DeepLinks.REMINDERS));
             big.addView(R.id.rows, row);
             if (i == 0) {
                 small.setTextViewText(R.id.small_title, titleOf(ctx, r.title));

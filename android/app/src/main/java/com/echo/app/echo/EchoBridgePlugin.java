@@ -118,19 +118,27 @@ public class EchoBridgePlugin extends Plugin {
         try {
             Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:" + ctx.getPackageName()));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            ctx.startActivity(i);
+            launch(i);
         } catch (Exception e) {
             try {
-                Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                ctx.startActivity(i);
+                launch(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
             } catch (Exception e2) {
                 call.reject("Could not open battery settings");
                 return;
             }
         }
         call.resolve();
+    }
+
+    /** Starts from the activity when there is one (no NEW_TASK), else from the app context. */
+    private void launch(Intent i) {
+        android.app.Activity a = getActivity();
+        if (a != null) {
+            a.startActivity(i);
+        } else {
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+        }
     }
 
     private boolean notificationsAllowed() {

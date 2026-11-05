@@ -33,6 +33,47 @@ public final class FirestoreJson {
         return out;
     }
 
+    /** Request body for :runQuery: open reminders only (equality filter, no index needed), at most 100. */
+    public static String remindersQueryBody() {
+        try {
+            JSONObject filter = new JSONObject()
+                .put("field", new JSONObject().put("fieldPath", "done"))
+                .put("op", "EQUAL")
+                .put("value", new JSONObject().put("booleanValue", false));
+            JSONObject q = new JSONObject()
+                .put("from", new JSONArray().put(new JSONObject().put("collectionId", "reminders")))
+                .put("where", new JSONObject().put("fieldFilter", filter))
+                .put("limit", 100);
+            return new JSONObject().put("structuredQuery", q).toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Parses a :runQuery response (JSON array of {document, readTime}); entries without a document are skipped. */
+    public static List<Reminder> parseRemindersRunQuery(String json) {
+        List<Reminder> out = new ArrayList<>();
+        if (json == null) return out;
+        JSONArray arr;
+        try {
+            arr = new JSONArray(json);
+        } catch (JSONException e) {
+            return out;
+        }
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject entry = arr.optJSONObject(i);
+            JSONObject d = entry == null ? null : entry.optJSONObject("document");
+            if (d == null) continue;
+            JSONObject f = d.optJSONObject("fields");
+            out.add(new Reminder(
+                idOf(d),
+                pickString(f, "title", ""),
+                pickTimestampMs(f, "dueAt", Long.MAX_VALUE),
+                pickBool(f, "done", false)));
+        }
+        return out;
+    }
+
     public static List<Goal> parseGoals(String listJson) {
         List<Goal> out = new ArrayList<>();
         JSONArray docs = documents(listJson);

@@ -23,7 +23,7 @@ public class MainActivity extends BridgeActivity {
         openEchoPath(intent);
     }
 
-    /** Loads {@code <server url> + echo_path} from a notification tap; same-origin paths only. */
+    /** Loads {@code <server url> + echo_path} from a notification tap; in-app view links only (/?view=...). */
     private void openEchoPath(Intent intent) {
         if (intent == null) return;
         String path = intent.getStringExtra(DeepLinks.EXTRA_PATH);
@@ -31,7 +31,7 @@ public class MainActivity extends BridgeActivity {
         intent.removeExtra(DeepLinks.EXTRA_PATH); // handle once (not again on recreate)
         Bridge bridge = getBridge();
         if (bridge == null) return;
-        final String url = DeepLinks.resolve(bridge.getServerUrl(), path);
+        final String url = DeepLinks.resolveViewPath(bridge.getServerUrl(), path);
         final WebView webView = bridge.getWebView();
         if (url == null || webView == null) return;
         webView.post(() -> webView.loadUrl(url));
