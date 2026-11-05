@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
-import { BookOpen, Brain, Maximize2, Minus, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { BookOpen, Brain, Maximize2, Minus, Palette, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { diaryPagesCol, memoriesCol, pageMessagesCol, type Message } from '@/lib/firestore'
 import {
   buildOrbs,
@@ -120,6 +120,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(false)
   const mobile = useIsMobile()
   const prefersReduced = usePrefersReducedMotion()
   const [tf, setTf] = useState<Transform>({ x: 0, y: 0, k: 1 })
@@ -774,9 +775,22 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
             <IconButton icon={Minus} label="Zoom out" size="sm" onClick={() => zoomAt(1 / 1.3)} />
             <IconButton icon={Maximize2} label="Fit to view" size="sm" onClick={fit} />
           </div>
-          <Button variant="secondary" icon={SlidersHorizontal} className="absolute left-3 top-3 bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter and color key`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
-            {periodLabel}
-          </Button>
+          <div className="absolute left-3 top-3 flex gap-2">
+            <Button variant="secondary" icon={SlidersHorizontal} className="bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter and color key`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
+              {periodLabel}
+            </Button>
+            <Button variant="secondary" icon={Palette} className="bg-surface-2" aria-haspopup="dialog" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
+              Legend
+            </Button>
+          </div>
+          {legendOpen && !mobile && (
+            <div role="dialog" aria-label="What the colors mean" className="absolute left-3 top-16 z-10 w-80 rounded-lg border border-border bg-surface-2 p-4 pr-10 shadow-lg" onPointerDown={(e) => e.stopPropagation()}>
+              <div className="absolute right-2 top-2">
+                <IconButton icon={X} label="Close legend" size="sm" onClick={() => setLegendOpen(false)} />
+              </div>
+              {legend}
+            </div>
+          )}
           <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground max-lg:hidden">Drag orbs to arrange · double-tap to unpin · drag the background to pan · scroll to zoom</p>
           <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap an orb for details · pinch to zoom · drag to pan</p>
         </div>
@@ -813,7 +827,10 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <div>{legend}</div>
         </div>
       </Sheet>
-      <Sheet open={mobile && !filterSheet && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Diary page'} description={selected ? formatDate(selected.ms) : undefined}>
+      <Sheet open={mobile && legendOpen} onClose={() => setLegendOpen(false)} title="Legend">
+        <div className="px-2 pb-2">{legend}</div>
+      </Sheet>
+      <Sheet open={mobile && !filterSheet && !legendOpen && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Diary page'} description={selected ? formatDate(selected.ms) : undefined}>
         <div className="grid gap-4 px-2 pb-2">{details}</div>
       </Sheet>
     </div>
