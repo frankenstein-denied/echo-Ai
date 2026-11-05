@@ -47,7 +47,7 @@ function LinkCopy({ link }: { link: string }) {
 
 function InstallCard({ option }: { option: InstallOption }) {
   return (
-    <section className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+    <section className="grid w-[85%] shrink-0 snap-start content-start gap-3 rounded-xl border border-border bg-surface p-4 md:w-auto md:min-w-0 md:flex-1 md:shrink">
       <h3 className="text-base font-semibold text-foreground">{option.title}</h3>
       <LinkCopy link={option.link} />
       <ol className="grid list-decimal gap-1.5 pl-5 text-sm text-foreground">
@@ -64,9 +64,12 @@ function InstallCard({ option }: { option: InstallOption }) {
 function InstallOptions() {
   return (
     <div className="mt-5 grid gap-3">
-      {INSTALL_OPTIONS.map((o) => (
-        <InstallCard key={o.title} option={o} />
-      ))}
+      {/* Side by side: all three on wide screens, swipe between them on a phone. */}
+      <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+        {INSTALL_OPTIONS.map((o) => (
+          <InstallCard key={o.title} option={o} />
+        ))}
+      </div>
       <p className="rounded-xl border border-primary bg-primary-soft p-4 text-sm text-foreground">
         <strong className="font-semibold">Note: </strong>
         {INSTALL_NOTE}
@@ -77,7 +80,7 @@ function InstallOptions() {
 
 function Slide({ slide }: { slide: GuideSlide }) {
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-12">
+    <div className={`mx-auto flex w-full flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-12 ${slide.id === 'install' ? 'max-w-6xl' : 'max-w-4xl'}`}>
       {slide.image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={slide.image} alt={slide.alt ?? ''} className="max-h-[42dvh] w-auto max-w-full shrink-0 rounded-2xl border border-border-strong shadow-lg lg:max-h-[70dvh]" />
@@ -87,7 +90,7 @@ function Slide({ slide }: { slide: GuideSlide }) {
           <img src="/icons/echo.svg" alt="Echo logo" width={128} height={128} className="size-32 shrink-0" />
         )
       )}
-      <div className="w-full min-w-0 max-w-md">
+      <div className={`w-full min-w-0 ${slide.id === 'install' ? '' : 'max-w-md'}`}>
         <h2 className="text-2xl font-semibold text-foreground">{slide.title}</h2>
         <p className="mt-2 text-base leading-6 text-muted-foreground">{slide.body}</p>
         {(slide.points || slide.avoid) && (
