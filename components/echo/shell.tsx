@@ -16,6 +16,7 @@ import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
+import { Guide, GuideProvider } from './guide'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
 import { useMobileViewportSync } from './use-mobile'
 
@@ -38,13 +39,16 @@ function daysWithEcho(profile: UserProfile): number | null {
   return Math.max(1, Math.floor((Date.now() - created.getTime()) / 86400000) + 1)
 }
 
-export function Dashboard({ profile }: { profile: UserProfile }) {
+export function Dashboard({ profile, guideFirst = false }: { profile: UserProfile; guideFirst?: boolean }) {
   const { user, signOut } = useAuth()
   // Read once: the URL handling below clears the query string. Embedded (floating Echo) mode needs the URL and the native bridge.
   const [embed] = useState(currentEmbedMode)
   const [view, setView] = useState<View>('Diary')
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(guideFirst)
+  const openGuide = useCallback(() => setGuideOpen(true), [])
+  const closeGuide = useCallback(() => setGuideOpen(false), [])
   const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
@@ -126,6 +130,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   }
 
   return (
+    <GuideProvider value={openGuide}>
     <div className="flex min-h-screen bg-background">
       <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} dueCount={dueCount} week={week} onOpenPage={openDiaryPage} />
       <div className="min-w-0 flex-1">
@@ -153,6 +158,8 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
       </div>
       <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
       <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
+      <Guide open={guideOpen} onClose={closeGuide} />
     </div>
+    </GuideProvider>
   )
 }

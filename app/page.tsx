@@ -39,6 +39,8 @@ export default function Page() {
   const { user, loading } = useAuth()
   const [state, setState] = useState<{ uid: string; profile: UserProfile | null; error: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
+  // New users see the walkthrough first, straight after the onboarding questions.
+  const [guideFirst, setGuideFirst] = useState(false)
   const uid = user?.uid
   const embed = useSyncExternalStore(subscribeNone, currentEmbedMode, () => null)
   const hinted = useSyncExternalStore(subscribeNone, readHint, () => false)
@@ -104,6 +106,9 @@ export default function Page() {
     )
   }
   const profile = state.profile
-  if (!profile.onboarded) return embed ? null : <Onboarding key={user.uid} profile={profile} onDone={(a) => setState({ uid: user.uid, profile: { ...profile, ...a, onboarded: true }, error: '' })} />
-  return <Dashboard profile={profile} />
+  if (!profile.onboarded) return embed ? null : <Onboarding key={user.uid} profile={profile} onDone={(a) => {
+    setGuideFirst(true)
+    setState({ uid: user.uid, profile: { ...profile, ...a, onboarded: true }, error: '' })
+  }} />
+  return <Dashboard profile={profile} guideFirst={guideFirst} />
 }

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { ORB_COLOR } from '@/lib/echo/orbs'
 import { BRAIN_GRADIENT, NAV_COLOR, NAV_GROUPS, type NavName, type WeekDay } from '@/lib/echo/sidebar'
+import { GuideInfoButton } from './guide'
 import { EchoMark, IconButton } from './ui'
 import { OrbSwatch } from './memory-orb'
 
@@ -168,12 +169,12 @@ export function Sidebar({
       <div className={`mb-6 flex items-center gap-3 px-1 ${collapsed ? 'flex-col' : ''}`}>
         <EchoMark small />
         {!collapsed && <span className="text-lg font-semibold text-foreground">Echo</span>}
+        <GuideInfoButton className={collapsed ? '' : 'ml-auto'} />
         <IconButton
           icon={collapsed ? PanelLeftOpen : PanelLeftClose}
           label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           size="sm"
           onClick={() => setCollapsed(!collapsed)}
-          className={collapsed ? '' : 'ml-auto'}
         />
       </div>
       <NavList view={view} onSelect={setView} collapsed={collapsed} dueCount={dueCount} />

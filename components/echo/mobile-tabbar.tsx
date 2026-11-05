@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react'
 import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, MoreHorizontal, Network, Settings, Target, type LucideIcon } from 'lucide-react'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
+import { GuideInfoButton } from './guide'
 import { Sheet, SheetItem } from './sheet'
 
 export type TabView = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Settings'
@@ -65,6 +66,7 @@ export function MobileTitleBar({ title, children }: { title: string; children?: 
           {title}
         </p>
         {children}
+        <GuideInfoButton />
       </div>
     </div>
   )

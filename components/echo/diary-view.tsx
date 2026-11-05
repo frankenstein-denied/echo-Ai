@@ -12,6 +12,7 @@ import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Alert, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
+import { GuideInfoButton } from './guide'
 import { MobileTitleBar } from './mobile-tabbar'
 import { Sheet, SheetItem } from './sheet'
 import { useIsMobile } from './use-mobile'
@@ -447,6 +448,7 @@ export function DiaryView({
       <div className={`flex items-center gap-2 px-4 pb-3 pt-4 ${collapsed ? 'lg:flex-col lg:px-2' : ''}`}>
         <h1 className={`text-base font-semibold text-foreground max-lg:text-xl ${railBtn}`}>Diary</h1>
         <div className={`ml-auto flex items-center gap-1 ${collapsed ? 'lg:ml-0 lg:flex-col' : ''}`}>
+          <GuideInfoButton className="lg:hidden" />
           <Button size="sm" icon={Plus} onClick={() => void newPage()} loading={creating} className={railBtn}>
             New page
           </Button>
@@ -519,6 +521,7 @@ export function DiaryView({
         )}
         <p className="px-1 text-xs text-muted-foreground">{dateLine}</p>
       </div>
+      <GuideInfoButton className="lg:hidden" />
     </div>
   )
   const meta = active ? `${active.messageCount} ${active.messageCount === 1 ? 'message' : 'messages'}` : undefined
