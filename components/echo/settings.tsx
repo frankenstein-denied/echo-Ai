@@ -9,6 +9,13 @@ import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voic
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
 import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { InstallAppButton } from './pwa'
+import { Capacitor } from '@capacitor/core'
+import {
+  getNativeStatus,
+  openNativeBatterySettings,
+  requestNativeNotificationPermission,
+  setNativePinned,
+} from '@/lib/native/echo-bridge'
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
@@ -22,6 +29,12 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [calError, setCalError] = useState('')
   const [goalError, setGoalError] = useState('')
   const [calBusy, setCalBusy] = useState(false)
+  const [isNative, setIsNative] = useState(false)
+  const [pinned, setPinnedState] = useState(false)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinDenied, setPinDenied] = useState(false)
+  const [pinError, setPinError] = useState(false)
+  const [batteryOptimized, setBatteryOptimized] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -37,6 +50,58 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   useEffect(() => {
     setPrefs(loadVoicePrefs())
   }, [])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    setIsNative(true)
+    getNativeStatus()
+      .then((s) => {
+        if (!s || !mounted.current) return
+        setPinnedState(s.pinned && s.notificationsAllowed)
+        setBatteryOptimized(s.batteryOptimized)
+      })
+      .catch(() => null)
+
+    // Re-check after returning from the system battery / notification settings.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      getNativeStatus()
+        .then((s) => {
+          if (!s || !mounted.current) return
+          setPinnedState(s.pinned && s.notificationsAllowed)
+          setBatteryOptimized(s.batteryOptimized)
+        })
+        .catch(() => null)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  const togglePinned = async (on: boolean) => {
+    setPinBusy(true)
+    setPinDenied(false)
+    setPinError(false)
+    try {
+      if (!on) {
+        await setNativePinned(false)
+        if (mounted.current) setPinnedState(false)
+        return
+      }
+      const granted = await requestNativeNotificationPermission()
+      if (!granted) {
+        if (mounted.current) setPinDenied(true)
+        return
+      }
+      await setNativePinned(true)
+      if (mounted.current) setPinnedState(true)
+      const s = await getNativeStatus()
+      if (s && mounted.current) setBatteryOptimized(s.batteryOptimized)
+    } catch {
+      if (mounted.current) setPinError(true)
+    } finally {
+      if (mounted.current) setPinBusy(false)
+    }
+  }
 
   useEffect(() => {
     let live = true
@@ -162,6 +227,36 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             </div>
           </dl>
         </Card>
+
+        {isNative && (
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Phone notification</h2>
+            <div className="mt-1 divide-y divide-border">
+              {row('Pinned Echo notification', 'Keep Reminders and Goals in your notification bar.', <Switch checked={pinned} onChange={(v) => void togglePinned(v)} label="Pinned Echo notification" disabled={pinBusy} />)}
+            </div>
+            {pinDenied && (
+              <div className="mt-3">
+                <Alert variant="warning">Notifications are blocked for Echo. Allow them in your phone settings, then try again.</Alert>
+              </div>
+            )}
+            {pinError && (
+              <div className="mt-3">
+                <Alert variant="danger">Couldn&apos;t turn on the Echo notification. Please try again.</Alert>
+              </div>
+            )}
+            {pinned && batteryOptimized && (
+              <div className="mt-3">
+                <Alert variant="warning">
+                  <p>TECNO/HiOS may close Echo in the background otherwise.</p>
+                  <p className="mt-1">Also allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
+                  <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
+                    Turn off battery optimization
+                  </Button>
+                </Alert>
+              </div>
+            )}
+          </Card>
+        )}
 
         <Card>
           <h2 className="text-base font-semibold text-foreground">Voice</h2>

@@ -4,4 +4,21 @@
     <string name="title_activity_main">Echo</string>
     <string name="package_name">com.echo.app</string>
     <string name="custom_url_scheme">com.echo.app</string>
+
+    <!-- Pinned notification -->
+    <string name="notif_channel_name">Pinned Echo panel</string>
+    <string name="notif_channel_desc">Keeps your next reminders and goals in the notification shade</string>
+    <string name="notif_signed_out">Sign in to Echo to see reminders</string>
+    <string name="notif_tab_reminders">Reminders</string>
+    <string name="notif_tab_goals">Goals</string>
+    <string name="notif_no_reminders">No upcoming reminders</string>
+    <string name="notif_no_goals">No goals yet</string>
+    <string name="notif_loading">Loading…</string>
+    <string name="notif_load_failed">Couldn\'t load. Tap to open Echo.</string>
+    <string name="notif_done">✓ Done</string>
+    <string name="notif_snooze">💤 +15m</string>
+    <string name="notif_talk">🎤 Talk</string>
+    <string name="notif_type">✏️ Type</string>
+    <string name="notif_untitled">Untitled</string>
+    <string name="notif_pct">%1$d%%</string>
 </resources>
