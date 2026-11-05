@@ -7,10 +7,7 @@ import { Landing } from '@/components/echo/landing'
 import { Onboarding } from '@/components/echo/onboarding'
 import { Dashboard } from '@/components/echo/shell'
 import { Alert, Button, EchoMark } from '@/components/echo/ui'
-import { parseEmbedMode, type EmbedMode } from '@/lib/echo/embed'
-import { reportSignedOut } from '@/lib/native/float-bridge'
-
-const readEmbed = (): EmbedMode | null => parseEmbedMode(window.location.search)
+import { clearAppCallOnLoad, currentEmbedMode, reportSignedOut } from '@/lib/native/float-bridge'
 
 const HINT_KEY = 'echo:signed-in'
 const readHint = () => {
@@ -43,8 +40,12 @@ export default function Page() {
   const [state, setState] = useState<{ uid: string; profile: UserProfile | null; error: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const uid = user?.uid
-  const embed = useSyncExternalStore(subscribeNone, readEmbed, () => null)
+  const embed = useSyncExternalStore(subscribeNone, currentEmbedMode, () => null)
   const hinted = useSyncExternalStore(subscribeNone, readHint, () => false)
+
+  useEffect(() => {
+    void clearAppCallOnLoad()
+  }, [])
 
   useEffect(() => {
     if (user) writeHint(true)
@@ -53,7 +54,7 @@ export default function Page() {
 
   // Floating Echo WebViews cannot show a login page: tell native instead.
   useEffect(() => {
-    if (!user && !loading && parseEmbedMode(window.location.search)) reportSignedOut()
+    if (!user && !loading && currentEmbedMode()) reportSignedOut()
   }, [user, loading])
 
   useEffect(() => {

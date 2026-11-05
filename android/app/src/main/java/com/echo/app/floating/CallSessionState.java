@@ -48,6 +48,8 @@ public final class CallSessionState {
             fail("Echo's voice reached today's limit", nowMs);
         } else if ("dropped".equals(reason)) {
             fail("The call dropped", nowMs);
+        } else if ("voice_off".equals(reason)) {
+            fail("Voice is off in Settings", nowMs);
         } else {
             fail(CONNECT_FAILED, nowMs);
         }

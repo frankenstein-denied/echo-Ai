@@ -10,24 +10,12 @@ Items marked "Spec success 1" to "Spec success 8" are the eight things the spec 
 
 ## Before you start
 
-These two jobs happen on the PC, before the phone test.
+You do not need the PC or adb to install this version.
 
-- [ ] **The website changes are live.** Talk and Type load the live site (`https://echo-ai-blue.vercel.app`) with the new
-  embedded pages. This branch is not on `main` yet, so they are not live until you approve that. Without them, every Talk
-  ends in "Couldn't connect" after about 20 seconds, and the Type window shows the full app with its tabs. If you see
-  either of those, stop and report it, because the rest of the list cannot pass.
-- [ ] **Version 1.3 is on the phone.** Connect the phone by USB. In Git Bash on the PC, run:
-
-  ```
-  cd ~/desktop/echo-ai/android
-  JAVA_HOME="$HOME/.jdks/jdk-21.0.13+9" ./gradlew.bat assembleDebug
-  adb -s 138462554Y004657 install -r app/build/outputs/apk/debug/app-debug.apk
-  ```
-
-  You should see `Success` at the end.
-
-Then on the phone:
-
+- [ ] **Install version 1.3 on the phone**, in either of these ways:
+  - Open Echo. When it offers the new version, tap **Update now**, then **Update** on the Android screen that follows.
+  - Open this link in Chrome on the phone, and install the file it downloads:
+    <https://github.com/frankenstein-denied/echo-Ai/releases/latest/download/echo.apk>
 - [ ] Long-press the Echo icon, tap **App info**, and check that the version says **1.3**.
 - [ ] Open Echo and make sure you are signed in.
 - [ ] In Echo, tap **More**, then **Settings**. Check that the Echo notification is on. If a yellow box says
@@ -95,10 +83,10 @@ or a general list of apps, and whether the switch was greyed out. If nothing wor
 - [ ] Pass
 
 1. Go to the start position. Open the Echo notification and tap **🎤 Talk**.
-2. **You should see:** the notification shade close and Chrome stay on the screen. A neon green glow pulses around the
+2. If Android asks for microphone permission, allow it. This comes first: the glow only appears after you allow it.
+3. **You should see:** the notification shade close and Chrome stay on the screen. A neon green glow pulses around the
    whole screen edge. A round red button sits at the bottom centre, with a small dark pill above it saying "Connecting…",
    then "Listening".
-3. If Android asks for microphone permission, allow it.
 4. Say "Hello Echo, can you hear me?"
 5. **You should see and hear:** the pill changes to "Thinking", then "Echo is speaking", and you hear Echo's voice reply to
    what you said. Afterwards the pill goes back to "Listening".
@@ -147,11 +135,14 @@ saying a screen overlay was detected.
    page that has one, or use Chrome and find a link next to the red button by scrolling.
 3. Tap that icon or link as close to the red button as you can without touching the red circle.
 4. **You should see:** the app or link opens, and the call keeps going.
-5. Go back. Now tap directly on the dark pill above the red button, with something tappable behind it if you can.
-6. **You should see:** the tap goes to whatever is behind the pill. The pill does nothing and the call does not end.
+5. Go back. Now tap just to the left and right of the dark pill above the red button, with something tappable there if
+   you can.
+6. **You should see:** taps beside the pill reach the app behind, and the call keeps going. The pill itself may block taps,
+   so a tap directly on it may do nothing. That is fine, as long as the call does not end. Only taps beside the button and
+   the pill must reach the app.
 
-**If it fails, report:** where you tapped (left, right, above, or below the button), and whether the tap did nothing or
-ended the call by mistake. A screenshot with your tap spot described is ideal.
+**If it fails, report:** where you tapped (left, right, above, or below the button or pill), and whether the tap did
+nothing or ended the call by mistake. A screenshot with your tap spot described is ideal.
 
 ### 6. Exit ends the call and removes everything (Spec success 3)
 
@@ -246,6 +237,14 @@ say so clearly, because overlays do not show there and End call is the only way 
 **If it fails, report:** whether Echo said it saved the note, and which places are missing it (notification, Notes page,
 Diary). If only the notification is missing it, say whether it turned up after you opened the Echo app.
 
+### 10a. Talk with voice turned off
+
+- [ ] Pass
+
+In Echo, tap **More**, then **Settings**, and turn **Enable voice** off. Go to the start position and tap **🎤 Talk**.
+**You should see:** the pill says "Voice is off in Settings" for about 3 seconds, then the glow, pill and button all go. No
+call starts. Turn **Enable voice** back on before you carry on.
+
 ---
 
 ## Part 3: Type
@@ -253,6 +252,9 @@ Diary). If only the notification is missing it, say whether it turned up after y
 ### 11. The chathead (Spec success 6)
 
 - [ ] Pass
+
+The first time the diary window loads, the sign-in page may flash for a moment. That is fine. Only report it if the
+sign-in page stays.
 
 1. Go to the start position. Open the Echo notification and tap **✏️ Type**.
 2. **You should see:** a round Echo icon (teal circle, dark star) on the right edge of the screen, floating over Chrome.
@@ -273,8 +275,8 @@ Diary). If only the notification is missing it, say whether it turned up after y
     the chathead does not come back by itself.
 11. Tap **✏️ Type** on the notification. **You should see:** the chathead comes back.
 
-**If it fails, report:** the step number and what happened instead. If the window opened but was empty, or showed a sign-in
-page, say so.
+**If it fails, report:** the step number and what happened instead. If the window opened but stayed empty, or the sign-in
+page stayed, say so.
 
 ### 12. The keyboard works in the diary window
 

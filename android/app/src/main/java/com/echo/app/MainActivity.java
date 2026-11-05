@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 import android.webkit.WebView;
 import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.EchoBridgePlugin;
+import com.echo.app.floating.FloatState;
 import com.echo.app.update.AppUpdater;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -32,6 +33,13 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         AppUpdater.onResume(this);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Any in-app call died with this Activity's WebView, and its page could not say so.
+        FloatState.appCallActive = false;
     }
 
     /**

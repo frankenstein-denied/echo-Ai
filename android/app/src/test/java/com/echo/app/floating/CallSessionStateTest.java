@@ -199,6 +199,21 @@ public class CallSessionStateTest {
         assertFalse(s.shouldDiscardPage());
     }
 
+    @Test public void voiceOffIsAFailureBeforeConnecting() {
+        CallSessionState s = new CallSessionState();
+        s.start(0);
+        s.onEnded("voice_off", 100);
+        assertEquals("Voice is off in Settings", s.pillText());
+        assertTrue(s.hasFailed());
+        assertTrue(s.shouldDiscardPage());
+        assertFalse(s.hasConnected());
+        s.tick(3099);
+        assertFalse(s.shouldTearDown());
+        assertEquals("Voice is off in Settings", s.pillText());
+        s.tick(3100);
+        assertTrue(s.shouldTearDown());
+    }
+
     @Test public void eventsBeforeStartDoNothing() {
         CallSessionState s = new CallSessionState();
         s.onPhase("listening", 1);

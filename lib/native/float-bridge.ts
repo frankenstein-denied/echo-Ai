@@ -1,3 +1,4 @@
+import { parseEmbedMode, type EmbedMode } from '@/lib/echo/embed'
 import { nativeFloatingCallActive, nativeSetAppCallActive } from './echo-bridge'
 
 /** Injected by the Android floating-Echo WebViews (never present on the web or in the Capacitor shell). */
@@ -15,6 +16,9 @@ const api = (): EchoFloatApi | null => {
 }
 
 export const hasFloatBridge = (): boolean => api() !== null
+
+/** Embed mode for this page. Native injects the bridge before the first load; without it (any browser) ?embed= means nothing. */
+export const currentEmbedMode = (): EmbedMode | null => (hasFloatBridge() ? parseEmbedMode(window.location.search) : null)
 
 const call = (fn: (a: EchoFloatApi) => void) => {
   const a = api()
@@ -65,4 +69,9 @@ export async function setAppCallActive(active: boolean): Promise<void> {
   } catch {
     // Older APK: nothing to tell.
   }
+}
+
+/** A new full-app page has no call, whatever the last page said before it died. Skipped in the floating WebViews. */
+export async function clearAppCallOnLoad(): Promise<void> {
+  if (!hasFloatBridge()) await setAppCallActive(false)
 }

@@ -25,6 +25,7 @@ import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
 import { hasUserMessage } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
+import { embedCallStep } from '@/lib/echo/embed'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, setAppCallActive } from '@/lib/native/float-bridge'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
@@ -207,8 +208,12 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     if (pageId) pageRef.current = pageId
   }, [pageId])
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
+  // The pageId whose messages have arrived (or failed to). undefined until the first load: messages alone cannot
+  // say, because a null pageId gives [] at once and a page picked later keeps the old list until its snapshot.
+  const [messagesFor, setMessagesFor] = useState<string | null | undefined>(undefined)
   const [listenError, setListenError] = useState<string | null>(null)
   const [memories, setMemories] = useState<(Memory & { id: string })[]>([])
+  const [memoriesLoaded, setMemoriesLoaded] = useState(false)
   const [text, setText] = useState('')
   const [thinking, setThinking] = useState(false)
   const [error, setError] = useState<SendError | null>(null)
@@ -295,16 +300,21 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     setListenError(null)
     if (!pageId) {
       setMessages([])
+      setMessagesFor(null)
       return
     }
     const q = query(pageMessagesCol(uid, pageId), orderBy('createdAt'), limitToLast(50))
     return onSnapshot(
       q,
-      (snap) => setMessages(snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id }))),
+      (snap) => {
+        setMessages(snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id })))
+        setMessagesFor(pageId)
+      },
       (e) => {
         console.error('messages listener', e)
         setListenError(isPermissionDenied(e) ? RULES_MESSAGE : 'Could not load your conversation.')
         setMessages((m) => m ?? [])
+        setMessagesFor(pageId)
       },
     )
   }, [uid, pageId])
@@ -315,19 +325,24 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     type Mem = Memory & { id: string }
     let top: Mem[] = []
     let traits: Mem[] = []
+    let topIn = false
+    let traitsIn = false
     const publish = () => {
       const byId = new Map<string, Mem>()
       for (const m of [...top, ...traits]) byId.set(m.id, m)
       setMemories([...byId.values()])
+      if (topIn && traitsIn) setMemoriesLoaded(true)
     }
     const onErr = (e: unknown) => {
       console.error('memories listener', e)
       setListenError((m) => m ?? 'Could not load your memories.')
+      setMemoriesLoaded(true) // nothing more is coming: a floating call must not wait on this
     }
     const unsubTop = onSnapshot(
       query(memoriesCol(uid), orderBy('mentions', 'desc'), limit(40)),
       (snap) => {
         top = snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id })) as Mem[]
+        topIn = true
         publish()
       },
       onErr,
@@ -336,6 +351,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       query(memoriesCol(uid), where('type', '==', 'trait'), limit(20)),
       (snap) => {
         traits = snap.docs.map((d) => ({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id })) as Mem[]
+        traitsIn = true
         publish()
       },
       onErr,
@@ -635,10 +651,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [call.active, onCallActiveChange])
   // Keep the live call bubbles in view as they fill.
   const liveKey = call.live ? `${call.live.user.length}:${call.live.echo.length}:${call.live.saved.length}` : ''
-  useEffect(() => {
-    if (liveKey || pendingTurns.length) scrollEnd()
-  }, [liveKey, pendingTurns.length, call.error])
   const [callBlocked, setCallBlocked] = useState<string | null>(null)
+  useEffect(() => {
+    if (liveKey || pendingTurns.length || callBlocked) scrollEnd()
+  }, [liveKey, pendingTurns.length, call.error, callBlocked])
   const startCall = () => {
     stopAudio()
     setCallSaveError(null)
@@ -652,14 +668,20 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     })
   }
 
-  // Floating call (/?embed=call): start once when the page, memories and voice prefs are ready, and tell native what happens.
+  // Floating call (/?embed=call): start once today's page is picked and its messages, the memories and the voice prefs
+  // have loaded (or failed to: a load error still starts, and native's connect timeout covers a load that never answers).
+  // With voice off nothing starts; native shows why. Tell native what happens.
+  const messagesLoaded = messagesFor === pageId
   const autoStarted = useRef(false)
   useEffect(() => {
-    if (embed !== 'call' || autoStarted.current || disabled || messages === null || prefs === null) return
+    if (embed !== 'call' || autoStarted.current) return
+    const step = embedCallStep({ voiceEnabled: prefs?.enabled ?? null, disabled, messagesLoaded, memoriesLoaded })
+    if (step === 'wait') return
     autoStarted.current = true
-    startCall()
+    if (step === 'voice_off') reportCallEnded('voice_off')
+    else startCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embed, disabled, messages, prefs])
+  }, [embed, disabled, messagesLoaded, memoriesLoaded, prefs])
   useEffect(() => {
     if (embed === 'call') reportCallPhase(call.phase)
   }, [embed, call.phase])

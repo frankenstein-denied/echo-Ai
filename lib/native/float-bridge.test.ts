@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const plugin = vi.hoisted(() => ({ isFloatingCallActive: vi.fn(), setAppCallActive: vi.fn() }))
+const shell = vi.hoisted(() => ({ native: true }))
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => true },
+  Capacitor: { isNativePlatform: () => shell.native },
   registerPlugin: () => plugin,
 }))
 
@@ -13,6 +14,8 @@ const w = () => globalThis as unknown as W
 
 afterEach(() => {
   delete w().EchoFloat
+  shell.native = true
+  vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
 
@@ -68,5 +71,53 @@ describe('float-bridge', () => {
     plugin.setAppCallActive.mockRejectedValue(new Error('nope'))
     await expect(fb.setAppCallActive(true)).resolves.toBeUndefined()
     expect(plugin.setAppCallActive).toHaveBeenCalledWith({ active: true })
+  })
+})
+
+describe('currentEmbedMode', () => {
+  it('ignores ?embed= in a window without the native bridge', () => {
+    vi.stubGlobal('window', { location: { search: '?embed=call' } })
+    expect(fb.currentEmbedMode()).toBeNull()
+    vi.stubGlobal('window', { location: { search: '?embed=chat' } })
+    expect(fb.currentEmbedMode()).toBeNull()
+  })
+  it('honours ?embed= when the native bridge is there', () => {
+    vi.stubGlobal('window', { location: { search: '?embed=call' }, EchoFloat: {} })
+    expect(fb.currentEmbedMode()).toBe('call')
+    vi.stubGlobal('window', { location: { search: '?embed=chat' }, EchoFloat: {} })
+    expect(fb.currentEmbedMode()).toBe('chat')
+  })
+  it('is a normal page with the bridge but no valid ?embed=', () => {
+    vi.stubGlobal('window', { location: { search: '?embed=evil' }, EchoFloat: {} })
+    expect(fb.currentEmbedMode()).toBeNull()
+  })
+  it('is null on the server', () => {
+    expect(fb.currentEmbedMode()).toBeNull()
+  })
+})
+
+describe('clearAppCallOnLoad', () => {
+  it('tells native the full app has no call', async () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    plugin.setAppCallActive.mockResolvedValue(undefined)
+    await fb.clearAppCallOnLoad()
+    expect(plugin.setAppCallActive).toHaveBeenCalledTimes(1)
+    expect(plugin.setAppCallActive).toHaveBeenCalledWith({ active: false })
+  })
+  it('swallows plugin errors', async () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    plugin.setAppCallActive.mockRejectedValue(new Error('not implemented'))
+    await expect(fb.clearAppCallOnLoad()).resolves.toBeUndefined()
+  })
+  it('does nothing in a floating WebView', async () => {
+    vi.stubGlobal('window', { location: { search: '?embed=call' }, EchoFloat: {} })
+    await fb.clearAppCallOnLoad()
+    expect(plugin.setAppCallActive).not.toHaveBeenCalled()
+  })
+  it('does nothing on the web', async () => {
+    shell.native = false
+    vi.stubGlobal('window', { location: { search: '' } })
+    await fb.clearAppCallOnLoad()
+    expect(plugin.setAppCallActive).not.toHaveBeenCalled()
   })
 })
