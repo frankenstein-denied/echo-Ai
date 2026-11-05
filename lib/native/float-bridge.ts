@@ -41,6 +41,23 @@ export async function isFloatingCallActive(): Promise<boolean> {
   }
 }
 
+/** Like isFloatingCallActive, but gives up (false) after timeoutMs so a slow or old native side never blocks a call. */
+export function floatingCallActiveWithin(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), timeoutMs)
+    isFloatingCallActive().then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      () => {
+        clearTimeout(t)
+        resolve(false)
+      },
+    )
+  })
+}
+
 /** Tells native whether the full app is in a call, so a floating call is not started on top of it. */
 export async function setAppCallActive(active: boolean): Promise<void> {
   try {

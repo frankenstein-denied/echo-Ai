@@ -52,6 +52,18 @@ describe('float-bridge', () => {
     plugin.isFloatingCallActive.mockResolvedValue({ active: true })
     expect(await fb.isFloatingCallActive()).toBe(true)
   })
+  it('floatingCallActiveWithin gives up after the timeout', async () => {
+    vi.useFakeTimers()
+    plugin.isFloatingCallActive.mockReturnValue(new Promise(() => undefined))
+    const p = fb.floatingCallActiveWithin(1000)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await p).toBe(false)
+    vi.useRealTimers()
+  })
+  it('floatingCallActiveWithin returns a quick answer', async () => {
+    plugin.isFloatingCallActive.mockResolvedValue({ active: true })
+    expect(await fb.floatingCallActiveWithin(1000)).toBe(true)
+  })
   it('setAppCallActive swallows plugin errors', async () => {
     plugin.setAppCallActive.mockRejectedValue(new Error('nope'))
     await expect(fb.setAppCallActive(true)).resolves.toBeUndefined()

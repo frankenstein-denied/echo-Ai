@@ -24,7 +24,8 @@ import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
 import { hasUserMessage } from '@/lib/echo/today-orb'
-import { isFloatingCallActive, reportCallEnded, reportCallPhase, setAppCallActive } from '@/lib/native/float-bridge'
+import { Capacitor } from '@capacitor/core'
+import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, setAppCallActive } from '@/lib/native/float-bridge'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -643,8 +644,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     setCallSaveError(null)
     setCallBlocked(null)
     // The full app must not open a second call on top of a floating one (one microphone, one Live session).
-    if (embed) return void call.start()
-    void isFloatingCallActive().then((floating) => {
+    // On the web (and in the embedded call) start synchronously so the click keeps its user activation.
+    if (embed || !Capacitor.isNativePlatform()) return void call.start()
+    void floatingCallActiveWithin(1000).then((floating) => {
       if (floating) setCallBlocked('Echo is already in a call from the floating bubble. End that call first.')
       else void call.start()
     })
@@ -770,7 +772,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 onAsk={ask}
                 onFillComposer={fillComposer}
                 callButton={
-                  prefs?.enabled ? (
+                  embed === 'chat' ? null : prefs?.enabled ? (
                     <Button icon={Phone} onClick={startCall} disabled={disabled || thinking} className="h-12 rounded-full px-6 text-base">
                       Talk to Echo
                     </Button>
@@ -839,9 +841,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               <div className="grid gap-3">
                 <Alert variant={call.error.kind === 'quota' || call.error.kind === 'limit' ? 'warning' : 'danger'}>{call.error.message}</Alert>
                 <div className="flex gap-2">
-                  <Button size="sm" icon={Phone} onClick={startCall} disabled={disabled || thinking}>
-                    {call.error.kind === 'limit' ? 'Start new call' : 'Retry call'}
-                  </Button>
+                  {embed !== 'chat' && (
+                    <Button size="sm" icon={Phone} onClick={startCall} disabled={disabled || thinking}>
+                      {call.error.kind === 'limit' ? 'Start new call' : 'Retry call'}
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={call.clearError}>
                     Dismiss
                   </Button>
@@ -892,7 +896,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                   </Button>
                 )}
                 {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                {prefs?.enabled && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
+                {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
                 <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || !text.trim()} />
               </div>
             )}

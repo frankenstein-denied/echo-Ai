@@ -7,8 +7,10 @@ import { Landing } from '@/components/echo/landing'
 import { Onboarding } from '@/components/echo/onboarding'
 import { Dashboard } from '@/components/echo/shell'
 import { Alert, Button, EchoMark } from '@/components/echo/ui'
-import { parseEmbedMode } from '@/lib/echo/embed'
+import { parseEmbedMode, type EmbedMode } from '@/lib/echo/embed'
 import { reportSignedOut } from '@/lib/native/float-bridge'
+
+const readEmbed = (): EmbedMode | null => parseEmbedMode(window.location.search)
 
 const HINT_KEY = 'echo:signed-in'
 const readHint = () => {
@@ -41,6 +43,7 @@ export default function Page() {
   const [state, setState] = useState<{ uid: string; profile: UserProfile | null; error: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const uid = user?.uid
+  const embed = useSyncExternalStore(subscribeNone, readEmbed, () => null)
   const hinted = useSyncExternalStore(subscribeNone, readHint, () => false)
 
   useEffect(() => {
@@ -70,10 +73,12 @@ export default function Page() {
   }, [uid, attempt])
 
   if (loading && hinted) return <Loader />
-  if (!user) return <Landing />
+  // An embed (floating Echo) never shows a login, onboarding or error page; signed out is reported to native.
+  if (!user) return embed ? null : <Landing />
   if (loading) return <Loader />
   if (!state || state.uid !== user.uid) return <Loader />
   if (!state.profile) {
+    if (embed) return null
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <div className="w-full max-w-sm text-left">
@@ -93,6 +98,6 @@ export default function Page() {
     )
   }
   const profile = state.profile
-  if (!profile.onboarded) return <Onboarding key={user.uid} profile={profile} onDone={(a) => setState({ uid: user.uid, profile: { ...profile, ...a, onboarded: true }, error: '' })} />
+  if (!profile.onboarded) return embed ? null : <Onboarding key={user.uid} profile={profile} onDone={(a) => setState({ uid: user.uid, profile: { ...profile, ...a, onboarded: true }, error: '' })} />
   return <Dashboard profile={profile} />
 }
