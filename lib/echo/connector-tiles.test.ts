@@ -37,6 +37,11 @@ describe('weatherTileFacts', () => {
     expect(weatherTileFacts(forecast({ '2026-11-03T12:00': 70 }), new Date(2026, 10, 3, 11, 5)).hint).toBe('Rain likely around 12 PM')
     expect(weatherTileFacts(forecast({ '2026-11-03T00:00': 70 }), new Date(2026, 10, 3, 0, 5)).hint).toBe('Rain likely around 12 AM')
   })
+  it('shows a placeholder when the temperature is not a number', () => {
+    const d = forecast({})
+    d.current.temperature_2m = NaN
+    expect(weatherTileFacts(d, NOW).temp).toBe('--°')
+  })
   it('returns empty hint without usable data', () => {
     const f = weatherTileFacts(forecast({}, { temperature_2m_max: [], temperature_2m_min: [] }), NOW)
     expect(f.hint).toBe('')

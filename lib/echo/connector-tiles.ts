@@ -37,7 +37,7 @@ export function weatherTileFacts(data: ForecastData, now: Date): { temp: string;
     const min = data.daily?.temperature_2m_min?.[0]
     if (isNum(max) && isNum(min)) hint = `High ${Math.round(max)}° · Low ${Math.round(min)}°`
   }
-  return { temp: `${Math.round(c.temperature_2m)}°`, condition: text.charAt(0).toUpperCase() + text.slice(1), hint }
+  return { temp: isNum(c.temperature_2m) ? `${Math.round(c.temperature_2m)}°` : '--°', condition: text.charAt(0).toUpperCase() + text.slice(1), hint }
 }
 
 export function connectedSummary(statuses: { status: ConnectorStatus }[]): string {

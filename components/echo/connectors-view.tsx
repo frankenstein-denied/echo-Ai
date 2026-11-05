@@ -190,7 +190,7 @@ function WeatherLive({ place, lat, lon }: { place?: string; lat?: number; lon?: 
   }, [lat, lon])
 
   const name = place || 'Your location'
-  if (failed) return <p className="mt-4 text-sm text-muted-foreground">{name}</p>
+  if (failed || typeof lat !== 'number' || typeof lon !== 'number') return <p className="mt-4 text-sm text-muted-foreground">{name}</p>
   if (!facts) return <Skeleton className="mt-4 h-16" />
   return (
     <div className="mt-4">
