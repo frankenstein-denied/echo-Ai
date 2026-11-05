@@ -13,6 +13,8 @@ public class ActionReceiver extends BroadcastReceiver {
     public static final String ACTION_TAB_GOALS = "com.echo.app.action.TAB_GOALS";
     public static final String ACTION_DONE = "com.echo.app.action.DONE";
     public static final String ACTION_SNOOZE = "com.echo.app.action.SNOOZE";
+    /** Fired by the notification's delete intent, i.e. only when the user dismisses it. */
+    public static final String ACTION_DISMISSED = "com.echo.app.action.DISMISSED";
     private static final String EXTRA_ID = "id";
 
     private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
@@ -36,6 +38,9 @@ public class ActionReceiver extends BroadcastReceiver {
                 break;
             case ACTION_TAB_GOALS:
                 switchTab(ctx, SessionStore.TAB_GOALS);
+                break;
+            case ACTION_DISMISSED:
+                PinnedController.repostIfPinned(ctx);
                 break;
             case ACTION_DONE:
             case ACTION_SNOOZE:

@@ -12,8 +12,13 @@ public final class PinnedController {
     /** Saves the pref; pinned starts the service (signed-out content if no session), unpinned stops it. */
     public static void setPinned(Context ctx, boolean pinned) {
         SessionStore.get(ctx).setPinned(pinned);
-        if (pinned) start(ctx);
-        else stopService(ctx);
+        if (pinned) {
+            RefreshWorker.schedule(ctx);
+            start(ctx);
+        } else {
+            RefreshWorker.cancel(ctx);
+            stopService(ctx);
+        }
     }
 
     /** Asks the service to reload its data, if pinned and signed in. Starts it if it was killed. */
@@ -31,7 +36,18 @@ public final class PinnedController {
     /** Stops the service and drops cached data (used on sign-out). Keeps the pinned pref. */
     public static void stop(Context ctx) {
         EchoNotificationService.clearCache();
+        RefreshWorker.cancel(ctx);
         stopService(ctx);
+    }
+
+    /** Brings the notification back after the user swiped it away (Android 14+ allows that). */
+    static void repostIfPinned(Context ctx) {
+        try {
+            if (!SessionStore.get(ctx).isPinned()) return;
+        } catch (IllegalStateException e) {
+            return;
+        }
+        if (!EchoNotificationService.renderFromCache(ctx)) start(ctx);
     }
 
     private static void start(Context ctx) {

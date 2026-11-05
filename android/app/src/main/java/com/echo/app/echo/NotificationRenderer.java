@@ -31,6 +31,7 @@ public final class NotificationRenderer {
     private static final int RC_TALK = 2;
     private static final int RC_TYPE = 3;
     private static final int RC_SIGN_IN = 4;
+    private static final int RC_DISMISSED = 5;
     private static final int RC_TAB_REMINDERS = 10;
     private static final int RC_TAB_GOALS = 11;
     private static final int RC_DONE_BASE = 20;
@@ -98,6 +99,7 @@ public final class NotificationRenderer {
             .setCustomBigContentView(big)
             .setStyle(new NotificationCompat.DecoratedCustomViewStyle())
             .setContentIntent(openApp(ctx, RC_OPEN, null))
+            .setDeleteIntent(ActionReceiver.pending(ctx, ActionReceiver.ACTION_DISMISSED, null, RC_DISMISSED))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)

@@ -87,6 +87,13 @@ public class EchoNotificationService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // Swiping the app from recents must not stop the pinned notification: keep running.
+        // If the process is killed anyway, START_STICKY and RefreshWorker bring it back.
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         synchronized (LOCK) {
             running = false;
