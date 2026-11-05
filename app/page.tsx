@@ -47,6 +47,11 @@ export default function Page() {
     void clearAppCallOnLoad()
   }, [])
 
+  // React now shows the right screen, so the prerendered landing page can no longer flash.
+  useEffect(() => {
+    document.documentElement.removeAttribute('data-boot')
+  }, [])
+
   useEffect(() => {
     if (user) writeHint(true)
     else if (!loading) writeHint(false)

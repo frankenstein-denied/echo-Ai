@@ -55,6 +55,8 @@
 }
 
 :root { color-scheme: dark; }
+/* Set by the boot script in app/layout.tsx: hides the prerendered landing page for returning users. */
+html[data-boot] body { visibility: hidden; }
 body {
   margin: 0;
   background: var(--color-background);

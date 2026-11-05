@@ -22,4 +22,20 @@ export const metadata: Metadata = {
   },
 }
 export const viewport: Viewport = { themeColor: '#0B0F14', width: 'device-width', initialScale: 1, viewportFit: 'cover' }
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en" className={inter.variable}><body><AuthProvider>{children}<PwaRegister /></AuthProvider></body></html> }
+// The prerendered HTML is always the landing page. For a returning user or a floating Echo window, hide it before first
+// paint so it never flashes; app/page.tsx clears the flag once React has picked the real screen. The timer is a safety net.
+const BOOT_SCRIPT = `(function(){try{var d=document.documentElement;if(window.EchoFloat||localStorage.getItem('echo:signed-in')==='1'){d.setAttribute('data-boot','');setTimeout(function(){d.removeAttribute('data-boot')},5000)}}catch(e){}})()`
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
+      </head>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+        <PwaRegister />
+      </body>
+    </html>
+  )
+}

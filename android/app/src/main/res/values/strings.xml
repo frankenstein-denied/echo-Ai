@@ -42,4 +42,11 @@
     <string name="float_chathead_channel_desc">Shown while the Echo bubble floats over other apps</string>
     <string name="float_chathead_notification">Echo bubble is on</string>
     <string name="float_chathead_start_failed">Couldn\'t show the Echo bubble.</string>
+
+    <!-- Update dialog -->
+    <string name="update_title">Echo %1$s is here</string>
+    <string name="update_subtitle">Update now to get the latest from Echo</string>
+    <string name="update_whats_new">What\'s new</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Later</string>
 </resources>

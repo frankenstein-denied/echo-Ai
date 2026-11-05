@@ -11,12 +11,19 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import com.echo.app.R;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
@@ -68,14 +75,30 @@ public final class AppUpdater {
 
     private static void offer(Activity activity, UpdateInfo info) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
-        String msg = "Echo " + info.versionName + " is ready."
-            + (info.notes.isEmpty() ? "" : "\n\n" + info.notes);
-        new AlertDialog.Builder(activity)
-            .setTitle("Update available")
-            .setMessage(msg)
-            .setPositiveButton("Update now", (d, w) -> download(activity))
-            .setNegativeButton("Later", null)
-            .show();
+        LayoutInflater inflater = LayoutInflater.from(activity);
+        View view = inflater.inflate(R.layout.dialog_update, null);
+        ((TextView) view.findViewById(R.id.update_title))
+            .setText(activity.getString(R.string.update_title, info.versionName));
+
+        LinearLayout list = view.findViewById(R.id.update_changes);
+        for (String change : info.changes) {
+            View row = inflater.inflate(R.layout.dialog_update_row, list, false);
+            ((TextView) row.findViewById(R.id.update_change_text)).setText(change);
+            list.addView(row);
+        }
+        view.findViewById(R.id.update_whats_new)
+            .setVisibility(info.changes.isEmpty() ? View.GONE : View.VISIBLE);
+
+        AlertDialog dialog = new AlertDialog.Builder(activity).setView(view).create();
+        view.findViewById(R.id.update_now).setOnClickListener(v -> {
+            dialog.dismiss();
+            download(activity);
+        });
+        view.findViewById(R.id.update_later).setOnClickListener(v -> dialog.dismiss());
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        dialog.show();
     }
 
     private static void download(Activity activity) {
