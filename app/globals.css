@@ -112,7 +112,7 @@ button, a, summary, label, [role='button'], [role='tab'], [role='radio'], [role=
     --topbar-h: calc(48px + env(safe-area-inset-top));
   }
   /* Tab bar is hidden while typing (keyboard up) and during a call. */
-  :root[data-kb], :root[data-call] { --tabbar-h: 0px; }
+  :root[data-kb], :root[data-call], :root[data-embed] { --tabbar-h: 0px; }
   :root[data-kb] .mobile-tabbar, :root[data-call] .mobile-tabbar { display: none; }
 
   /* >= 16 px text in form fields stops iOS from zooming on focus (unlayered, so it wins over text-sm utilities). */

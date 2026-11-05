@@ -27,6 +27,7 @@ public final class ChatheadGeometry {
         return Math.max(0, Math.min(y, screenH - headSize));
     }
 
+    // Keyboard resize (SOFT_INPUT_ADJUST_RESIZE) only works while the window does not have FLAG_LAYOUT_IN_SCREEN: keep it out of these flags.
     /** Flags for the open diary window: focusable (keyboard works); outside touches pass to the dim layer. */
     public static int panelFlags() {
         return FLAG_NOT_TOUCH_MODAL;

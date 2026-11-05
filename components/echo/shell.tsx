@@ -113,6 +113,12 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   )
   const clearPendingPage = useCallback(() => setPendingPageId(null), [])
   const clearFocusGoal = useCallback(() => setFocusGoalId(null), [])
+  // Embedded mode has no tab bar: let the stylesheet drop the strip it reserves for one.
+  useEffect(() => {
+    if (!embed) return
+    document.documentElement.dataset.embed = embed
+    return () => { delete document.documentElement.dataset.embed }
+  }, [embed])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   if (embed) {

@@ -21,6 +21,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -53,8 +55,31 @@ public class ChatheadService extends Service {
 
     /** Panel root that turns Back into "shrink". */
     private final class PanelRoot extends FrameLayout {
+        private OnBackInvokedCallback backCallback;
+
         PanelRoot(Context ctx) {
             super(ctx);
+        }
+
+        // Targeting Android 16, Back may arrive as a back-invoked callback instead of a key event.
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            if (Build.VERSION.SDK_INT >= 33) {
+                OnBackInvokedDispatcher d = findOnBackInvokedDispatcher();
+                if (d != null) {
+                    backCallback = () -> closePanel();
+                    d.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
+                }
+            }
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            if (Build.VERSION.SDK_INT >= 33 && backCallback != null) {
+                OnBackInvokedDispatcher d = findOnBackInvokedDispatcher();
+                if (d != null) d.unregisterOnBackInvokedCallback(backCallback);
+                backCallback = null;
+            }
+            super.onDetachedFromWindow();
         }
 
         @Override public boolean dispatchKeyEvent(KeyEvent event) {
@@ -77,8 +102,9 @@ public class ChatheadService extends Service {
 
         @Override public void onSignedOut() {
             if (tornDown) return;
-            openApp(null);
+            if (panelOpen) openApp(null); // only when the user is looking at the panel
             closePanel();
+            destroyWeb(); // the next open reloads the page, which reports again if still signed out
         }
 
         @Override public void onOpenInApp() {
@@ -359,6 +385,7 @@ public class ChatheadService extends Service {
             float slop = ViewConfiguration.get(ChatheadService.this).getScaledTouchSlop();
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    measureScreen(); // the screen may have rotated since the last gesture
                     downRawX = e.getRawX();
                     downRawY = e.getRawY();
                     startX = headParams.x;
@@ -383,7 +410,7 @@ public class ChatheadService extends Service {
                 case MotionEvent.ACTION_UP: {
                     float dx = e.getRawX() - downRawX;
                     float dy = e.getRawY() - downRawY;
-                    boolean tap = ChatheadGeometry.isTap(dx, dy, e.getEventTime() - downTime, slop);
+                    boolean tap = !dragging && ChatheadGeometry.isTap(dx, dy, e.getEventTime() - downTime, slop);
                     boolean drop = dragging && overTarget();
                     dragging = false;
                     removeRemoveTarget();
@@ -392,20 +419,34 @@ public class ChatheadService extends Service {
                     } else if (tap) {
                         if (panelOpen) closePanel(); else openPanel();
                     } else {
-                        headParams.x = ChatheadGeometry.snapX(headParams.x, headSize, screenW);
-                        headParams.y = ChatheadGeometry.clampY(headParams.y, headSize, screenH);
-                        updateHead();
+                        snapHead();
                     }
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
                     dragging = false;
                     removeRemoveTarget();
+                    snapHead();
                     return true;
                 default:
                     return false;
             }
         }
+    }
+
+    private void snapHead() {
+        headParams.x = ChatheadGeometry.snapX(headParams.x, headSize, screenW);
+        headParams.y = ChatheadGeometry.clampY(headParams.y, headSize, screenH);
+        updateHead();
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (tornDown || windows == null || head == null) return;
+        measureScreen();
+        removeRemoveTarget();
+        closePanel(); // it was sized for the old orientation
+        snapHead();
     }
 
     private boolean overTarget() {
