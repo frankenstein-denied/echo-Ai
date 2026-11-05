@@ -9,6 +9,7 @@ import androidx.security.crypto.MasterKeys;
 public final class SessionStore {
     public static final String TAB_REMINDERS = "reminders";
     public static final String TAB_GOALS = "goals";
+    public static final String TAB_NOTES = "notes";
 
     private static SessionStore instance;
     private final SharedPreferences prefs;
@@ -80,11 +81,17 @@ public final class SessionStore {
 
     public String getTab() {
         String t = prefs.getString("tab", TAB_REMINDERS);
-        return TAB_GOALS.equals(t) ? TAB_GOALS : TAB_REMINDERS;
+        return validTab(t);
     }
 
     public void setTab(String tab) {
-        prefs.edit().putString("tab", TAB_GOALS.equals(tab) ? TAB_GOALS : TAB_REMINDERS).apply();
+        prefs.edit().putString("tab", validTab(tab)).apply();
+    }
+
+    private static String validTab(String tab) {
+        if (TAB_GOALS.equals(tab)) return TAB_GOALS;
+        if (TAB_NOTES.equals(tab)) return TAB_NOTES;
+        return TAB_REMINDERS;
     }
 
     public boolean isBatteryPrompted() { return prefs.getBoolean("batteryPrompted", false); }

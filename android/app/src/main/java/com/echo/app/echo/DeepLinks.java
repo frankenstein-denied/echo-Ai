@@ -9,6 +9,7 @@ public final class DeepLinks {
     public static final String EXTRA_PATH = "echo_path";
     public static final String DIARY = "/?view=Diary";
     public static final String REMINDERS = "/?view=Reminders";
+    public static final String NOTES = "/?view=Notes";
     private static final String VIEW_PREFIX = "/?view=";
 
     private DeepLinks() {}

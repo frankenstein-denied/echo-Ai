@@ -41,6 +41,7 @@ import {
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
+import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { withDone } from './goals-helpers'
 
 export function localIsoWithOffset(d: Date = new Date()): string {
@@ -191,6 +192,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
             upd.dueAt = Timestamp.fromDate(due)
           }
           await updateDoc(doc(remindersCol(uid), id), upd as never)
+          queueNativeNotificationRefresh()
           if (a.title) addRef(opts.refs!, 'reminder', id, a.title)
           return { op: 'update', ref: a.ref }
         })
@@ -315,6 +317,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
 /** Undo a delete: recreate the doc with the same id and fields (createdAt/updatedAt re-stamped, see undo.ts). */
 export async function restoreDeleted(uid: string, e: Pick<UndoEntry, 'kind' | 'docId' | 'data'>): Promise<void> {
   await setDoc(doc(COL_OF[e.kind](uid), e.docId), { ...restoreData(e.kind, e.data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+  queueNativeNotificationRefresh()
 }
 
 /** Calls: calorie estimate for a described meal via POST /api/nutrition (friendly errors). */

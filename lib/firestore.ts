@@ -23,6 +23,7 @@ import {
   type DocumentReference,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { roundCoord } from '@/lib/echo/weather'
@@ -179,18 +180,21 @@ export async function disconnectWeather(uid: string): Promise<void> {
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {
   const ref = doc(notesCol(uid))
   await setDoc(ref, { title: note.title, body: note.body, category: note.category, tags: note.tags, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
   return ref.id
 }
 
 export async function addGoal(uid: string, goal: Pick<Goal, 'title' | 'category' | 'targetDate'>): Promise<string> {
   const ref = doc(goalsCol(uid))
   await setDoc(ref, { title: goal.title, category: goal.category, progress: 0, streak: 0, milestones: [], ...(goal.targetDate ? { targetDate: goal.targetDate } : {}), createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
   return ref.id
 }
 
 export async function addReminder(uid: string, r: { title: string; dueAt: Date; source: ReminderSource }): Promise<string> {
   const ref = doc(remindersCol(uid))
   await setDoc(ref, { title: r.title, dueAt: Timestamp.fromDate(r.dueAt), done: false, source: r.source, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
   return ref.id
 }
 
@@ -404,26 +408,32 @@ export function addWaterGlass(uid: string, day: string): Promise<void> {
 // ---------- edit helpers (every write stamps updatedAt and never touches createdAt) ----------
 export async function updateNote(uid: string, id: string, fields: Partial<Pick<Note, 'title' | 'body' | 'tags' | 'category'>>): Promise<void> {
   await updateDoc(doc(notesCol(uid), id), { ...fields, updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
 }
 
 export async function deleteNote(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(notesCol(uid), id))
+  queueNativeNotificationRefresh()
 }
 
 export async function updateGoal(uid: string, id: string, fields: Partial<Pick<Goal, 'progress' | 'milestones' | 'title'>>): Promise<void> {
   await updateDoc(doc(goalsCol(uid), id), { ...fields, updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
 }
 
 export async function deleteGoal(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(goalsCol(uid), id))
+  queueNativeNotificationRefresh()
 }
 
 export async function setReminderDone(uid: string, id: string, done: boolean): Promise<void> {
   await updateDoc(doc(remindersCol(uid), id), { done, updatedAt: serverTimestamp() } as never)
+  queueNativeNotificationRefresh()
 }
 
 export async function deleteReminder(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(remindersCol(uid), id))
+  queueNativeNotificationRefresh()
 }
 
 // Memory doc id = <type>-<slug(label)>; matches the router's dedupe keys.

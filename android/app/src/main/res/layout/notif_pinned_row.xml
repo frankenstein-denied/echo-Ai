@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One reminder or goal row in the expanded pinned notification (nested RemoteViews). -->
+<!-- One reminder, goal or note row in the expanded pinned notification (nested RemoteViews). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row"
     android:layout_width="match_parent"

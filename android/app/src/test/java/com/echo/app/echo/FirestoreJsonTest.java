@@ -142,4 +142,32 @@ public class FirestoreJsonTest {
         assertEquals(100, q.getInt("limit"));
         assertFalse(q.has("orderBy"));
     }
+
+    private static final String NOTES = "{\"documents\":["
+        + "{\"name\":\"projects/p/databases/(default)/documents/users/u/notes/n1\",\"fields\":{"
+        + "\"title\":{\"stringValue\":\"Ideas\"},\"body\":{\"stringValue\":\"Line one\"},"
+        + "\"updatedAt\":{\"timestampValue\":\"2026-11-05T10:00:00Z\"}}},"
+        + "{\"name\":\"projects/p/databases/(default)/documents/users/u/notes/n2\",\"fields\":{}}"
+        + "]}";
+
+    @Test public void parseNotesReadsFieldsAndKeepsServerOrder() {
+        List<Note> l = FirestoreJson.parseNotes(NOTES);
+        assertEquals(2, l.size());
+        assertEquals("n1", l.get(0).id);
+        assertEquals("Ideas", l.get(0).title);
+        assertEquals("Line one", l.get(0).body);
+        assertEquals("n2", l.get(1).id);
+        assertEquals("", l.get(1).title);
+        assertEquals("", l.get(1).body);
+    }
+
+    @Test public void parseNotesHandlesEmptyAndBadJson() {
+        assertTrue(FirestoreJson.parseNotes("{}").isEmpty());
+        assertTrue(FirestoreJson.parseNotes("not json").isEmpty());
+        assertTrue(FirestoreJson.parseNotes(null).isEmpty());
+    }
+
+    @Test public void latestNotesQueryAsksServerForNewestFirst() {
+        assertEquals("?pageSize=3&orderBy=updatedAt%20desc", FirestoreJson.latestNotesQuery(3));
+    }
 }

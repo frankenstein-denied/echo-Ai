@@ -43,6 +43,15 @@
                 android:layout_weight="1"
                 android:gravity="center"
                 android:text="@string/notif_tab_goals" />
+
+            <TextView
+                android:id="@+id/tab_notes"
+                style="@style/TextAppearance.Compat.Notification.Title"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="@string/notif_tab_notes" />
         </LinearLayout>
 
         <TextView

@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Blocking Firestore REST client for reminders and goals. Call off the main thread. Never throws. */
+/** Blocking Firestore REST client for reminders, goals and notes. Call off the main thread. Never throws. */
 public final class EchoApi {
     private static final long SNOOZE_MS = 15 * 60 * 1000L;
 
@@ -43,8 +43,14 @@ public final class EchoApi {
 
     /** All goals, or null on failure. */
     public List<Goal> listGoals() {
-        String json = list("goals");
+        String json = list("goals", "?pageSize=100");
         return json == null ? null : FirestoreJson.parseGoals(json);
+    }
+
+    /** The newest notes, newest first, or null on failure. */
+    public List<Note> listNotes(int max) {
+        String json = list("notes", FirestoreJson.latestNotesQuery(max));
+        return json == null ? null : FirestoreJson.parseNotes(json);
     }
 
     public boolean markDone(String id) {
@@ -63,14 +69,14 @@ public final class EchoApi {
         return "projects/" + s.getProjectId() + "/databases/(default)/documents";
     }
 
-    private String list(String collection) {
+    private String list(String collection, String query) {
         HttpURLConnection c = null;
         try {
             SessionStore s = SessionStore.get(ctx);
             String token = TokenProvider.getIdToken(ctx);
             if (token == null) return null;
             URL url = new URL("https://firestore.googleapis.com/v1/" + base(s) + "/users/" + s.getUid()
-                + "/" + collection + "?pageSize=100");
+                + "/" + collection + query);
             c = open(url, "GET", token);
             if (c.getResponseCode() != 200) return null;
             return TokenProvider.read(c.getInputStream());

@@ -86,4 +86,19 @@ public class NotifFormatTest {
         assertEquals(0, NotifFormat.percent(Double.NEGATIVE_INFINITY));
         assertEquals(100, NotifFormat.percent(Double.POSITIVE_INFINITY));
     }
+
+    @Test public void notePreviewCollapsesWhitespaceAndLineBreaks() {
+        assertEquals("first second third", NotifFormat.notePreview("  first\n\n second\t third  "));
+    }
+
+    @Test public void notePreviewIsEmptyForNoBody() {
+        assertEquals("", NotifFormat.notePreview(null));
+        assertEquals("", NotifFormat.notePreview(" \n "));
+    }
+
+    @Test public void notePreviewCapsLongBodies() {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < 500; i++) b.append('x');
+        assertEquals(NotifFormat.NOTE_PREVIEW_MAX, NotifFormat.notePreview(b.toString()).length());
+    }
 }

@@ -23,6 +23,7 @@ describe('echo-bridge off native', () => {
     await bridge.clearNativeSession()
     await bridge.setNativePinned(true)
     await bridge.refreshNativeNotification()
+    bridge.queueNativeNotificationRefresh()
     await bridge.openNativeBatterySettings()
     expect(await bridge.getNativeStatus()).toBeNull()
     expect(await bridge.requestNativeNotificationPermission()).toBe(false)

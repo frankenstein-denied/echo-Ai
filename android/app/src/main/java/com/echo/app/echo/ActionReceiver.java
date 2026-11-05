@@ -9,6 +9,7 @@ import android.content.Intent;
 public class ActionReceiver extends BroadcastReceiver {
     public static final String ACTION_TAB_REMINDERS = "com.echo.app.action.TAB_REMINDERS";
     public static final String ACTION_TAB_GOALS = "com.echo.app.action.TAB_GOALS";
+    public static final String ACTION_TAB_NOTES = "com.echo.app.action.TAB_NOTES";
     public static final String ACTION_DONE = "com.echo.app.action.DONE";
     public static final String ACTION_SNOOZE = "com.echo.app.action.SNOOZE";
     /** Fired by the notification's delete intent, i.e. only when the user dismisses it. */
@@ -34,6 +35,9 @@ public class ActionReceiver extends BroadcastReceiver {
                 break;
             case ACTION_TAB_GOALS:
                 switchTab(ctx, SessionStore.TAB_GOALS);
+                break;
+            case ACTION_TAB_NOTES:
+                switchTab(ctx, SessionStore.TAB_NOTES);
                 break;
             case ACTION_DISMISSED:
                 PinnedController.repostIfPinned(ctx);

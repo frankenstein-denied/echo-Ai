@@ -24,6 +24,7 @@ public class EchoNotificationService extends Service {
     private static final Object LOCK = new Object();
     private static List<Reminder> cachedReminders;
     private static List<Goal> cachedGoals;
+    private static List<Note> cachedNotes;
     private static boolean lastLoadFailed;
     private static int generation;
     private static volatile boolean running;
@@ -42,6 +43,7 @@ public class EchoNotificationService extends Service {
         synchronized (LOCK) {
             cachedReminders = null;
             cachedGoals = null;
+            cachedNotes = null;
             lastLoadFailed = false;
             generation++;
         }
@@ -54,7 +56,7 @@ public class EchoNotificationService extends Service {
     public static boolean renderFromCache(Context ctx) {
         if (!running) return false;
         synchronized (LOCK) {
-            if (cachedReminders == null && cachedGoals == null) return false;
+            if (cachedReminders == null && cachedGoals == null && cachedNotes == null) return false;
         }
         post(ctx, buildFromCache(ctx));
         return true;
@@ -138,11 +140,13 @@ public class EchoNotificationService extends Service {
         EchoApi api = new EchoApi(this);
         List<Reminder> reminders = api.listReminders();
         List<Goal> goals = api.listGoals();
+        List<Note> notes = api.listNotes(NotificationRenderer.MAX_ROWS);
         synchronized (LOCK) {
             if (gen != generation || !running) return; // signed out / stopped meanwhile
             if (reminders != null) cachedReminders = FirestoreJson.pickNextReminders(reminders, NotificationRenderer.MAX_ROWS);
             if (goals != null) cachedGoals = FirestoreJson.pickTopGoals(goals, NotificationRenderer.MAX_ROWS);
-            lastLoadFailed = reminders == null || goals == null;
+            if (notes != null) cachedNotes = notes;
+            lastLoadFailed = reminders == null || goals == null || notes == null;
         }
         post(this, buildFromCache(this));
     }
@@ -156,7 +160,7 @@ public class EchoNotificationService extends Service {
         }
         NotificationRenderer.State state;
         synchronized (LOCK) {
-            state = new NotificationRenderer.State(hasSession(ctx), tab, cachedReminders, cachedGoals, lastLoadFailed);
+            state = new NotificationRenderer.State(hasSession(ctx), tab, cachedReminders, cachedGoals, cachedNotes, lastLoadFailed);
         }
         return NotificationRenderer.build(ctx, state);
     }

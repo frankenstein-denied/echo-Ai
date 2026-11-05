@@ -9,6 +9,7 @@ import java.util.TimeZone;
 /** Pure text formatting for the pinned notification. No Android dependencies. */
 public final class NotifFormat {
     private static final long DAY_MS = 24L * 60 * 60 * 1000;
+    static final int NOTE_PREVIEW_MAX = 120;
 
     private NotifFormat() {}
 
@@ -27,6 +28,13 @@ public final class NotifFormat {
         else day = format("MMM d", dueMs, tz, locale);
         String label = day + " " + format(use24h ? "H:mm" : "h:mm a", dueMs, tz, locale);
         return dueMs < nowMs ? "Overdue · " + label : label;
+    }
+
+    /** One-line note preview: whitespace collapsed, capped so a huge body never reaches RemoteViews. */
+    public static String notePreview(String body) {
+        if (body == null) return "";
+        String line = body.trim().replaceAll("\\s+", " ");
+        return line.length() <= NOTE_PREVIEW_MAX ? line : line.substring(0, NOTE_PREVIEW_MAX);
     }
 
     /** Goal progress (0..100 scale) as a whole percent, clamped; NaN counts as 0. */

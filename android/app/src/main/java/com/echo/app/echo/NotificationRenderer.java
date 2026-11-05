@@ -34,10 +34,12 @@ public final class NotificationRenderer {
     private static final int RC_DISMISSED = 5;
     private static final int RC_TAB_REMINDERS = 10;
     private static final int RC_TAB_GOALS = 11;
+    private static final int RC_TAB_NOTES = 12;
     private static final int RC_DONE_BASE = 20;
     private static final int RC_SNOOZE_BASE = 30;
     private static final int RC_GOAL_BASE = 40;
     private static final int RC_REMINDER_BASE = 50;
+    private static final int RC_NOTE_BASE = 60;
 
     /** What to show. Lists are null until the first successful load. */
     public static final class State {
@@ -45,13 +47,15 @@ public final class NotificationRenderer {
         final String tab;
         final List<Reminder> reminders;
         final List<Goal> goals;
+        final List<Note> notes;
         final boolean loadFailed;
 
-        public State(boolean signedIn, String tab, List<Reminder> reminders, List<Goal> goals, boolean loadFailed) {
+        public State(boolean signedIn, String tab, List<Reminder> reminders, List<Goal> goals, List<Note> notes, boolean loadFailed) {
             this.signedIn = signedIn;
             this.tab = tab;
             this.reminders = reminders;
             this.goals = goals;
+            this.notes = notes;
             this.loadFailed = loadFailed;
         }
     }
@@ -83,10 +87,10 @@ public final class NotificationRenderer {
             big.setViewVisibility(R.id.content, View.GONE);
             big.setOnClickPendingIntent(R.id.signed_out, openApp(ctx, RC_SIGN_IN, null));
         } else {
-            boolean goals = SessionStore.TAB_GOALS.equals(s.tab);
-            renderTabs(ctx, big, goals);
+            renderTabs(ctx, big, s.tab);
             big.removeAllViews(R.id.rows);
-            if (goals) renderGoals(ctx, small, big, s);
+            if (SessionStore.TAB_GOALS.equals(s.tab)) renderGoals(ctx, small, big, s);
+            else if (SessionStore.TAB_NOTES.equals(s.tab)) renderNotes(ctx, small, big, s);
             else renderReminders(ctx, small, big, s);
             big.setOnClickPendingIntent(R.id.btn_talk, openApp(ctx, RC_TALK, DeepLinks.DIARY));
             big.setOnClickPendingIntent(R.id.btn_type, openApp(ctx, RC_TYPE, DeepLinks.DIARY));
@@ -111,13 +115,16 @@ public final class NotificationRenderer {
             .build();
     }
 
-    private static void renderTabs(Context ctx, RemoteViews big, boolean goalsSelected) {
-        styleTab(ctx, big, R.id.tab_reminders, R.string.notif_tab_reminders, !goalsSelected);
-        styleTab(ctx, big, R.id.tab_goals, R.string.notif_tab_goals, goalsSelected);
+    private static void renderTabs(Context ctx, RemoteViews big, String tab) {
+        styleTab(ctx, big, R.id.tab_reminders, R.string.notif_tab_reminders, SessionStore.TAB_REMINDERS.equals(tab));
+        styleTab(ctx, big, R.id.tab_goals, R.string.notif_tab_goals, SessionStore.TAB_GOALS.equals(tab));
+        styleTab(ctx, big, R.id.tab_notes, R.string.notif_tab_notes, SessionStore.TAB_NOTES.equals(tab));
         big.setOnClickPendingIntent(R.id.tab_reminders,
             ActionReceiver.pending(ctx, ActionReceiver.ACTION_TAB_REMINDERS, null, RC_TAB_REMINDERS));
         big.setOnClickPendingIntent(R.id.tab_goals,
             ActionReceiver.pending(ctx, ActionReceiver.ACTION_TAB_GOALS, null, RC_TAB_GOALS));
+        big.setOnClickPendingIntent(R.id.tab_notes,
+            ActionReceiver.pending(ctx, ActionReceiver.ACTION_TAB_NOTES, null, RC_TAB_NOTES));
     }
 
     private static void styleTab(Context ctx, RemoteViews big, int viewId, int textRes, boolean selected) {
@@ -189,6 +196,34 @@ public final class NotificationRenderer {
             if (i == 0) {
                 small.setTextViewText(R.id.small_title, titleOf(ctx, g.title));
                 small.setTextViewText(R.id.small_sub, pctText);
+            }
+        }
+    }
+
+    private static void renderNotes(Context ctx, RemoteViews small, RemoteViews big, State s) {
+        List<Note> list = s.notes;
+        if (list == null || list.isEmpty()) {
+            String msg = emptyText(ctx, s, list == null, R.string.notif_no_notes);
+            showEmpty(ctx, small, big, msg);
+            return;
+        }
+        big.setViewVisibility(R.id.empty, View.GONE);
+        for (int i = 0; i < Math.min(MAX_ROWS, list.size()); i++) {
+            Note n = list.get(i);
+            String preview = NotifFormat.notePreview(n.body);
+            int subVisibility = preview.isEmpty() ? View.GONE : View.VISIBLE;
+            RemoteViews row = new RemoteViews(ctx.getPackageName(), R.layout.notif_pinned_row);
+            row.setTextViewText(R.id.row_title, titleOf(ctx, n.title));
+            row.setTextViewText(R.id.row_sub, preview);
+            row.setViewVisibility(R.id.row_sub, subVisibility);
+            row.setViewVisibility(R.id.row_done, View.GONE);
+            row.setViewVisibility(R.id.row_snooze, View.GONE);
+            row.setOnClickPendingIntent(R.id.row, openApp(ctx, RC_NOTE_BASE + i, DeepLinks.NOTES));
+            big.addView(R.id.rows, row);
+            if (i == 0) {
+                small.setTextViewText(R.id.small_title, titleOf(ctx, n.title));
+                small.setTextViewText(R.id.small_sub, preview);
+                small.setViewVisibility(R.id.small_sub, subVisibility);
             }
         }
     }

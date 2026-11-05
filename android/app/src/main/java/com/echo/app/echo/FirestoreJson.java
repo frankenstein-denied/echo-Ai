@@ -90,6 +90,24 @@ public final class FirestoreJson {
         return out;
     }
 
+    /** Notes in the order the server returned them (see {@link #latestNotesQuery}). */
+    public static List<Note> parseNotes(String listJson) {
+        List<Note> out = new ArrayList<>();
+        JSONArray docs = documents(listJson);
+        for (int i = 0; i < docs.length(); i++) {
+            JSONObject d = docs.optJSONObject(i);
+            if (d == null) continue;
+            JSONObject f = d.optJSONObject("fields");
+            out.add(new Note(idOf(d), pickString(f, "title", ""), pickString(f, "body", "")));
+        }
+        return out;
+    }
+
+    /** List query for the newest notes. Sorted by the server: bodies can be large and there may be hundreds. */
+    public static String latestNotesQuery(int max) {
+        return "?pageSize=" + max + "&orderBy=updatedAt%20desc";
+    }
+
     public static List<Reminder> pickNextReminders(List<Reminder> all, int max) {
         List<Reminder> open = new ArrayList<>();
         for (Reminder r : all) if (!r.done) open.add(r);

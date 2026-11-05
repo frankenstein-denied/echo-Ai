@@ -47,6 +47,19 @@ export async function refreshNativeNotification(): Promise<void> {
   await EchoBridge.refresh()
 }
 
+const REFRESH_DELAY_MS = 400
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Call after saving something the pinned notification shows. One chat turn can save several items, so a burst collapses into a single reload. */
+export function queueNativeNotificationRefresh(): void {
+  if (!native()) return
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    EchoBridge.refresh().catch(() => null)
+  }, REFRESH_DELAY_MS)
+}
+
 export async function requestNativeNotificationPermission(): Promise<boolean> {
   if (!native()) return false
   const r = await EchoBridge.requestNotificationPermission()
