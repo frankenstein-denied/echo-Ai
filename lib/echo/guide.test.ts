@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { GUIDE_SLIDES, MAX_GUIDE_SLIDES, SHARE_LINK } from './guide'
+import { ANDROID_LINK, GUIDE_SLIDES, INSTALL_NOTE, INSTALL_OPTIONS, INSTALL_SLIDE, MAX_GUIDE_SLIDES, WEB_LINK } from './guide'
 
 describe('guide slides', () => {
   it('stays within the slide limit', () => {
@@ -22,8 +22,12 @@ describe('guide slides', () => {
     }
   })
 
-  it('ends on sharing, with the releases page link', () => {
-    expect(GUIDE_SLIDES.at(-1)?.id).toBe('share')
-    expect(SHARE_LINK).toBe('https://github.com/frankenstein-denied/echo-Ai/releases/latest')
+  it('ends on installing, with a link for every option', () => {
+    expect(GUIDE_SLIDES[INSTALL_SLIDE].id).toBe('install')
+    expect(INSTALL_SLIDE).toBe(GUIDE_SLIDES.length - 1)
+    expect(WEB_LINK).toBe('https://echo-ai-blue.vercel.app')
+    expect(ANDROID_LINK).toBe('https://github.com/frankenstein-denied/echo-Ai/releases/latest')
+    expect(INSTALL_OPTIONS.map((o) => o.link)).toEqual([WEB_LINK, WEB_LINK, ANDROID_LINK])
+    for (const browser of ['Chrome', 'Brave', 'Safari', 'Edge']) expect(INSTALL_NOTE).toContain(browser)
   })
 })

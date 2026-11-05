@@ -3,36 +3,74 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, ArrowRight, Check, Copy, Info, X } from 'lucide-react'
-import { GUIDE_SLIDES, SHARE_LINK, type GuideSlide } from '@/lib/echo/guide'
+import { GUIDE_SLIDES, INSTALL_NOTE, INSTALL_OPTIONS, INSTALL_SLIDE, type GuideSlide, type InstallOption } from '@/lib/echo/guide'
+import { InstallAppButton } from './pwa'
 import { Button, IconButton } from './ui'
 
-const GuideContext = createContext<(() => void) | null>(null)
+/** Opens the walkthrough at a slide (the first by default). */
+const GuideContext = createContext<((slide?: number) => void) | null>(null)
 export const GuideProvider = GuideContext.Provider
+
+/** Opens the walkthrough on its install slide. */
+export function useOpenInstallGuide() {
+  const open = useContext(GuideContext)
+  return () => open?.(INSTALL_SLIDE)
+}
 
 /** The (i) icon that reopens the walkthrough. Renders nothing outside the dashboard (floating Echo windows). */
 export function GuideInfoButton({ className = '' }: { className?: string }) {
   const open = useContext(GuideContext)
   if (!open) return null
-  return <IconButton icon={Info} label="How Echo works" size="sm" className={className} onClick={open} />
+  return <IconButton icon={Info} label="How Echo works" size="sm" className={className} onClick={() => open()} />
 }
 
-function ShareCard() {
+function LinkCopy({ link }: { link: string }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(SHARE_LINK)
+      await navigator.clipboard.writeText(link)
       setState('copied')
     } catch {
       setState('failed')
     }
   }
   return (
-    <div className="mt-5 grid gap-3 rounded-xl border border-border bg-surface p-4">
-      <p className="select-all break-all text-sm text-muted-foreground">{SHARE_LINK}</p>
-      <Button icon={state === 'copied' ? Check : Copy} onClick={() => void copy()}>
-        {state === 'copied' ? 'Link copied' : 'Copy app link'}
+    <div className="grid gap-2">
+      <p className="select-all break-all rounded-lg bg-background px-3 py-2 text-sm text-foreground">{link}</p>
+      <Button variant="secondary" icon={state === 'copied' ? Check : Copy} onClick={() => void copy()}>
+        {state === 'copied' ? 'Link copied' : 'Copy link'}
       </Button>
       {state === 'failed' && <p className="text-sm text-muted-foreground">Couldn&apos;t copy. Press and hold the link above to copy it.</p>}
+    </div>
+  )
+}
+
+function InstallCard({ option }: { option: InstallOption }) {
+  return (
+    <section className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+      <h3 className="text-base font-semibold text-foreground">{option.title}</h3>
+      <LinkCopy link={option.link} />
+      <ol className="grid list-decimal gap-1.5 pl-5 text-sm text-foreground">
+        {option.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      {/* Renders nothing when this browser cannot install Echo directly. */}
+      {option.pwa && <InstallAppButton />}
+    </section>
+  )
+}
+
+function InstallOptions() {
+  return (
+    <div className="mt-5 grid gap-3">
+      {INSTALL_OPTIONS.map((o) => (
+        <InstallCard key={o.title} option={o} />
+      ))}
+      <p className="rounded-xl border border-primary bg-primary-soft p-4 text-sm text-foreground">
+        <strong className="font-semibold">Note: </strong>
+        {INSTALL_NOTE}
+      </p>
     </div>
   )
 }
@@ -68,14 +106,14 @@ function Slide({ slide }: { slide: GuideSlide }) {
             ))}
           </ul>
         )}
-        {slide.id === 'share' && <ShareCard />}
+        {slide.id === 'install' && <InstallOptions />}
       </div>
     </div>
   )
 }
 
-function GuidePanel({ onClose }: { onClose: () => void }) {
-  const [index, setIndex] = useState(0)
+function GuidePanel({ start, onClose }: { start: number; onClose: () => void }) {
+  const [index, setIndex] = useState(start)
   const nextBtn = useRef<HTMLDivElement>(null)
   const last = GUIDE_SLIDES.length - 1
   const slide = GUIDE_SLIDES[index]
@@ -110,7 +148,7 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 overflow-y-auto px-4 py-2">
-        <div key={slide.id} className="animate-in m-auto w-full">
+        <div key={slide.id} className="animate-in m-auto w-full py-2">
           <Slide slide={slide} />
         </div>
       </div>
@@ -141,7 +179,7 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function Guide({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function Guide({ open, start = 0, onClose }: { open: boolean; start?: number; onClose: () => void }) {
   if (!open || typeof document === 'undefined') return null
-  return createPortal(<GuidePanel onClose={onClose} />, document.body)
+  return createPortal(<GuidePanel start={start} onClose={onClose} />, document.body)
 }

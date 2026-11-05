@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
-import { LogOut, Play } from 'lucide-react'
+import { Download, LogOut, Play } from 'lucide-react'
 import { updateCalorieSettings, watchCalorieSettings, type UserProfile } from '@/lib/firestore'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
 import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
-import { InstallAppButton } from './pwa'
+import { useOpenInstallGuide } from './guide'
 import { Capacitor } from '@capacitor/core'
 import {
   getNativeStatus,
@@ -18,6 +18,7 @@ import {
 } from '@/lib/native/echo-bridge'
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
+  const openInstallGuide = useOpenInstallGuide()
   const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
   const [voices, setVoices] = useState<VoiceOption[]>([])
   const [voicesError, setVoicesError] = useState(false)
@@ -331,8 +332,9 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             <Button variant="secondary" icon={LogOut} onClick={() => void signOut()} className="max-sm:w-full">
               Sign out
             </Button>
-            {/* Renders nothing when the app is installed or the browser cannot install it. */}
-            <InstallAppButton className="max-sm:w-full max-lg:*:h-11 max-sm:[&>button:first-child]:flex-1 max-sm:[&>button:first-child]:justify-center" />
+            <Button variant="secondary" icon={Download} onClick={openInstallGuide} className="max-sm:w-full">
+              Install Echo
+            </Button>
           </div>
         </Card>
       </div>

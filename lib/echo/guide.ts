@@ -1,8 +1,44 @@
 // The "How Echo works" walkthrough. Keep it true to the UI, at most 10 slides, and led by what Echo is for:
 // people treated Echo as a general chatbot, so the purpose comes before any feature. Screens in public/guide
 // are the real pages running on fictional sample data.
-export const SHARE_LINK = 'https://github.com/frankenstein-denied/echo-Ai/releases/latest'
+export const WEB_LINK = 'https://echo-ai-blue.vercel.app'
+export const ANDROID_LINK = 'https://github.com/frankenstein-denied/echo-Ai/releases/latest'
 export const MAX_GUIDE_SLIDES = 10
+
+export type InstallOption = { title: string; link: string; steps: string[]; pwa?: boolean }
+
+export const INSTALL_OPTIONS: InstallOption[] = [
+  {
+    title: 'On a laptop or desktop',
+    link: WEB_LINK,
+    steps: ['Copy the link', 'Paste it into your browser and sign in'],
+  },
+  {
+    title: 'Install as a web app (PWA)',
+    link: WEB_LINK,
+    pwa: true,
+    steps: [
+      'Copy the link and paste it into your browser',
+      'iPhone or iPad (Safari): tap Share, then Add to Home Screen',
+      'Android (Chrome): tap the ⋮ menu, then Add to Home screen',
+      'Laptop or desktop (Chrome or Edge): click the install icon in the address bar',
+    ],
+  },
+  {
+    title: 'Install the Android app',
+    link: ANDROID_LINK,
+    steps: [
+      'Copy the link',
+      'Paste it into your browser',
+      'Under Assets, tap echo.apk',
+      'When the download finishes, open the file',
+      'If Android asks, allow installs from your browser',
+      'Tap Install, then open Echo',
+    ],
+  },
+]
+
+export const INSTALL_NOTE = 'To install, copy the link and paste it into a browser such as Chrome, Brave, Safari or Edge. Opening it inside Messenger or another chat app can fail.'
 
 export type GuideSlide = {
   id: string
@@ -85,9 +121,10 @@ export const GUIDE_SLIDES: GuideSlide[] = [
     alt: 'The Settings page with the Pinned Echo notification switch turned on',
   },
   {
-    id: 'share',
-    title: 'Share Echo with a friend',
-    body: 'Echo works in your browser and as an Android app. Copy the link and send it to a friend.',
-    points: ['Ask them to open the link in Chrome, not inside Messenger', 'You can reopen this guide anytime from the (i) icon'],
+    id: 'install',
+    title: 'Install Echo on any device',
+    body: 'Pick what fits your device, or copy a link and send it to a friend.',
   },
 ]
+
+export const INSTALL_SLIDE = GUIDE_SLIDES.length - 1

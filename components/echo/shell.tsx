@@ -47,7 +47,11 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
   const [guideOpen, setGuideOpen] = useState(guideFirst)
-  const openGuide = useCallback(() => setGuideOpen(true), [])
+  const [guideStart, setGuideStart] = useState(0)
+  const openGuide = useCallback((slide = 0) => {
+    setGuideStart(slide)
+    setGuideOpen(true)
+  }, [])
   const closeGuide = useCallback(() => setGuideOpen(false), [])
   const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
@@ -158,7 +162,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
       </div>
       <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
       <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
-      <Guide open={guideOpen} onClose={closeGuide} />
+      <Guide open={guideOpen} start={guideStart} onClose={closeGuide} />
     </div>
     </GuideProvider>
   )
