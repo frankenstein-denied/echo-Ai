@@ -45,6 +45,15 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <service
+            android:name=".floating.ChatheadService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating chathead bubble that opens the diary over other apps" />
+        </service>
+
         <receiver
             android:name=".echo.ActionReceiver"
             android:exported="false" />

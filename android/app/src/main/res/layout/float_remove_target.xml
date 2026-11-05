@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Drop zone shown at bottom centre while the chathead is dragged. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="64dp"
+    android:layout_height="64dp"
+    android:background="@drawable/float_call_exit_bg"
+    android:contentDescription="@string/float_chathead_remove"
+    android:gravity="center"
+    android:text="✕"
+    android:textColor="#FFFFFF"
+    android:textSize="28sp" />

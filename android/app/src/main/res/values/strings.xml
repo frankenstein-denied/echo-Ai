@@ -33,4 +33,12 @@
     <string name="float_call_notification">On a call with Echo</string>
     <string name="float_call_exit">End call</string>
     <string name="float_call_start_failed">Couldn\'t start the call.</string>
+    <string name="float_panel_title">Diary</string>
+    <string name="float_panel_open_in_app">Open in app ↗</string>
+    <string name="float_chathead_remove">Remove Echo bubble</string>
+    <string name="float_chathead_desc">Echo bubble</string>
+    <string name="float_chathead_channel_name">Echo bubble</string>
+    <string name="float_chathead_channel_desc">Shown while the Echo bubble floats over other apps</string>
+    <string name="float_chathead_notification">Echo bubble is on</string>
+    <string name="float_chathead_start_failed">Couldn\'t show the Echo bubble.</string>
 </resources>

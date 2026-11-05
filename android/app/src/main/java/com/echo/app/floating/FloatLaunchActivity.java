@@ -60,8 +60,7 @@ public class FloatLaunchActivity extends Activity {
                 FloatingCallService.start(this); // before finish(), while Echo is still in the foreground
                 break;
             case SHOW_CHATHEAD:
-                // TODO(Task 6): start the chathead service.
-                Log.i(TAG, "SHOW_CHATHEAD (chathead service not built yet)");
+                ChatheadService.show(this); // before finish(), while Echo is still in the foreground
                 break;
             case ALREADY_RUNNING:
                 Log.i(TAG, "ALREADY_RUNNING");
