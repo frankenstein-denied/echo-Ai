@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round red exit button. The frame gives the WRAP_CONTENT window the button's exact size. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <ImageButton
+        android:id="@+id/float_call_exit"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:background="@drawable/float_call_exit_bg"
+        android:contentDescription="@string/float_call_exit"
+        android:src="@drawable/ic_float_call_end" />
+</FrameLayout>

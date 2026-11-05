@@ -74,6 +74,11 @@ public final class CallSessionState {
         return stage == Stage.FAILED;
     }
 
+    /** Failed before going live: nothing to save, and the page must not auto-dial behind the message. */
+    public boolean shouldDiscardPage() {
+        return stage == Stage.FAILED && !connected;
+    }
+
     /** The call went live at some point, so the page may hold a last turn still being saved. */
     public boolean hasConnected() {
         return connected;

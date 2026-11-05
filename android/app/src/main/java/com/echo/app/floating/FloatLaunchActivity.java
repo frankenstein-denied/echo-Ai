@@ -23,6 +23,7 @@ public class FloatLaunchActivity extends Activity {
     private static final int REQ_MIC = 7;
 
     private String action;
+    private boolean startCallOnResume;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,7 +42,8 @@ public class FloatLaunchActivity extends Activity {
         boolean overlay = Settings.canDrawOverlays(this);
         boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         FloatLaunchDecision.Outcome outcome = FloatLaunchDecision.decide(
-            action, signedIn, overlay, mic, FloatState.callRunning, FloatState.appCallActive);
+            action, signedIn, overlay, mic, FloatState.callRunning, FloatState.appCallActive,
+            FloatState.callFinishing);
 
         switch (outcome) {
             case OPEN_APP:
@@ -57,13 +59,18 @@ public class FloatLaunchActivity extends Activity {
                 requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, REQ_MIC);
                 return; // finish after the result
             case START_CALL:
-                FloatingCallService.start(this); // before finish(), while Echo is still in the foreground
-                break;
+                // Android 14+ only grants the mic to a service started while Echo is really in front.
+                // Both paths here (onCreate, permission result) are followed by onResume.
+                startCallOnResume = true;
+                return;
             case SHOW_CHATHEAD:
                 ChatheadService.show(this); // before finish(), while Echo is still in the foreground
                 break;
             case ALREADY_RUNNING:
                 Log.i(TAG, "ALREADY_RUNNING");
+                break;
+            case FINISHING_LAST_CALL:
+                Toast.makeText(this, R.string.float_call_finishing, Toast.LENGTH_LONG).show();
                 break;
             case BLOCKED_BY_APP_CALL:
                 Toast.makeText(this, R.string.float_blocked_by_app_call, Toast.LENGTH_LONG).show();
@@ -71,6 +78,23 @@ public class FloatLaunchActivity extends Activity {
         }
         finish();
         overridePendingTransition(0, 0);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (!startCallOnResume) return;
+        startCallOnResume = false;
+        FloatingCallService.start(this);
+        finish();
+        overridePendingTransition(0, 0);
+    }
+
+    /** Never resumed (e.g. the screen locked first): drop the start rather than linger or dial later. */
+    @Override protected void onStop() {
+        super.onStop();
+        if (!startCallOnResume) return;
+        startCallOnResume = false;
+        finish();
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {

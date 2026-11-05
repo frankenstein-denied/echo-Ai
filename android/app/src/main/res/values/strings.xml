@@ -33,6 +33,7 @@
     <string name="float_call_notification">On a call with Echo</string>
     <string name="float_call_exit">End call</string>
     <string name="float_call_start_failed">Couldn\'t start the call.</string>
+    <string name="float_call_finishing">Echo is finishing your last call.</string>
     <string name="float_panel_title">Diary</string>
     <string name="float_panel_open_in_app">Open in app ↗</string>
     <string name="float_chathead_remove">Remove Echo bubble</string>

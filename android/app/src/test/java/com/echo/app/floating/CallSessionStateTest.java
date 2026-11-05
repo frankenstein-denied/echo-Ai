@@ -173,6 +173,32 @@ public class CallSessionStateTest {
         assertTrue(s.hasConnected());
     }
 
+    @Test public void connectTimeoutDiscardsThePageAndKeepsThePill() {
+        CallSessionState s = new CallSessionState();
+        s.start(0);
+        assertFalse(s.shouldDiscardPage());
+        s.tick(20000);
+        assertTrue(s.shouldDiscardPage());
+        assertEquals("Couldn't connect", s.pillText());
+        assertFalse(s.shouldTearDown());
+    }
+
+    @Test public void failureBeforeConnectingDiscardsThePage() {
+        CallSessionState s = new CallSessionState();
+        s.start(0);
+        s.onEnded("quota", 1);
+        assertTrue(s.shouldDiscardPage());
+    }
+
+    @Test public void failureAfterConnectingKeepsThePageSoItCanSave() {
+        CallSessionState s = new CallSessionState();
+        s.start(0);
+        s.onPhase("speaking", 1);
+        assertFalse(s.shouldDiscardPage());
+        s.onEnded("dropped", 2);
+        assertFalse(s.shouldDiscardPage());
+    }
+
     @Test public void eventsBeforeStartDoNothing() {
         CallSessionState s = new CallSessionState();
         s.onPhase("listening", 1);
