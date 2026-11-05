@@ -34,7 +34,11 @@ public class EchoBridgePlugin extends Plugin {
             return;
         }
         try {
-            SessionStore.get(getContext()).saveSession(uid, refreshToken, apiKey, projectId);
+            SessionStore store = SessionStore.get(getContext());
+            boolean userChanged = !uid.equals(store.getUid());
+            store.saveSession(uid, refreshToken, apiKey, projectId);
+            if (userChanged) EchoNotificationService.clearCache();
+            PinnedController.refresh(getContext());
             call.resolve();
         } catch (IllegalStateException e) {
             call.reject("Secure storage unavailable");
