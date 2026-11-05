@@ -776,7 +776,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
             <IconButton icon={Maximize2} label="Fit to view" size="sm" onClick={fit} />
           </div>
           <div className="absolute left-3 top-3 flex gap-2">
-            <Button variant="secondary" icon={SlidersHorizontal} className="bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter and color key`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
+            <Button variant="secondary" icon={SlidersHorizontal} className="bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
               {periodLabel}
             </Button>
             <Button variant="secondary" icon={Palette} className="bg-surface-2" aria-haspopup="dialog" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
@@ -821,11 +821,8 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <Card as="div">{legend}</Card>
         </div>
       </div>
-      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter and color key">
-        <div className="grid gap-5 px-2 pb-2">
-          {periodControl}
-          <div>{legend}</div>
-        </div>
+      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter">
+        <div className="px-2 pb-2">{periodControl}</div>
       </Sheet>
       <Sheet open={mobile && legendOpen} onClose={() => setLegendOpen(false)} title="Legend">
         <div className="px-2 pb-2">{legend}</div>
