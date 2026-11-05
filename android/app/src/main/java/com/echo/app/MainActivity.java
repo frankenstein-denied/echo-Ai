@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 import android.webkit.WebView;
 import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.EchoBridgePlugin;
+import com.echo.app.update.AppUpdater;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
@@ -24,6 +25,13 @@ public class MainActivity extends BridgeActivity {
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         askForMicOnFirstLaunch();
+        AppUpdater.checkOnLaunch(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        AppUpdater.onResume(this);
     }
 
     /**
