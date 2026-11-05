@@ -20,3 +20,12 @@ graphify-out/
 next-env.d.ts
 *.tsbuildinfo
 .next-prod/
+
+# Android secrets / build output
+android/app/google-services.json
+*.keystore
+*.jks
+android/app/release/
+
+# IDE
+.idea/
