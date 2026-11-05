@@ -1,7 +1,12 @@
 package com.echo.app;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import android.webkit.WebView;
 import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.EchoBridgePlugin;
@@ -9,12 +14,30 @@ import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private static final String PREF_MIC_ASKED = "mic_permission_asked";
+    private static final int RC_MIC = 7001;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EchoBridgePlugin.class);
         super.onCreate(savedInstanceState);
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
+        askForMicOnFirstLaunch();
+    }
+
+    /**
+     * Asks for the microphone once, on the first launch after install, so voice works without the
+     * user hunting through Android settings. Later mic requests from the site still go through
+     * Capacitor's WebChromeClient, which asks again if needed.
+     */
+    private void askForMicOnFirstLaunch() {
+        SharedPreferences prefs = getSharedPreferences("echo_app", MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_MIC_ASKED, false)) return;
+        prefs.edit().putBoolean(PREF_MIC_ASKED, true).apply();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED) return;
+        ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.RECORD_AUDIO }, RC_MIC);
     }
 
     @Override
