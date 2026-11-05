@@ -54,7 +54,7 @@ export type UserProfile = {
 }
 export type OnboardingAnswers = Pick<UserProfile, 'preferredName' | 'priorities' | 'yearGoals' | 'importantPeople' | 'tone' | 'checkInTime' | 'remindersEnabled'>
 export type Note = { title: string; body: string; category: string; tags: string[]; createdAt: Timestamp; updatedAt: Timestamp }
-export type Milestone = { text: string; done: boolean }
+export type Milestone = { text: string; done: boolean; doneAt?: number }
 export type Goal = { title: string; category: string; progress: number; streak: number; milestones: Milestone[]; targetDate?: string; createdAt: Timestamp; updatedAt: Timestamp }
 export type Energy = 'low' | 'medium' | 'high'
 export type HealthLog = { date: string; mood: number; moodTag?: MoodTag; sleepMinutes: number; waterGlasses: number; energy: Energy; createdAt: Timestamp; updatedAt: Timestamp }

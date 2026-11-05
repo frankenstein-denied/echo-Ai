@@ -11,14 +11,84 @@ import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 import { glowCardStyle, goalSubtitle } from '@/lib/echo/glow'
 import { KindTag, ProgressRing } from './glow'
+import { ORB_COLOR } from '@/lib/echo/orbs'
+import { FOCUS_RING } from '@/lib/echo/ui-classes'
+import { milestonePath, milestonesDoneThisWeek, overallProgress, toggleMilestone, yearProgress } from '@/lib/echo/goals-helpers'
 
 type GoalRow = Goal & { id: string }
 
 const AREAS = ['Personal', 'Career', 'Health', 'Learning', 'Family', 'Friends', 'Creativity', 'Money', 'Rest']
 const AREA_COLORS = ['bg-primary', 'bg-success', 'bg-warning', 'bg-info', 'bg-node-person', 'bg-node-interest']
 
-function dayOfYear(now: Date): number {
-  return Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
+const AMBER_GLOW = `drop-shadow(0 0 3px color-mix(in srgb, ${ORB_COLOR.goal} 60%, transparent))`
+
+function OverallRing({ goalsPct, yearPct }: { goalsPct: number; yearPct: number }) {
+  const size = 72
+  const ring = (r: number, pct: number, color: string, glow: boolean) => {
+    const circ = 2 * Math.PI * r
+    return (
+      <>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={6} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={6}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - pct / 100)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={glow && pct > 0 ? { filter: AMBER_GLOW } : undefined}
+        />
+      </>
+    )
+  }
+  return (
+    <svg role="img" aria-label={`Goals ${goalsPct}% done, ${yearPct}% of the year gone`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      {ring(32, goalsPct, ORB_COLOR.goal, true)}
+      {ring(22, yearPct, 'var(--color-primary)', false)}
+    </svg>
+  )
+}
+
+function MilestonePath({ milestones, onToggle }: { milestones: Goal['milestones']; onToggle: (i: number) => void }) {
+  const { steps, more } = milestonePath(milestones)
+  const next = steps.find((s) => s.state === 'next') ?? (milestones.findIndex((m) => !m.done) >= 0 ? { text: milestones[milestones.findIndex((m) => !m.done)].text } : null)
+  return (
+    <div className="mt-4">
+      <div className="flex items-center">
+        {steps.map((s, i) => {
+          const done = s.state === 'done'
+          return (
+            <div key={s.index} className={`flex items-center ${i < steps.length - 1 || more > 0 ? 'min-w-0 flex-1' : ''}`}>
+              <button
+                type="button"
+                aria-label={`Milestone: ${s.text}`}
+                aria-pressed={done}
+                onClick={() => onToggle(s.index)}
+                className={`flex size-6 shrink-0 items-center justify-center rounded-full ${FOCUS_RING}`}
+              >
+                {s.state === 'next' ? (
+                  <span aria-hidden="true" className="echo-pulse block size-4 rounded-full border-2" style={{ borderColor: ORB_COLOR.goal }} />
+                ) : done ? (
+                  <span aria-hidden="true" className="block size-3.5 rounded-full" style={{ background: ORB_COLOR.goal, filter: AMBER_GLOW }} />
+                ) : (
+                  <span aria-hidden="true" className="block size-3.5 rounded-full border border-dashed border-border-strong" />
+                )}
+              </button>
+              {(i < steps.length - 1 || more > 0) && <span aria-hidden="true" className={`h-0.5 min-w-1 flex-1 ${done ? '' : 'bg-border'}`} style={done ? { background: ORB_COLOR.goal } : undefined} />}
+            </div>
+          )
+        })}
+        {more > 0 && <span className="shrink-0 pl-1 text-xs text-muted-foreground">+{more}</span>}
+      </div>
+      <p className="mt-1.5 text-xs" style={next ? { color: `color-mix(in srgb, ${ORB_COLOR.goal} 70%, white)` } : undefined}>
+        {next ? `Next: ${next.text}` : <span className="text-muted-foreground">All milestones done 🎉</span>}
+      </p>
+    </div>
+  )
 }
 
 function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError: (m: string) => void }) {
@@ -86,6 +156,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
           className="mt-3 w-full accent-primary max-lg:mt-1 max-lg:h-11"
         />
       </div>
+      {goal.milestones.length > 0 && <MilestonePath milestones={goal.milestones} onToggle={(i) => saveMilestones(toggleMilestone(goal.milestones, i, Date.now()))} />}
       <ul className="mt-4 flex flex-col gap-2 text-sm">
         {goal.milestones.map((m, i) => (
           <li key={i} className="flex items-center gap-2">
@@ -96,7 +167,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
                 aria-label={`Milestone: ${m.text}`}
                 className="size-4 shrink-0 accent-primary max-lg:size-5"
                 checked={m.done}
-                onChange={() => saveMilestones(goal.milestones.map((x, j) => (j === i ? { ...x, done: !x.done } : x)))}
+                onChange={() => saveMilestones(toggleMilestone(goal.milestones, i, Date.now()))}
               />
               <span className={`min-w-0 flex-1 break-words ${m.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{m.text}</span>
             </HitRow>
@@ -151,8 +222,9 @@ export function GoalsView({ uid }: { uid: string }) {
   )
   const shares = useMemo(() => areaShares(goals ?? []), [goals])
   const now = new Date()
-  const doy = dayOfYear(now)
-  const yearDays = dayOfYear(new Date(now.getFullYear(), 11, 31))
+  const goalsPct = overallProgress(goals ?? [])
+  const yearPct = yearProgress(now)
+  const weekDone = milestonesDoneThisWeek(goals ?? [], now)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -202,8 +274,21 @@ export function GoalsView({ uid }: { uid: string }) {
         <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
       </div>
 
-      <Card className="mb-5">
-        <h2 className="text-base font-semibold text-foreground">Your year in view</h2>
+      <Card className="mb-5" style={glowCardStyle('goal')}>
+        <div className="flex items-center gap-4">
+          <OverallRing goalsPct={goalsPct} yearPct={yearPct} />
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-foreground">
+              {goalsPct}% done · {yearPct}% of the year gone
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Outer ring: your goals. Inner ring: the year.</p>
+            {weekDone > 0 && (
+              <p className="mt-1 text-xs text-foreground">
+                {weekDone} milestone{weekDone === 1 ? '' : 's'} finished this week ✨
+              </p>
+            )}
+          </div>
+        </div>
         {shares.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">Add goals and their areas will appear here.</p>
         ) : (
@@ -223,14 +308,6 @@ export function GoalsView({ uid }: { uid: string }) {
             </div>
           </>
         )}
-        <div className="mt-4 h-1 rounded-full bg-surface-2" aria-hidden="true">
-          <div className="h-full rounded-full bg-info" style={{ width: `${Math.min(100, (doy / yearDays) * 100)}%` }} />
-        </div>
-        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-          <span>Jan 01</span>
-          <span>Today · day {doy}</span>
-          <span>Dec 31</span>
-        </div>
       </Card>
 
       {goals === null ? (
