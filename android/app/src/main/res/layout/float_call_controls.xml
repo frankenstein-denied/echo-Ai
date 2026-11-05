@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bottom-centre call controls: status pill above the round red exit button. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/float_call_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/float_call_pill_bg"
+        android:gravity="center"
+        android:maxWidth="300dp"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp" />
+
+    <ImageButton
+        android:id="@+id/float_call_exit"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/float_call_exit_bg"
+        android:contentDescription="@string/float_call_exit"
+        android:src="@drawable/ic_float_call_end" />
+</LinearLayout>

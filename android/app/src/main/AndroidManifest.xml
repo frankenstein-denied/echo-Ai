@@ -40,6 +40,11 @@
                 android:value="Pinned personal assistant panel with reminders and goals" />
         </service>
 
+        <service
+            android:name=".floating.FloatingCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <receiver
             android:name=".echo.ActionReceiver"
             android:exported="false" />

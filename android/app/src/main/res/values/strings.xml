@@ -28,4 +28,9 @@
     <string name="float_allow_overlay">Allow Echo to display over other apps, then tap again.</string>
     <string name="float_blocked_by_app_call">You\'re already on a call in Echo.</string>
     <string name="float_mic_needed">Echo needs the microphone for voice calls.</string>
+    <string name="float_call_channel_name">Floating call</string>
+    <string name="float_call_channel_desc">Shown while you are on a voice call with Echo over other apps</string>
+    <string name="float_call_notification">On a call with Echo</string>
+    <string name="float_call_exit">End call</string>
+    <string name="float_call_start_failed">Couldn\'t start the call.</string>
 </resources>

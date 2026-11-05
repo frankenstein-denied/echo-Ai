@@ -57,8 +57,7 @@ public class FloatLaunchActivity extends Activity {
                 requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, REQ_MIC);
                 return; // finish after the result
             case START_CALL:
-                // TODO(Task 5): start the floating call service.
-                Log.i(TAG, "START_CALL (floating call service not built yet)");
+                FloatingCallService.start(this); // before finish(), while Echo is still in the foreground
                 break;
             case SHOW_CHATHEAD:
                 // TODO(Task 6): start the chathead service.
