@@ -43,12 +43,12 @@ export function weekDates(now: Date): string[]
 /** Local midnight (ms) of the Monday of the week containing `now`. */
 export function weekStartMs(now: Date): number
 
-export type WeekPage = { id: string; mix?: Partial<Record<'note' | 'goal' | 'reminder' | 'health', number>>; createdMs: number | null; lastMs: number | null }
+export type WeekPage = { id: string; mix?: Partial<Record<'note' | 'goal' | 'reminder' | 'health', number>>; createdMs: number | null; lastMs: number | null; messageCount?: number }
 export type WeekDay = { date: string; letter: string; state: 'used' | 'empty' | 'future'; isToday: boolean; counts: Record<OrbKind, number>; pageId: string | null }
 export function weekStrip(pages: WeekPage[], now: Date): WeekDay[]
 ```
 
-`weekStrip` rules: 7 entries for `weekDates(now)`, letters `M T W T F S S`. A page belongs to a day when
+`weekStrip` rules: pages with `messageCount` not a positive number are ignored (new empty pages). 7 entries for `weekDates(now)`, letters `M T W T F S S`. A page belongs to a day when
 `localDateKey(new Date(createdMs))` or `localDateKey(new Date(lastMs))` equals that date (a page can belong to two
 days). `counts` = sum of the mixes of that day's pages (non-numeric/negative values ignored; `person`/`interest`
 always 0). `pageId` = that day's page with the greatest `lastMs ?? createdMs`. `state`: `future` if date > today's
