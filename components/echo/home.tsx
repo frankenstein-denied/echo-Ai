@@ -24,6 +24,7 @@ import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
 import { hasUserMessage } from '@/lib/echo/today-orb'
+import { isFloatingCallActive, reportCallEnded, reportCallPhase, setAppCallActive } from '@/lib/native/float-bridge'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -181,7 +182,7 @@ export function companionGreeting(name: string | undefined, hour = new Date().ge
   return n ? `Good ${part}, ${n}.` : `Good ${part}.`
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call' }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
@@ -636,11 +637,63 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useEffect(() => {
     if (liveKey || pendingTurns.length) scrollEnd()
   }, [liveKey, pendingTurns.length, call.error])
+  const [callBlocked, setCallBlocked] = useState<string | null>(null)
   const startCall = () => {
     stopAudio()
     setCallSaveError(null)
-    void call.start()
+    setCallBlocked(null)
+    // The full app must not open a second call on top of a floating one (one microphone, one Live session).
+    if (embed) return void call.start()
+    void isFloatingCallActive().then((floating) => {
+      if (floating) setCallBlocked('Echo is already in a call from the floating bubble. End that call first.')
+      else void call.start()
+    })
   }
+
+  // Floating call (/?embed=call): start once when the page, memories and voice prefs are ready, and tell native what happens.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (embed !== 'call' || autoStarted.current || disabled || messages === null || prefs === null) return
+    autoStarted.current = true
+    startCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embed, disabled, messages, prefs])
+  useEffect(() => {
+    if (embed === 'call') reportCallPhase(call.phase)
+  }, [embed, call.phase])
+  const wasActive = useRef(false)
+  useEffect(() => {
+    if (embed === 'call' && wasActive.current && !call.active) {
+      const k = call.error?.kind
+      reportCallEnded(!k ? 'user' : k === 'quota' ? 'quota' : k === 'dropped' || k === 'limit' ? 'dropped' : 'failed')
+    }
+    wasActive.current = call.active
+  }, [embed, call.active, call.error])
+  const endRef = useRef(call.end)
+  endRef.current = call.end
+  useEffect(() => {
+    if (embed !== 'call') return
+    const w = window as unknown as { __echoFloatEnd?: () => void }
+    w.__echoFloatEnd = () => endRef.current()
+    return () => {
+      delete w.__echoFloatEnd
+    }
+  }, [embed])
+  // The full app tells native when it is in a call, so a floating call is not started on top of it.
+  const reportedActive = useRef(false)
+  useEffect(() => {
+    if (embed) return
+    if (call.active !== reportedActive.current) {
+      reportedActive.current = call.active
+      void setAppCallActive(call.active)
+    }
+  }, [embed, call.active])
+  useEffect(
+    () => () => {
+      if (reportedActive.current) void setAppCallActive(false)
+    },
+    [],
+  )
 
   // Retry only the reply write; actions were already applied for this send.
   const retryReply = useCallback(
@@ -688,6 +741,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   // Mobile call screen transcript: this page's messages written since the call started.
   const callStart = call.active ? call.startedAt : null
   const callMessages = callStart ? (messages ?? []).filter((m) => (m.createdAt?.toMillis?.() ?? 0) >= callStart - 1000) : []
+
+  if (embed === 'call') return null
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1">
@@ -770,6 +825,16 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               </EchoRow>
             )}
             {queuedText && <p className="text-center text-xs text-muted-foreground">Queued, will send next: “{queuedText}”</p>}
+            {callBlocked && (
+              <div className="grid gap-3">
+                <Alert variant="warning">{callBlocked}</Alert>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setCallBlocked(null)}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
             {call.error && (
               <div className="grid gap-3">
                 <Alert variant={call.error.kind === 'quota' || call.error.kind === 'limit' ? 'warning' : 'danger'}>{call.error.message}</Alert>

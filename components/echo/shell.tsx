@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
 import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
+import { parseEmbedMode, type EmbedMode } from '@/lib/echo/embed'
 import { NAV_GROUPS, type NavName } from '@/lib/echo/sidebar'
 import { Sidebar } from './sidebar'
 import { useSidebarData } from './use-sidebar-data'
@@ -39,6 +40,8 @@ function daysWithEcho(profile: UserProfile): number | null {
 
 export function Dashboard({ profile }: { profile: UserProfile }) {
   const { user, signOut } = useAuth()
+  // Read once: the URL handling below clears the query string. Embedded (floating Echo) mode is opt-in by URL.
+  const [embed] = useState<EmbedMode | null>(() => (typeof window === 'undefined' ? null : parseEmbedMode(window.location.search)))
   const [view, setView] = useState<View>('Diary')
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
@@ -111,6 +114,10 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const clearPendingPage = useCallback(() => setPendingPageId(null), [])
   const clearFocusGoal = useCallback(() => setFocusGoalId(null), [])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
+
+  if (embed) {
+    return <div className="h-dvh bg-background">{user && <DiaryView user={user} profile={profile} onNavigate={navigate} embed={embed} />}</div>
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

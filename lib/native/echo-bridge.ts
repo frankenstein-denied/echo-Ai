@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
+import { hasFloatBridge, requestFloatRefresh } from './float-bridge'
 
 export type EchoBridgeStatus = {
   pinned: boolean
@@ -16,6 +17,8 @@ interface EchoBridgePlugin {
   refresh(): Promise<void>
   requestNotificationPermission(): Promise<{ granted: boolean }>
   openBatterySettings(): Promise<void>
+  isFloatingCallActive(): Promise<{ active: boolean }>
+  setAppCallActive(opts: { active: boolean }): Promise<void>
 }
 
 const EchoBridge = registerPlugin<EchoBridgePlugin>('EchoBridge')
@@ -52,12 +55,25 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Call after saving something the pinned notification shows. One chat turn can save several items, so a burst collapses into a single reload. */
 export function queueNativeNotificationRefresh(): void {
-  if (!native()) return
+  // The floating WebViews are not the Capacitor shell but still ask native to reload the notification.
+  const float = hasFloatBridge()
+  if (!native() && !float) return
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => {
     refreshTimer = null
-    EchoBridge.refresh().catch(() => null)
+    if (float) requestFloatRefresh()
+    else EchoBridge.refresh().catch(() => null)
   }, REFRESH_DELAY_MS)
+}
+
+export async function nativeFloatingCallActive(): Promise<boolean> {
+  if (!native()) return false
+  return (await EchoBridge.isFloatingCallActive()).active === true
+}
+
+export async function nativeSetAppCallActive(active: boolean): Promise<void> {
+  if (!native()) return
+  await EchoBridge.setAppCallActive({ active })
 }
 
 export async function requestNativeNotificationPermission(): Promise<boolean> {

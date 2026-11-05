@@ -7,6 +7,8 @@ import { Landing } from '@/components/echo/landing'
 import { Onboarding } from '@/components/echo/onboarding'
 import { Dashboard } from '@/components/echo/shell'
 import { Alert, Button, EchoMark } from '@/components/echo/ui'
+import { parseEmbedMode } from '@/lib/echo/embed'
+import { reportSignedOut } from '@/lib/native/float-bridge'
 
 const HINT_KEY = 'echo:signed-in'
 const readHint = () => {
@@ -44,6 +46,11 @@ export default function Page() {
   useEffect(() => {
     if (user) writeHint(true)
     else if (!loading) writeHint(false)
+  }, [user, loading])
+
+  // Floating Echo WebViews cannot show a login page: tell native instead.
+  useEffect(() => {
+    if (!user && !loading && parseEmbedMode(window.location.search)) reportSignedOut()
   }, [user, loading])
 
   useEffect(() => {

@@ -210,6 +210,7 @@ export function DiaryView({
   onNavigate,
   openPageId,
   onOpenPageHandled,
+  embed,
 }: {
   user: User
   profile: UserProfile
@@ -217,6 +218,8 @@ export function DiaryView({
   /** A page to open once (e.g. from the 2nd Brain); cleared through onOpenPageHandled. */
   openPageId?: string | null
   onOpenPageHandled?: () => void
+  /** Floating Echo: only today's page, no page list, no chrome. */
+  embed?: 'chat' | 'call'
 }) {
   const uid = user.uid
   const [ready, setReady] = useState(false) // migration finished (or failed)
@@ -225,7 +228,7 @@ export function DiaryView({
   const [pages, setPages] = useState<Page[] | null>(null)
   const [sel, setSel] = useState<Selection>({ id: null, key: 0 })
   const [auto, setAuto] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(!!embed)
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState(false)
   const [del, setDel] = useState<Page | null>(null)
@@ -507,7 +510,7 @@ export function DiaryView({
 
   const header = (
     <div className="flex items-center gap-2">
-      <IconButton icon={ArrowLeft} label="Back to pages" size="sm" className="lg:hidden" onClick={() => setMobileOpen(false)} />
+      {!embed && <IconButton icon={ArrowLeft} label="Back to pages" size="sm" className="lg:hidden" onClick={() => setMobileOpen(false)} />}
       <div className="min-w-0 flex-1">
         {active ? (
           <TitleEditor title={active.title} editing={editing} setEditing={setEditing} onSave={(t) => renameDiaryPage(uid, active.id, t)} />
@@ -527,7 +530,7 @@ export function DiaryView({
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
-      {pages !== null && pages.length === 0 && !sel.id ? (
+      {!embed && pages !== null && pages.length === 0 && !sel.id ? (
         <>
           <MobileTitleBar title="Diary" />
           <PageHeader title="Diary" description={desc} />
@@ -543,15 +546,15 @@ export function DiaryView({
           />
         </>
       ) : (
-        <div className="diary-mobile-shell flex h-[calc(100dvh-6rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface md:h-[calc(100dvh-8rem)] lg:min-h-0 lg:flex-1 lg:rounded-none lg:border-0 lg:flex-row">
+        <div className={`diary-mobile-shell flex flex-col overflow-hidden bg-surface ${embed ? 'h-dvh' : 'h-[calc(100dvh-6rem)] min-h-[26rem] rounded-xl border border-border md:h-[calc(100dvh-8rem)] lg:min-h-0 lg:flex-1 lg:rounded-none lg:border-0 lg:flex-row'}`}>
           {notice && (
             <div className="shrink-0 px-4 pt-3 lg:hidden">
               <Alert variant="warning">{notice}</Alert>
             </div>
           )}
-          {list}
+          {!embed && list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
-            <Home key={sel.key} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} />
+            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} />
           </div>
         </div>
       )}
