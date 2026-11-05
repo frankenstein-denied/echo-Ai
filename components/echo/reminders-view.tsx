@@ -150,6 +150,42 @@ export function RemindersView({ uid }: { uid: string }) {
 
   const todayEmpty = tl.overdue.length + tl.doneToday.length + tl.upcoming.length === 0
   const todaysRoutines = routines ? routinesToday(routines, now) : []
+  const routineChips =
+    todaysRoutines.length > 0 ? (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">↻ Today&apos;s routines</span>
+        {todaysRoutines.map((r) => (
+          <span key={r.id} className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium" style={tagStyle('reminder')}>
+            ↻ {r.title}
+          </span>
+        ))}
+      </div>
+    ) : null
+  const routinesButton =
+    routines && routines.length > 0 ? (
+      <button type="button" aria-expanded={open === 'routines'} onClick={() => setOpen(open === 'routines' ? null : 'routines')} className={FOLD_BTN}>
+        All routines ({routines.length})
+      </button>
+    ) : null
+  const routinesCard =
+    open === 'routines' && routines ? (
+      <Card>
+        <h2 className="text-base font-semibold text-foreground">All routines</h2>
+        {routines.map((r) => (
+          <div key={r.id} className="mt-4">
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate text-foreground">
+                {r.title} · {r.cadence}
+              </span>
+              <span className="shrink-0 text-muted-foreground">{Math.round(r.confidence * 100)}%</span>
+            </div>
+            <div className="mt-2 h-1.5 rounded bg-surface-2" aria-hidden="true">
+              <div className="h-full rounded bg-primary" style={{ width: `${Math.min(100, Math.max(0, r.confidence * 100))}%` }} />
+            </div>
+          </div>
+        ))}
+      </Card>
+    ) : null
   const folds: { key: FoldKey; label: string; rows: ReminderRow[] }[] = [
     { key: 'tomorrow', label: 'Tomorrow', rows: tl.tomorrow },
     { key: 'thisWeek', label: 'This week', rows: tl.thisWeek },
@@ -178,21 +214,17 @@ export function RemindersView({ uid }: { uid: string }) {
         {items === null ? (
           <Skeleton className="h-40" />
         ) : items.length === 0 ? (
-          <EmptyState icon={Bell} title="No reminders yet" description="Add one above or tell Echo what to remind you about." />
+          <>
+            <EmptyState icon={Bell} title="No reminders yet" description="Add one above or tell Echo what to remind you about." />
+            {routineChips && <Card>{routineChips}</Card>}
+            {routinesButton && <div className="flex flex-wrap gap-2">{routinesButton}</div>}
+            {routinesCard}
+          </>
         ) : (
           <>
             <Card>
               <h2 className="text-base font-semibold text-foreground">Today · {now.toLocaleDateString('en-US', { weekday: 'long' })}</h2>
-              {todaysRoutines.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground">↻ Today&apos;s routines</span>
-                  {todaysRoutines.map((r) => (
-                    <span key={r.id} className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium" style={tagStyle('reminder')}>
-                      ↻ {r.title}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {routineChips}
               <div className="relative mt-4 pl-6">
                 <span aria-hidden="true" className="absolute bottom-0 left-[5px] top-0 w-0.5 bg-border" />
                 <ul className="grid gap-3">
@@ -215,31 +247,10 @@ export function RemindersView({ uid }: { uid: string }) {
                     {f.label} ({f.rows.length})
                   </button>
                 ))}
-              {routines && routines.length > 0 && (
-                <button type="button" aria-expanded={open === 'routines'} onClick={() => setOpen(open === 'routines' ? null : 'routines')} className={FOLD_BTN}>
-                  All routines ({routines.length})
-                </button>
-              )}
+              {routinesButton}
             </div>
             {folds.map((f) => open === f.key && f.rows.length > 0 && <Card key={f.key}>{f.rows.map(foldRow)}</Card>)}
-            {open === 'routines' && routines && (
-              <Card>
-                <h2 className="text-base font-semibold text-foreground">All routines</h2>
-                {routines.map((r) => (
-                  <div key={r.id} className="mt-4">
-                    <div className="flex justify-between gap-3 text-sm">
-                      <span className="min-w-0 truncate text-foreground">
-                        {r.title} · {r.cadence}
-                      </span>
-                      <span className="shrink-0 text-muted-foreground">{Math.round(r.confidence * 100)}%</span>
-                    </div>
-                    <div className="mt-2 h-1.5 rounded bg-surface-2" aria-hidden="true">
-                      <div className="h-full rounded bg-primary" style={{ width: `${Math.min(100, Math.max(0, r.confidence * 100))}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </Card>
-            )}
+            {routinesCard}
           </>
         )}
       </div>

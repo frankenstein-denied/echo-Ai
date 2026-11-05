@@ -19,8 +19,10 @@ export function weatherTileFacts(data: ForecastData, now: Date): { temp: string;
   const c = data.current
   const text = isNum(c.weather_code) ? weatherCodeText(c.weather_code) : ''
   const p = (n: number) => String(n).padStart(2, '0')
-  const date = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
-  const from = `${date}T${p(now.getHours())}:00`
+  // "Now" in the forecast location's timezone comes from current.time ('YYYY-MM-DDTHH:MM'); the browser clock is only a fallback.
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):\d{2}/.exec(typeof c.time === 'string' ? c.time : '')
+  const date = m ? m[1] : `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+  const from = `${date}T${m ? m[2] : p(now.getHours())}:00`
   const times = data.hourly?.time ?? []
   const probs = data.hourly?.precipitation_probability ?? []
   let hint = ''

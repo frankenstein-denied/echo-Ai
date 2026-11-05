@@ -65,7 +65,7 @@ function MilestonePath({ milestones, onToggle }: { milestones: Goal['milestones'
             <div key={s.index} className={`flex items-center ${i < steps.length - 1 || more > 0 ? 'min-w-0 flex-1' : ''}`}>
               <button
                 type="button"
-                aria-label={done ? `Mark '${s.text}' not done` : `Mark '${s.text}' done`}
+                aria-label={`Milestone: ${s.text}`}
                 aria-pressed={done}
                 onClick={() => onToggle(s.index)}
                 className={`flex size-6 shrink-0 items-center justify-center rounded-full ${FOCUS_RING}`}

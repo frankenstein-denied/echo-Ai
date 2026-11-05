@@ -122,6 +122,7 @@ export function ConnectorsView({
                       </span>
                       <h2 className="truncate text-base font-semibold text-foreground">{c.name}</h2>
                     </div>
+                    {!connected && <span className="sr-only">Not connected</span>}
                     {connected && (
                       <span className="size-2 shrink-0 rounded-full bg-success" style={{ boxShadow: '0 0 8px var(--color-success)' }}>
                         <span className="sr-only">Connected</span>
@@ -154,7 +155,7 @@ export function ConnectorsView({
                       </>
                     )
                   ) : c.id === 'weather' ? (
-                    <WeatherBody uid={uid} connected={connected} place={weatherPlace} />
+                    <WeatherBody uid={uid} connected={connected} place={weatherPlace} showPlace={false} />
                   ) : null}
                 </Card>
               )
@@ -210,7 +211,7 @@ function geoMessage(code: number | undefined): string {
 }
 
 /** Weather card body: pick a location (browser geolocation or city search), or show and change/disconnect the saved one. */
-function WeatherBody({ uid, connected, place }: { uid: string; connected: boolean; place?: string }) {
+function WeatherBody({ uid, connected, place, showPlace = true }: { uid: string; connected: boolean; place?: string; showPlace?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [locating, setLocating] = useState(false)
   const [changing, setChanging] = useState(false)
@@ -286,7 +287,7 @@ function WeatherBody({ uid, connected, place }: { uid: string; connected: boolea
   const picking = !connected || changing
   return (
     <div className="mt-4 space-y-3">
-      {connected && (
+      {connected && showPlace && (
         <p className="text-sm text-foreground">
           Showing weather for <span className="font-medium">{place || 'your location'}</span>
         </p>

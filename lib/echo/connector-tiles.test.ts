@@ -34,8 +34,21 @@ describe('weatherTileFacts', () => {
     expect(f.hint).toBe('High 33° · Low 26°')
   })
   it('formats 12 PM and 12 AM', () => {
-    expect(weatherTileFacts(forecast({ '2026-11-03T12:00': 70 }), new Date(2026, 10, 3, 11, 5)).hint).toBe('Rain likely around 12 PM')
-    expect(weatherTileFacts(forecast({ '2026-11-03T00:00': 70 }), new Date(2026, 10, 3, 0, 5)).hint).toBe('Rain likely around 12 AM')
+    const noon = forecast({ '2026-11-03T12:00': 70 })
+    noon.current.time = '2026-11-03T11:05'
+    expect(weatherTileFacts(noon, NOW).hint).toBe('Rain likely around 12 PM')
+    const midnight = forecast({ '2026-11-03T00:00': 70 })
+    midnight.current.time = '2026-11-03T00:05'
+    expect(weatherTileFacts(midnight, NOW).hint).toBe('Rain likely around 12 AM')
+  })
+  it("uses the forecast location's current.time, not the browser clock", () => {
+    const browserElsewhere = new Date(2026, 10, 2, 23, 5)
+    expect(weatherTileFacts(forecast({ '2026-11-03T13:00': 60, '2026-11-03T09:00': 90 }), browserElsewhere).hint).toBe('Rain likely around 1 PM')
+  })
+  it('falls back to the now argument when current.time is malformed', () => {
+    const d = forecast({ '2026-11-03T16:00': 60 })
+    d.current.time = 'garbage'
+    expect(weatherTileFacts(d, NOW).hint).toBe('Rain likely around 4 PM')
   })
   it('shows a placeholder when the temperature is not a number', () => {
     const d = forecast({})

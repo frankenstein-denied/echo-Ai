@@ -17,7 +17,7 @@ function navColor(name: Exclude<NavName, 'Settings'>): string {
 
 function NavList({ view, onSelect, collapsed, dueCount }: { view: NavName; onSelect: (v: NavName) => void; collapsed: boolean; dueCount: number }) {
   return (
-    <nav aria-label="Main" className="flex flex-1 flex-col gap-1">
+    <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
       {NAV_GROUPS.map((group, gi) => (
         <div key={group.label} className="flex flex-col gap-1">
           {collapsed ? (
@@ -77,7 +77,7 @@ function NavList({ view, onSelect, collapsed, dueCount }: { view: NavName; onSel
 
 function WeekCard({ days, week, onOpenPage }: { days: number | null; week: WeekDay[]; onOpenPage: (pageId: string) => void }) {
   return (
-    <div className="mb-3 rounded-xl border border-border p-3">
+    <div className="mb-3 shrink-0 rounded-xl border border-border p-3">
       <div className="mb-2 flex items-baseline justify-between text-xs">
         {days !== null ? <span className="font-medium text-foreground">Day {days}</span> : <span />}
         <span className="text-muted-foreground">This week</span>
@@ -119,7 +119,7 @@ function UserFooter({ collapsed, settingsActive, onSettings }: { collapsed: bool
   const { user, signOut } = useAuth()
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
   return (
-    <div className={`flex items-center gap-3 border-t border-border pt-4 ${collapsed ? 'flex-col' : ''}`}>
+    <div className={`flex shrink-0 items-center gap-3 border-t border-border pt-4 ${collapsed ? 'flex-col' : ''}`}>
       <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-sm font-semibold text-foreground">
         {userName.charAt(0).toUpperCase()}
       </div>
@@ -164,7 +164,7 @@ export function Sidebar({
   onOpenPage: (pageId: string) => void
 }) {
   return (
-    <aside className={`${collapsed ? 'w-20' : 'w-64'} hidden shrink-0 flex-col border-r border-border bg-surface p-4 transition-[width] lg:flex`}>
+    <aside className={`${collapsed ? 'w-20' : 'w-64'} hidden shrink-0 flex-col border-r border-border bg-surface p-4 transition-[width] lg:sticky lg:top-0 lg:flex lg:h-dvh`}>
       <div className={`mb-6 flex items-center gap-3 px-1 ${collapsed ? 'flex-col' : ''}`}>
         <EchoMark small />
         {!collapsed && <span className="text-lg font-semibold text-foreground">Echo</span>}

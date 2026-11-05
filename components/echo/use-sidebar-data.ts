@@ -5,33 +5,41 @@ import { onSnapshot, query, Timestamp, where } from 'firebase/firestore'
 import { diaryPagesCol, remindersCol } from '@/lib/firestore'
 import { dueTodayCount, weekStartMs, weekStrip, type WeekDay, type WeekPage } from '@/lib/echo/sidebar'
 import { useDay } from './use-day'
+import { useIsMobile } from './use-mobile'
 
 type DueItem = { dueMs: number; done: boolean }
 
 /** Live data for the sidebar: reminders due today (or overdue) and this week's diary strip. */
 export function useSidebarData(uid: string | undefined): { dueCount: number; week: WeekDay[] } {
   const day = useDay()
+  // The sidebar is hidden below lg, so no listeners are attached there.
+  const enabled = !useIsMobile()
   const [reminders, setReminders] = useState<DueItem[]>([])
   const [pages, setPages] = useState<WeekPage[]>([])
 
   useEffect(() => {
-    if (!uid) {
+    if (!uid || !enabled) {
       setReminders([])
       return
     }
     return onSnapshot(
       query(remindersCol(uid), where('done', '==', false)),
-      (snap) => setReminders(snap.docs.map((d) => ({ dueMs: d.data({ serverTimestamps: 'estimate' }).dueAt.toMillis(), done: false }))),
+      (snap) =>
+        setReminders(
+          snap.docs
+            .map((d) => ({ dueMs: d.data({ serverTimestamps: 'estimate' }).dueAt?.toMillis?.() as number, done: false }))
+            .filter((r) => Number.isFinite(r.dueMs)),
+        ),
       (err) => {
         console.error('Echo: sidebar reminders listener failed', err)
         setReminders([])
       },
     )
-  }, [uid])
+  }, [uid, enabled])
 
   // `day` changes when the local day rolls over; re-subscribe so the query covers the current week.
   useEffect(() => {
-    if (!uid) {
+    if (!uid || !enabled) {
       setPages([])
       return
     }
@@ -56,7 +64,7 @@ export function useSidebarData(uid: string | undefined): { dueCount: number; wee
         setPages([])
       },
     )
-  }, [uid, day])
+  }, [uid, day, enabled])
 
   const dueCount = useMemo(() => dueTodayCount(reminders, new Date()), [reminders, day]) // eslint-disable-line react-hooks/exhaustive-deps
   const week = useMemo(() => weekStrip(pages, new Date()), [pages, day]) // eslint-disable-line react-hooks/exhaustive-deps
