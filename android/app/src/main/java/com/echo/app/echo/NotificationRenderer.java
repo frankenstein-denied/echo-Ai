@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import com.echo.app.MainActivity;
 import com.echo.app.R;
+import com.echo.app.floating.FloatLaunchActivity;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -28,10 +29,10 @@ public final class NotificationRenderer {
 
     // PendingIntent request codes: unique per action and row.
     private static final int RC_OPEN = 1;
-    private static final int RC_TALK = 2;
-    private static final int RC_TYPE = 3;
     private static final int RC_SIGN_IN = 4;
     private static final int RC_DISMISSED = 5;
+    private static final int RC_FLOAT_TALK = 6;
+    private static final int RC_FLOAT_TYPE = 7;
     private static final int RC_TAB_REMINDERS = 10;
     private static final int RC_TAB_GOALS = 11;
     private static final int RC_TAB_NOTES = 12;
@@ -92,8 +93,8 @@ public final class NotificationRenderer {
             if (SessionStore.TAB_GOALS.equals(s.tab)) renderGoals(ctx, small, big, s);
             else if (SessionStore.TAB_NOTES.equals(s.tab)) renderNotes(ctx, small, big, s);
             else renderReminders(ctx, small, big, s);
-            big.setOnClickPendingIntent(R.id.btn_talk, openApp(ctx, RC_TALK, DeepLinks.DIARY));
-            big.setOnClickPendingIntent(R.id.btn_type, openApp(ctx, RC_TYPE, DeepLinks.DIARY));
+            big.setOnClickPendingIntent(R.id.btn_talk, floatLaunch(ctx, RC_FLOAT_TALK, FloatLaunchActivity.ACTION_TALK));
+            big.setOnClickPendingIntent(R.id.btn_type, floatLaunch(ctx, RC_FLOAT_TYPE, FloatLaunchActivity.ACTION_TYPE));
         }
 
         return new NotificationCompat.Builder(ctx, CHANNEL_ID)
@@ -249,6 +250,14 @@ public final class NotificationRenderer {
         Intent i = new Intent(ctx, MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (path != null) i.putExtra(DeepLinks.EXTRA_PATH, path);
+        return PendingIntent.getActivity(ctx, requestCode, i,
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private static PendingIntent floatLaunch(Context ctx, int requestCode, String action) {
+        Intent i = new Intent(ctx, FloatLaunchActivity.class)
+            .putExtra(FloatLaunchActivity.EXTRA_ACTION, action)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return PendingIntent.getActivity(ctx, requestCode, i,
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }

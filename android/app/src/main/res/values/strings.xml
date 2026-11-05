@@ -23,4 +23,8 @@
     <string name="notif_type">✏️ Type</string>
     <string name="notif_untitled">Untitled</string>
     <string name="notif_pct">%1$d%%</string>
+
+    <!-- Floating Echo -->
+    <string name="float_allow_overlay">Allow Echo to display over other apps, then tap again.</string>
+    <string name="float_blocked_by_app_call">You\'re already on a call in Echo.</string>
 </resources>

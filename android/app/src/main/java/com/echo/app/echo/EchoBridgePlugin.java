@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationManagerCompat;
+import com.echo.app.floating.FloatState;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -89,6 +90,24 @@ public class EchoBridgePlugin extends Plugin {
     @PluginMethod
     public void refresh(PluginCall call) {
         PinnedController.refresh(getContext());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void isFloatingCallActive(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("active", FloatState.callRunning);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void setAppCallActive(PluginCall call) {
+        Boolean active = call.getBoolean("active");
+        if (active == null) {
+            call.reject("Missing active");
+            return;
+        }
+        FloatState.appCallActive = active;
         call.resolve();
     }
 
