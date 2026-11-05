@@ -33,8 +33,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
-        <PwaRegister />
+        <AuthProvider>
+          {children}
+          <PwaRegister />
+        </AuthProvider>
       </body>
     </html>
   )
