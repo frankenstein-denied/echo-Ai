@@ -30,6 +30,7 @@ public final class PinnedController {
             return;
         }
         if (!store.isPinned() || !store.hasSession()) return;
+        RefreshWorker.schedule(ctx); // idempotent (KEEP); restores the safety net after sign-in
         start(ctx);
     }
 

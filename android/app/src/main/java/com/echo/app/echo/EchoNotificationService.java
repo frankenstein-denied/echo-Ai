@@ -16,6 +16,8 @@ import java.util.concurrent.Executors;
 /**
  * Foreground service that owns the pinned notification. Each start command posts the cached
  * content immediately (startForeground within 5 s), then reloads data on one background thread.
+ * Swiping the app from recents does not stop it (onTaskRemoved is not overridden); START_STICKY and
+ * RefreshWorker bring it back if the process is killed.
  */
 public class EchoNotificationService extends Service {
     // In-memory cache shared with ActionReceiver (same process) so tab switches need no network.
@@ -84,13 +86,6 @@ public class EchoNotificationService extends Service {
         }
         executor.execute(this::load);
         return START_STICKY;
-    }
-
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        // Swiping the app from recents must not stop the pinned notification: keep running.
-        // If the process is killed anyway, START_STICKY and RefreshWorker bring it back.
-        super.onTaskRemoved(rootIntent);
     }
 
     @Override
