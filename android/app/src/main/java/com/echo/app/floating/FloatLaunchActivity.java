@@ -28,7 +28,7 @@ public class FloatLaunchActivity extends Activity {
         super.onCreate(savedInstanceState);
         action = getIntent().getStringExtra(EXTRA_ACTION);
         if (!ACTION_TALK.equals(action)) action = ACTION_TYPE;
-        run();
+        if (savedInstanceState == null) run();
     }
 
     private void run() {
@@ -80,6 +80,7 @@ public class FloatLaunchActivity extends Activity {
         if (requestCode == REQ_MIC && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             run();
         } else {
+            if (requestCode == REQ_MIC) Toast.makeText(this, R.string.float_mic_needed, Toast.LENGTH_LONG).show();
             finish();
             overridePendingTransition(0, 0);
         }

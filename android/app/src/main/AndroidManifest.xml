@@ -27,7 +27,6 @@
         <activity
             android:name=".floating.FloatLaunchActivity"
             android:exported="false"
-            android:noHistory="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/Theme.EchoFloatLaunch" />

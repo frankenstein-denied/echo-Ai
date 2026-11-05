@@ -12,13 +12,21 @@ public final class EchoFloatInterface {
         void onSignedOut();
         void onOpenInApp();
         void onRefreshNotification();
+        /** The WebView renderer process died; the owner should discard and rebuild the WebView. */
+        void onRendererGone();
     }
+
 
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     public EchoFloatInterface(Listener listener) {
         this.listener = listener;
+    }
+
+    /** Not exposed to JavaScript; called by EmbedWebView's client. */
+    void rendererGone() {
+        main.post(listener::onRendererGone);
     }
 
     @JavascriptInterface public void onCallPhase(final String phase) {
