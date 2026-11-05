@@ -190,7 +190,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
   )
 }
 
-export function GoalsView({ uid }: { uid: string }) {
+export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: string; focusGoalId?: string | null; onFocusHandled?: () => void }) {
   const day = useDay()
   const [goals, setGoals] = useState<GoalRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -200,6 +200,7 @@ export function GoalsView({ uid }: { uid: string }) {
   const [target, setTarget] = useState('')
   const [adding, setAdding] = useState(false)
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
   useEffect(() => {
     const q = query(goalsCol(uid), orderBy('createdAt', 'desc'))
@@ -220,6 +221,22 @@ export function GoalsView({ uid }: { uid: string }) {
     () => goalsInPeriod((goals ?? []).map((g) => ({ ...g, createdMs: g.createdAt?.toMillis?.() ?? null, updatedMs: g.updatedAt?.toMillis?.() ?? null })), period, new Date()),
     [goals, period, day],
   )
+
+  // Deep link (?goal=<id>): make sure the goal is listed (widen to "all" if the period hides it), scroll to it, ring it ~2 s.
+  useEffect(() => {
+    if (!focusGoalId || goals === null) return
+    if (!goals.some((g) => g.id === focusGoalId)) return onFocusHandled?.()
+    if (!shown.some((g) => g.id === focusGoalId)) return setPeriod('all')
+    setHighlightId(focusGoalId)
+    document.getElementById(`goal-${focusGoalId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    onFocusHandled?.()
+  }, [focusGoalId, goals, shown, onFocusHandled])
+  useEffect(() => {
+    if (!highlightId) return
+    const t = setTimeout(() => setHighlightId(null), 2000)
+    return () => clearTimeout(t)
+  }, [highlightId])
+
   const shares = useMemo(() => areaShares(goals ?? []), [goals])
   const now = new Date()
   const goalsPct = overallProgress(goals ?? [])
@@ -323,7 +340,9 @@ export function GoalsView({ uid }: { uid: string }) {
       ) : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((g) => (
-            <GoalCard key={g.id} uid={uid} goal={g} onError={setError} />
+            <div key={g.id} id={`goal-${g.id}`} className={`flex flex-col rounded-xl transition-shadow duration-300 [&>*]:flex-1 ${highlightId === g.id ? 'ring-2 ring-primary' : ''}`}>
+              <GoalCard uid={uid} goal={g} onError={setError} />
+            </div>
           ))}
         </div>
       )}

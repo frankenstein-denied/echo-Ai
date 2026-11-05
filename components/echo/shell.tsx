@@ -43,6 +43,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
   const [pendingPageId, setPendingPageId] = useState<string | null>(null)
+  const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
   const days = daysWithEcho(profile)
   const { dueCount, week } = useSidebarData(user?.uid)
@@ -61,6 +62,8 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     if (!v && !outcome && !url.hash.startsWith('#web-search=')) return
     window.history.replaceState(null, '', url.pathname)
     if (VIEWS.includes(v as View)) setView(v as View)
+    const goalId = url.searchParams.get('goal')
+    if (v === 'Goals' && goalId) setFocusGoalId(goalId.slice(0, 200))
     if (sealed) {
       // Only save a value the server confirms opens for this account (a crafted link must not replace a login).
       verifyTavilyLogin(user, sealed)
@@ -106,6 +109,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
     [navigate],
   )
   const clearPendingPage = useCallback(() => setPendingPageId(null), [])
+  const clearFocusGoal = useCallback(() => setFocusGoalId(null), [])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   return (
@@ -120,7 +124,7 @@ export function Dashboard({ profile }: { profile: UserProfile }) {
           ) : view === 'Notes' ? (
             <NotesView uid={user.uid} />
           ) : view === 'Goals' ? (
-            <GoalsView uid={user.uid} />
+            <GoalsView uid={user.uid} focusGoalId={focusGoalId} onFocusHandled={clearFocusGoal} />
           ) : view === 'Health' ? (
             <HealthView uid={user.uid} onNavigate={navigate} />
           ) : view === 'Reminders' ? (
