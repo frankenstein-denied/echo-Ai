@@ -3,8 +3,9 @@ package com.echo.app.echo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import com.echo.app.floating.CheckInEngine;
 
-/** Restores the pinned notification after a reboot or an app update. */
+/** Restores the pinned notification and the check-in bubble after a reboot or an app update. */
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -13,9 +14,9 @@ public class BootReceiver extends BroadcastReceiver {
         Context ctx = context.getApplicationContext();
         try {
             SessionStore store = SessionStore.get(ctx);
-            if (!store.isPinned()) return;
-            RefreshWorker.schedule(ctx);
-            if (store.hasSession()) PinnedController.refresh(ctx);
+            RefreshWorker.sync(ctx);
+            if (store.isPinned() && store.hasSession()) PinnedController.refresh(ctx);
+            CheckInEngine.startBubbleFromCache(ctx);
         } catch (RuntimeException ignored) {
             // Secure storage unavailable (e.g. locked keystore) or start not allowed: never crash a boot receiver.
         }

@@ -9,14 +9,17 @@ import androidx.core.content.ContextCompat;
 public final class PinnedController {
     private PinnedController() {}
 
-    /** Saves the pref; pinned starts the service (signed-out content if no session), unpinned stops it. */
+    /**
+     * Saves the pref; pinned starts the service (signed-out content if no session), unpinned stops it.
+     * Unpinning leaves the worker running while check-ins are on.
+     */
     public static void setPinned(Context ctx, boolean pinned) {
         SessionStore.get(ctx).setPinned(pinned);
         if (pinned) {
             RefreshWorker.schedule(ctx);
             start(ctx);
         } else {
-            RefreshWorker.cancel(ctx);
+            RefreshWorker.sync(ctx);
             stopService(ctx);
         }
     }
@@ -47,10 +50,13 @@ public final class PinnedController {
         startWith(app, i);
     }
 
-    /** Stops the service and drops cached data (used on sign-out). Keeps the pinned pref. */
+    /**
+     * Stops the service and drops cached data (used on sign-out). Keeps the pinned pref. Leaves the worker
+     * running while check-ins are on: a sign-out cancels it once the session is gone.
+     */
     public static void stop(Context ctx) {
         EchoNotificationService.clearCache();
-        RefreshWorker.cancel(ctx);
+        RefreshWorker.sync(ctx);
         stopService(ctx);
     }
 

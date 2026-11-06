@@ -168,7 +168,7 @@ public final class CheckInPlanner {
             && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR);
     }
 
-    private static int minuteOfDay(long ms, TimeZone tz) {
+    static int minuteOfDay(long ms, TimeZone tz) {
         Calendar c = calendar(ms, tz);
         return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
     }

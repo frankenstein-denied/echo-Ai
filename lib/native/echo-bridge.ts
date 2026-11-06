@@ -1,9 +1,16 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
+import type { CheckInSettings } from '@/lib/echo/check-ins'
 import { hasFloatBridge, requestFloatRefresh } from './float-bridge'
 
 export type EchoBridgeStatus = {
   pinned: boolean
   notificationsAllowed: boolean
+  batteryOptimized: boolean
+}
+
+export type CheckInStatus = {
+  overlayAllowed: boolean
+  bubbleRemoved: boolean
   batteryOptimized: boolean
 }
 
@@ -19,6 +26,10 @@ interface EchoBridgePlugin {
   openBatterySettings(): Promise<void>
   isFloatingCallActive(): Promise<{ active: boolean }>
   setAppCallActive(opts: { active: boolean }): Promise<void>
+  setCheckInSettings(settings: CheckInSettings): Promise<void>
+  getCheckInStatus(): Promise<CheckInStatus>
+  openOverlaySettings(): Promise<void>
+  markCheckInsRead(): Promise<void>
 }
 
 const EchoBridge = registerPlugin<EchoBridgePlugin>('EchoBridge')
@@ -85,4 +96,41 @@ export async function requestNativeNotificationPermission(): Promise<boolean> {
 export async function openNativeBatterySettings(): Promise<void> {
   if (!native()) return
   await EchoBridge.openBatterySettings()
+}
+
+/** Check-in calls resolve quietly on an APK older than check-ins, where the plugin has no such method. */
+export async function setCheckInSettings(settings: CheckInSettings): Promise<void> {
+  if (!native()) return
+  try {
+    await EchoBridge.setCheckInSettings(settings)
+  } catch {
+    // Older APK, or a native hiccup: the profile still holds the settings.
+  }
+}
+
+export async function getCheckInStatus(): Promise<CheckInStatus | null> {
+  if (!native()) return null
+  try {
+    return await EchoBridge.getCheckInStatus()
+  } catch {
+    return null
+  }
+}
+
+export async function openOverlaySettings(): Promise<void> {
+  if (!native()) return
+  try {
+    await EchoBridge.openOverlaySettings()
+  } catch {
+    // Older APK: nothing to open.
+  }
+}
+
+export async function markCheckInsRead(): Promise<void> {
+  if (!native()) return
+  try {
+    await EchoBridge.markCheckInsRead()
+  } catch {
+    // Older APK: it keeps no unread number.
+  }
 }

@@ -227,6 +227,12 @@ public class FirestoreJsonTest {
         assertEquals(120, FirestoreJson.parseProfile(profile("\"checkInEveryMinutes\":{\"stringValue\":\"60\"}")).everyMinutes);
     }
 
+    @Test public void profileReadsOnboarded() {
+        assertTrue(FirestoreJson.parseProfile(profile("\"onboarded\":{\"booleanValue\":true}")).onboarded);
+        assertFalse(FirestoreJson.parseProfile(profile("\"onboarded\":{\"booleanValue\":false}")).onboarded);
+        assertFalse(FirestoreJson.parseProfile("{\"fields\":{}}").onboarded);
+    }
+
     @Test public void profileUnreadableDocReadsAsDefaults() {
         assertTrue(FirestoreJson.parseProfile(null).enabled);
         assertEquals(120, FirestoreJson.parseProfile("not json").everyMinutes);

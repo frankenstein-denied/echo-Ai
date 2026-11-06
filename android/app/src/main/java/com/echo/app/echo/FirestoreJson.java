@@ -165,21 +165,32 @@ public final class FirestoreJson {
         CheckInPrefs p = CheckInPrefs.defaults();
         p.enabled = pickBool(f, "checkInsEnabled", pickBool(f, "remindersEnabled", true));
         double every = pickNumber(f, "checkInEveryMinutes", p.everyMinutes);
-        for (int gap : CHECK_IN_GAPS) {
-            if (gap == every) p.everyMinutes = gap;
-        }
+        if (isCheckInGap(every)) p.everyMinutes = (int) every;
         p.sleepStartMin = clockMinutes(pickString(f, "sleepStart", ""), p.sleepStartMin);
         p.sleepEndMin = clockMinutes(pickString(f, "sleepEnd", ""), p.sleepEndMin);
         double water = pickNumber(f, "waterGoal", p.waterGoal);
-        if (water == Math.rint(water) && water >= MIN_WATER_GOAL && water <= MAX_WATER_GOAL) p.waterGoal = (int) water;
+        if (isWaterGoal(water)) p.waterGoal = (int) water;
         p.caloriesEnabled = pickBool(f, "caloriesEnabled", true);
         double calories = pickNumber(f, "calorieGoal", Double.NaN);
         if (!Double.isNaN(calories)) p.calorieGoal = (int) calories;
+        p.onboarded = pickBool(f, "onboarded", false);
         return p;
     }
 
-    private static int clockMinutes(String time, int def) {
-        if (!time.matches(CLOCK_TIME)) return def;
+    public static boolean isCheckInGap(double minutes) {
+        for (int gap : CHECK_IN_GAPS) {
+            if (gap == minutes) return true;
+        }
+        return false;
+    }
+
+    static boolean isWaterGoal(double glasses) {
+        return glasses == Math.rint(glasses) && glasses >= MIN_WATER_GOAL && glasses <= MAX_WATER_GOAL;
+    }
+
+    /** {@code HH:MM} as minutes after midnight, or def if it is not a valid time. */
+    static int clockMinutes(String time, int def) {
+        if (time == null || !time.matches(CLOCK_TIME)) return def;
         return Integer.parseInt(time.substring(0, 2)) * 60 + Integer.parseInt(time.substring(3));
     }
 
