@@ -81,7 +81,7 @@ export const GUIDE_SLIDES: GuideSlide[] = [
   {
     id: 'reminders',
     title: 'Reminders',
-    body: 'Things Echo will nudge you about, and routines it has learned.',
+    body: 'Your reminders and routines. On Android, Echo mentions them at check-ins.',
     points: ['Say "Remind me to..." in the Diary or add one here', 'Mark reminders done as you go'],
     image: '/guide/reminders.webp',
     alt: "The Reminders page with today's reminders and routines",

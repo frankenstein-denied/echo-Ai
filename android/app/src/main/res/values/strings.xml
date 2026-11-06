@@ -42,6 +42,7 @@
     <string name="float_chathead_channel_desc">Shown while the Echo bubble floats over other apps</string>
     <string name="float_chathead_notification">Echo bubble is on</string>
     <string name="float_chathead_start_failed">Couldn\'t show the Echo bubble.</string>
+    <string name="float_message_name">Echo</string>
 
     <!-- Update dialog -->
     <string name="update_title">Echo %1$s is here</string>

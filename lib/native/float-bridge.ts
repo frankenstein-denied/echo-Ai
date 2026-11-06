@@ -8,6 +8,7 @@ interface EchoFloatApi {
   onSignedOut(): void
   openInApp(): void
   refreshNotification(): void
+  onPanelReady?(): void // absent on APKs older than check-ins
 }
 
 const api = (): EchoFloatApi | null => {
@@ -35,6 +36,7 @@ export const reportCallEnded = (reason: string): void => call((a) => a.onCallEnd
 export const reportSignedOut = (): void => call((a) => a.onSignedOut())
 export const openFullApp = (): void => call((a) => a.openInApp())
 export const requestFloatRefresh = (): void => call((a) => a.refreshNotification())
+export const reportPanelReady = (): void => call((a) => a.onPanelReady?.())
 
 /** True while the floating call runs. A 1.2 APK without the method (or a non-native page) reads as false. */
 export async function isFloatingCallActive(): Promise<boolean> {

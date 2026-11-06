@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 import android.webkit.WebView;
 import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.EchoBridgePlugin;
+import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.echo.app.update.AppUpdater;
 import com.getcapacitor.Bridge;
@@ -32,7 +33,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        FloatState.appInForeground = true;
         AppUpdater.onResume(this);
+        CheckInEngine.syncOnAppVisible(this);
+    }
+
+    @Override
+    public void onPause() {
+        FloatState.appInForeground = false;
+        super.onPause();
     }
 
     @Override

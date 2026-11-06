@@ -195,7 +195,7 @@ export function RemindersView({ uid }: { uid: string }) {
 
   return (
     <div className="animate-in">
-      <PageHeader title="Reminders" description="Things Echo will nudge you about, and routines it has learned." />
+      <PageHeader title="Reminders" description="Your reminders and routines. On Android, Echo mentions them at check-ins." />
       {(error || loadError) && (
         <div className="mb-4">
           <Alert variant="danger">{error || loadError}</Alert>

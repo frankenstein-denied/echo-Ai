@@ -8,6 +8,8 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationManagerCompat;
+import com.echo.app.floating.ChatheadService;
+import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -40,6 +42,7 @@ public class EchoBridgePlugin extends Plugin {
             store.saveSession(uid, refreshToken, apiKey, projectId);
             if (userChanged) EchoNotificationService.clearCache();
             PinnedController.refresh(getContext());
+            CheckInEngine.syncOnAppVisible(getContext());
             call.resolve();
         } catch (IllegalStateException e) {
             call.reject("Secure storage unavailable");
@@ -49,8 +52,11 @@ public class EchoBridgePlugin extends Plugin {
     @PluginMethod
     public void clearSession(PluginCall call) {
         try {
+            CheckInEngine.onSignedOut(getContext());
             PinnedController.stop(getContext());
             SessionStore.get(getContext()).clearSession();
+            RefreshWorker.cancel(getContext());
+            ChatheadService.stop(getContext()); // again: a start in flight above may have seen the session
             call.resolve();
         } catch (IllegalStateException e) {
             call.reject("Secure storage unavailable");
@@ -109,6 +115,61 @@ public class EchoBridgePlugin extends Plugin {
         }
         FloatState.appCallActive = active;
         call.resolve();
+    }
+
+    @PluginMethod
+    public void setCheckInSettings(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled");
+        Integer everyMinutes = call.getInt("everyMinutes");
+        String sleepStart = call.getString("sleepStart");
+        String sleepEnd = call.getString("sleepEnd");
+        Integer waterGoal = call.getInt("waterGoal");
+        if (enabled == null || everyMinutes == null || sleepStart == null || sleepEnd == null || waterGoal == null) {
+            call.reject("Missing check-in settings");
+            return;
+        }
+        try {
+            CheckInEngine.applySettings(getContext(), enabled, everyMinutes, sleepStart, sleepEnd, waterGoal);
+            call.resolve();
+        } catch (IllegalStateException e) {
+            call.reject("Secure storage unavailable");
+        }
+    }
+
+    @PluginMethod
+    public void getCheckInStatus(PluginCall call) {
+        boolean removed = false;
+        try {
+            removed = SessionStore.get(getContext()).isBubbleRemoved();
+        } catch (IllegalStateException ignored) {
+            // report not removed
+        }
+        JSObject ret = new JSObject();
+        ret.put("overlayAllowed", Settings.canDrawOverlays(getContext()));
+        ret.put("bubbleRemoved", removed);
+        ret.put("batteryOptimized", batteryOptimized());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openOverlaySettings(PluginCall call) {
+        try {
+            launch(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getContext().getPackageName())));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open overlay settings");
+        }
+    }
+
+    @PluginMethod
+    public void markCheckInsRead(PluginCall call) {
+        try {
+            CheckInEngine.markRead(getContext());
+            call.resolve();
+        } catch (IllegalStateException e) {
+            call.reject("Secure storage unavailable");
+        }
     }
 
     @PluginMethod

@@ -6,10 +6,11 @@ import type { User } from 'firebase/auth'
 import { limit, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { ArrowLeft, BookOpen, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, pageMemoryImpact, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
-import { filterPages, isFromToday, isPermissionDenied, normalizeTitle, pickTodayPage, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
+import { embedPageToAdopt, filterPages, isFromToday, isPermissionDenied, normalizeTitle, pickTodayPage, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
 import { pageDeleteBody } from '@/lib/echo/links'
 import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
+import { markCheckInsRead } from '@/lib/native/echo-bridge'
 import { Alert, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
 import { GuideInfoButton } from './guide'
@@ -253,6 +254,20 @@ export function DiaryView({
       setCollapsed(localStorage.getItem(LIST_KEY) === '1')
     } catch {}
   }, [])
+  // The full app showing the Diary clears the unread check-ins, also when the phone comes back to it.
+  useEffect(() => {
+    if (embed) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void markCheckInsRead()
+    }
+    onVisible()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [embed])
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)
@@ -323,6 +338,15 @@ export function DiaryView({
       setMobileOpen(true)
     }
   }, [pages, auto])
+
+  // The landing above runs once, so a floating panel loaded before today's page existed moves to it when it appears.
+  useEffect(() => {
+    if (!auto || pages === null) return
+    const id = embedPageToAdopt(sel.id, !!embed, pages)
+    if (!id) return
+    openedDay.current = localDateKey(new Date())
+    setSel((s) => (s.id ? s : { id, key: s.key }))
+  }, [embed, pages, auto, sel.id])
 
   selRef.current = sel
   pagesRef.current = pages

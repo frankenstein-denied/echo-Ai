@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { averageLogged, calorieFill, NO_GOAL_KCAL_SCALE, waterFill, WATER_TARGET } from './body-fill'
+import { averageLogged, calorieFill, NO_GOAL_KCAL_SCALE, waterFill } from './body-fill'
+import { DEFAULT_WATER_GOAL } from './check-ins'
 
 describe('waterFill', () => {
   it('fills to glasses / 8', () => {
-    expect(WATER_TARGET).toBe(8)
+    expect(DEFAULT_WATER_GOAL).toBe(8)
     expect(waterFill(5)).toEqual({ level: 0.625, full: false, text: '5 / 8 glasses', sub: '3 to go' })
   })
   it('caps at full past the target', () => {
@@ -17,6 +18,13 @@ describe('waterFill', () => {
       expect(f.text).toBe('0 / 8 glasses')
       expect(f.sub).toBe('8 to go')
     }
+  })
+  it('fills against the given target', () => {
+    expect(waterFill(5, 10)).toEqual({ level: 0.5, full: false, text: '5 / 10 glasses', sub: '5 to go' })
+    expect(waterFill(5).text).toBe('5 / 8 glasses')
+  })
+  it('falls back to the default on a bad target', () => {
+    for (const t of [NaN, Infinity, 0, -2, 0.5]) expect(waterFill(5, t).text).toBe('5 / 8 glasses')
   })
   it('keeps one decimal for averages', () => {
     expect(waterFill(5.5).text).toBe('5.5 / 8 glasses')

@@ -97,3 +97,9 @@ export function shouldStartNewDay(
   if (s.openedDayKey === localDateKey(now)) return false
   return !isFromToday(s.pageCreatedMs, now)
 }
+
+/** The page a floating panel should move to: today's page, once one exists, while it still sits on the empty state. */
+export function embedPageToAdopt<T extends { id: string; createdAt?: { toMillis?: () => number } | null }>(selectedId: string | null, embed: boolean, pages: T[], now?: Date): string | null {
+  if (!embed || selectedId !== null) return null
+  return pickTodayPage(pages, now)?.id ?? null
+}

@@ -27,6 +27,7 @@ import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { roundCoord } from '@/lib/echo/weather'
+import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
 import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks, splitImpact } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
@@ -50,6 +51,11 @@ export type UserProfile = {
   onboarded: boolean
   caloriesEnabled?: boolean // absent means on
   calorieGoal?: number // 800-6000
+  checkInsEnabled?: boolean // absent means on, unless remindersEnabled is false
+  checkInEveryMinutes?: number // one of CHECK_IN_GAPS
+  sleepStart?: string // HH:MM
+  sleepEnd?: string // HH:MM, can cross midnight
+  waterGoal?: number // 1-30
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -63,7 +69,7 @@ export type Meal = { date: string; mealType: MealType; description: string; item
 export type ReminderSource = 'chat' | 'routine' | 'manual'
 export type Reminder = { title: string; dueAt: Timestamp; done: boolean; source: ReminderSource; createdAt: Timestamp; updatedAt: Timestamp }
 export type Routine = { title: string; cadence: string; confidence: number; createdAt: Timestamp; updatedAt: Timestamp }
-export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; createdAt: Timestamp }
+export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; checkIn?: boolean; createdAt: Timestamp }
 export type PageMix = Partial<Record<'note' | 'goal' | 'reminder' | 'health', number>>
 export type DiaryPage = { mix?: PageMix; title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
 export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number }
@@ -505,6 +511,22 @@ export function watchCalorieSettings(uid: string, onData: (s: { enabled: boolean
     },
     onError,
   )
+}
+
+// Writes only the fields given. Rules require updatedAt == request.time and a valid whole profile.
+export async function updateCheckInSettings(uid: string, s: Partial<Omit<CheckInSettings, 'enabled'>> & { enabled?: boolean }): Promise<void> {
+  const upd: Record<string, unknown> = { updatedAt: serverTimestamp() }
+  if (s.enabled !== undefined) upd.checkInsEnabled = s.enabled
+  if (s.everyMinutes !== undefined) upd.checkInEveryMinutes = s.everyMinutes
+  if (s.sleepStart !== undefined) upd.sleepStart = s.sleepStart
+  if (s.sleepEnd !== undefined) upd.sleepEnd = s.sleepEnd
+  if (s.waterGoal !== undefined) upd.waterGoal = s.waterGoal
+  await updateDoc(userDoc(uid), upd as never)
+}
+
+// Live check-in settings, with absent fields resolved to the defaults.
+export function watchCheckInSettings(uid: string, onData: (s: CheckInSettings) => void, onError: (e: Error) => void): Unsubscribe {
+  return onSnapshot(userDoc(uid), (snap) => onData(resolveCheckInSettings(snap.data() ?? {})), onError)
 }
 
 // ---------- meals (users/{uid}/meals/{id}) ----------

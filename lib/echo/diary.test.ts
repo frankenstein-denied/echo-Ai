@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunk, defaultPageTitle, filterPages, isPermissionDenied, normalizeTitle, planMigration, isFromToday, pickTodayPage, previewOf, relativeTime, shouldStartNewDay, sortPages } from './diary'
+import { chunk, defaultPageTitle, embedPageToAdopt, filterPages, isPermissionDenied, normalizeTitle, planMigration, isFromToday, pickTodayPage, previewOf, relativeTime, shouldStartNewDay, sortPages } from './diary'
 
 const t = (n: number) => ({ toMillis: () => n })
 
@@ -83,5 +83,20 @@ describe('new day', () => {
     expect(shouldStartNewDay({ ...base, pageCreatedMs: new Date(2026, 10, 3, 1).getTime() }, now)).toBe(false)
     expect(shouldStartNewDay({ ...base, callActive: true }, now)).toBe(false)
     expect(shouldStartNewDay({ ...base, selId: null }, now)).toBe(false)
+  })
+})
+
+describe('embedPageToAdopt', () => {
+  const now = new Date(2026, 10, 6, 12)
+  const today = { id: 'today', createdAt: t(new Date(2026, 10, 6, 8).getTime()) }
+  const yesterday = { id: 'old', createdAt: t(new Date(2026, 10, 5, 8).getTime()) }
+  it('adopts a today page for an embed with nothing selected', () => {
+    expect(embedPageToAdopt(null, true, [yesterday, today], now)).toBe('today')
+  })
+  it('leaves everything else alone', () => {
+    expect(embedPageToAdopt(null, false, [today], now)).toBeNull()
+    expect(embedPageToAdopt('p', true, [today], now)).toBeNull()
+    expect(embedPageToAdopt(null, true, [yesterday], now)).toBeNull()
+    expect(embedPageToAdopt(null, true, [], now)).toBeNull()
   })
 })
