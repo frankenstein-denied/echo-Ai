@@ -47,6 +47,16 @@ describe('float-bridge', () => {
     expect(stub.openInApp).toHaveBeenCalled()
     expect(stub.refreshNotification).toHaveBeenCalled()
   })
+  it('reports the panel ready, and does nothing on an older APK without the method', () => {
+    vi.stubGlobal('window', globalThis)
+    expect(() => fb.reportPanelReady()).not.toThrow()
+    w().EchoFloat = { onCallPhase: vi.fn() }
+    expect(() => fb.reportPanelReady()).not.toThrow()
+    const onPanelReady = vi.fn()
+    w().EchoFloat = { onPanelReady }
+    fb.reportPanelReady()
+    expect(onPanelReady).toHaveBeenCalledTimes(1)
+  })
   it('isFloatingCallActive resolves false when the plugin method rejects', async () => {
     plugin.isFloatingCallActive.mockRejectedValue(new Error('not implemented'))
     expect(await fb.isFloatingCallActive()).toBe(false)

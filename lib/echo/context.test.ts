@@ -74,3 +74,15 @@ describe('buildContext weather', () => {
     expect(buildContext({}, [], [])).not.toHaveProperty('weather')
   })
 })
+
+describe('buildContext check-ins', () => {
+  it('keeps real conversation in the last 10 despite many check-ins', () => {
+    const real = Array.from({ length: 10 }, (_, i) => ({ role: 'user' as const, text: `m${i}` }))
+    const noise = Array.from({ length: 8 }, () => ({ role: 'assistant' as const, text: 'q', checkIn: true }))
+    expect(buildContext({}, [...real, ...noise], []).recentMessages.filter((m) => m.text !== 'q')).toHaveLength(9)
+  })
+  it('keeps the newest check-in so a short reply is understood, without sending the marker', () => {
+    const msgs = [{ role: 'assistant' as const, text: 'Water?', checkIn: true }, { role: 'assistant' as const, text: 'Had lunch yet?', checkIn: true }, { role: 'user' as const, text: 'Yes, adobo' }]
+    expect(buildContext({}, msgs, []).recentMessages).toEqual([{ role: 'assistant', text: 'Had lunch yet?' }, { role: 'user', text: 'Yes, adobo' }])
+  })
+})

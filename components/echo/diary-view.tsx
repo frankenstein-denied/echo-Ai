@@ -6,7 +6,7 @@ import type { User } from 'firebase/auth'
 import { limit, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { ArrowLeft, BookOpen, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { createDiaryPage, deleteDiaryPage, diaryPagesCol, migrateFlatMessages, pageMemoryImpact, renameDiaryPage, type DiaryPage, type UserProfile } from '@/lib/firestore'
-import { filterPages, isFromToday, isPermissionDenied, normalizeTitle, pickTodayPage, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
+import { embedPageToAdopt, filterPages, isFromToday, isPermissionDenied, normalizeTitle, pickTodayPage, relativeTime, RULES_MESSAGE, shouldStartNewDay, sortPages, TITLE_MAX } from '@/lib/echo/diary'
 import { pageDeleteBody } from '@/lib/echo/links'
 import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
@@ -323,6 +323,15 @@ export function DiaryView({
       setMobileOpen(true)
     }
   }, [pages, auto])
+
+  // The landing above runs once, so a floating panel loaded before today's page existed moves to it when it appears.
+  useEffect(() => {
+    if (!auto || pages === null) return
+    const id = embedPageToAdopt(sel.id, !!embed, pages)
+    if (!id) return
+    openedDay.current = localDateKey(new Date())
+    setSel((s) => (s.id ? s : { id, key: s.key }))
+  }, [embed, pages, auto, sel.id])
 
   selRef.current = sel
   pagesRef.current = pages

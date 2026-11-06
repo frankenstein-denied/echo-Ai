@@ -14,6 +14,8 @@ public final class EchoFloatInterface {
         void onRefreshNotification();
         /** The WebView renderer process died; the owner should discard and rebuild the WebView. */
         void onRendererGone();
+        /** The chat page has loaded and is showing its messages. */
+        void onPanelReady();
     }
 
 
@@ -47,5 +49,9 @@ public final class EchoFloatInterface {
 
     @JavascriptInterface public void refreshNotification() {
         main.post(listener::onRefreshNotification);
+    }
+
+    @JavascriptInterface public void onPanelReady() {
+        main.post(listener::onPanelReady);
     }
 }

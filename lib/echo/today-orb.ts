@@ -12,3 +12,14 @@ export function emptyPageOrb(pageId: string): Orb {
 export function hasUserMessage(messages: { role: string }[] | null | undefined): boolean {
   return !!messages?.some((m) => m.role === 'user')
 }
+
+/** Whether the welcome orb shows: messages have loaded and the page has no user message or check-in, so a check-in is never pushed down by it. */
+export function showTodayWelcome(messages: { role: string; checkIn?: boolean }[] | null | undefined): boolean {
+  return !!messages && !hasUserMessage(messages) && !messages.some((m) => m.checkIn)
+}
+
+/** Drops check-ins the user did not answer (the next message is not theirs), keeping the newest so a short reply to it still makes sense. */
+export function dropUnansweredCheckIns<T extends { role: string; checkIn?: boolean }>(messages: T[]): T[] {
+  const newest = messages.map((m) => !!m.checkIn).lastIndexOf(true)
+  return messages.filter((m, i) => !m.checkIn || i === newest || messages[i + 1]?.role === 'user')
+}

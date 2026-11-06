@@ -120,6 +120,10 @@ public class ChatheadService extends Service {
             }
         }
 
+        @Override public void onPanelReady() {
+            // Task 9 logs the timing here.
+        }
+
         @Override public void onRendererGone() {
             if (tornDown) return;
             closePanel();

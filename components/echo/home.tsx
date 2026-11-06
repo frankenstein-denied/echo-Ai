@@ -23,10 +23,10 @@ import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
-import { hasUserMessage } from '@/lib/echo/today-orb'
+import { showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
-import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, setAppCallActive } from '@/lib/native/float-bridge'
+import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
 
@@ -682,6 +682,13 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     else startCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embed, disabled, messagesLoaded, memoriesLoaded, prefs])
+  // Floating panel: tell native once the chat is readable. Before the page list lands the page is the empty state, not ready.
+  const panelReported = useRef(false)
+  useEffect(() => {
+    if (embed !== 'chat' || panelReported.current || disabled || messages === null || !messagesLoaded) return
+    panelReported.current = true
+    reportPanelReady()
+  }, [embed, disabled, messages, messagesLoaded])
   useEffect(() => {
     if (embed === 'call') reportCallPhase(call.phase)
   }, [embed, call.phase])
@@ -785,7 +792,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6 max-lg:gap-4 max-lg:py-4">
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
-            {messages !== null && !hasUserMessage(messages) && !thinking && !error && !call.active && !pendingTurns.length && (
+            {showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length && (
               <TodayOrbWelcome
                 uid={uid}
                 pageId={pageId ?? undefined}

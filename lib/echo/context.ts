@@ -1,5 +1,6 @@
 import type { ConnectorStatus } from './connectors'
 import type { EchoItemsContext, EchoMealType, EchoRequest } from './types'
+import { dropUnansweredCheckIns } from './today-orb'
 
 const PROFILE_MAX = 1500
 const RECENT_MAX = 10
@@ -24,7 +25,7 @@ type ProfileInput = {
   yearGoals?: string[]
   importantPeople?: string[]
 }
-type MessageInput = { role: 'user' | 'assistant'; text: string }
+type MessageInput = { role: 'user' | 'assistant'; text: string; checkIn?: boolean }
 type MemoryInputLike = { label: string; type: string; mentions?: number; lastSeenAt?: { toMillis(): number } | null }
 
 function listLine(name: string, items: string[] | undefined): string | null {
@@ -53,8 +54,7 @@ export function buildProfileSummary(profile: ProfileInput): string {
 }
 
 export function buildContext(profile: ProfileInput, messages: MessageInput[], memories: MemoryInputLike[], items?: EchoItemsContext, connectors?: { id: string; status: ConnectorStatus }[], weather?: string): EchoRequest['context'] {
-  const recentMessages = messages
-    .filter((m) => m.text.trim())
+  const recentMessages = dropUnansweredCheckIns(messages.filter((m) => m.text.trim()))
     .slice(-RECENT_MAX)
     .map((m) => ({ role: m.role, text: m.text.trim().slice(0, RECENT_TEXT_MAX) }))
   const byStrength = (a: MemoryInputLike, b: MemoryInputLike) => (b.mentions ?? 1) - (a.mentions ?? 1) || (b.lastSeenAt?.toMillis() ?? 0) - (a.lastSeenAt?.toMillis() ?? 0)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ORB_KINDS } from './orbs'
-import { emptyPageOrb, hasUserMessage } from './today-orb'
+import { dropUnansweredCheckIns, emptyPageOrb, hasUserMessage, showTodayWelcome } from './today-orb'
 
 describe('emptyPageOrb', () => {
   it('is an empty pearl orb for the page', () => {
@@ -23,5 +23,40 @@ describe('hasUserMessage', () => {
     expect(hasUserMessage([])).toBe(false)
     expect(hasUserMessage([{ role: 'assistant' }])).toBe(false)
     expect(hasUserMessage([{ role: 'assistant' }, { role: 'user' }])).toBe(true)
+  })
+})
+
+describe('showTodayWelcome', () => {
+  it('hides the welcome once a check-in is on the page', () => {
+    expect(showTodayWelcome([{ role: 'assistant' }])).toBe(true) // onboarding welcome message
+    expect(showTodayWelcome([{ role: 'assistant', checkIn: true }])).toBe(false)
+    expect(showTodayWelcome([{ role: 'user' }])).toBe(false)
+  })
+  it('waits for the messages, and shows on an empty page', () => {
+    expect(showTodayWelcome(null)).toBe(false)
+    expect(showTodayWelcome(undefined)).toBe(false)
+    expect(showTodayWelcome([])).toBe(true)
+  })
+})
+
+describe('dropUnansweredCheckIns', () => {
+  it('keeps answered check-ins and the newest one only', () => {
+    const a = { role: 'assistant', checkIn: true, text: 'a' }
+    const u = { role: 'user', text: 'u' }
+    const b = { role: 'assistant', checkIn: true, text: 'b' }
+    const c = { role: 'assistant', checkIn: true, text: 'c' }
+    expect(dropUnansweredCheckIns([a, u, b, c])).toEqual([a, u, c])
+  })
+  it('counts only the check-in right before a reply as answered', () => {
+    const a = { role: 'assistant', checkIn: true, text: 'a' }
+    const b = { role: 'assistant', checkIn: true, text: 'b' }
+    const u = { role: 'user', text: 'u' }
+    const e = { role: 'assistant', text: 'e' }
+    expect(dropUnansweredCheckIns([a, b, u, e])).toEqual([b, u, e])
+  })
+  it('leaves a page without check-ins alone', () => {
+    const msgs = [{ role: 'user' }, { role: 'assistant' }]
+    expect(dropUnansweredCheckIns(msgs)).toEqual(msgs)
+    expect(dropUnansweredCheckIns([])).toEqual([])
   })
 })
