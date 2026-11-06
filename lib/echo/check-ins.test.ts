@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHECK_IN_GAPS, DEFAULT_WATER_GOAL, MAX_WATER_GOAL, MIN_WATER_GOAL, parseWaterGoal, resolveCheckInSettings } from './check-ins'
+import { bubbleStatusLine, CHECK_IN_GAPS, DEFAULT_WATER_GOAL, MAX_WATER_GOAL, MIN_WATER_GOAL, parseWaterGoal, resolveCheckInSettings } from './check-ins'
 
 describe('resolveCheckInSettings', () => {
   it('uses the defaults for an empty profile', () => {
@@ -43,5 +43,24 @@ describe('parseWaterGoal', () => {
   })
   it('rejects anything else', () => {
     for (const t of ['', ' ', '0', '31', '2.5', '-3', '1e1', 'abc']) expect(parseWaterGoal(t)).toBeNull()
+  })
+})
+
+describe('bubbleStatusLine', () => {
+  it('shows nothing on an older APK', () => {
+    expect(bubbleStatusLine({})).toBeNull()
+  })
+
+  it('says the bubble is on', () => {
+    expect(bubbleStatusLine({ bubbleRunning: true, bubbleError: null })).toBe('Bubble: on')
+  })
+
+  it('never says on while an error is recorded', () => {
+    expect(bubbleStatusLine({ bubbleRunning: true, bubbleError: 'check-ins failed: X' })).toBe("Bubble isn't running (check-ins failed: X)")
+  })
+
+  it('gives the reason when there is one', () => {
+    expect(bubbleStatusLine({ bubbleRunning: false, bubbleError: 'start refused: X' })).toBe("Bubble isn't running (start refused: X)")
+    expect(bubbleStatusLine({ bubbleRunning: false })).toBe("Bubble isn't running")
   })
 })

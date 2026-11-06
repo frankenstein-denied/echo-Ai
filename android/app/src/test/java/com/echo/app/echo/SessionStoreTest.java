@@ -65,7 +65,7 @@ public class SessionStoreTest {
         store.setLastFiredMs(5L);
         store.setLastTopic("MOOD");
         store.setUnreadCount(2);
-        store.setQuietUnread(1);
+        store.setLastBubbleError("start refused: X");
         store.setBubbleRemoved(true);
         store.setPendingCheckInId("m1");
         store.setPendingCheckInText("Had lunch yet?");
@@ -76,7 +76,7 @@ public class SessionStoreTest {
         assertEquals(5L, store.getLastFiredMs());
         assertEquals("MOOD", store.getLastTopic());
         assertEquals(2, store.getUnreadCount());
-        assertEquals(1, store.getQuietUnread());
+        assertEquals("start refused: X", store.getLastBubbleError());
         assertTrue(store.isBubbleRemoved());
         assertEquals("m1", store.getPendingCheckInId());
         assertEquals("Had lunch yet?", store.getPendingCheckInText());
@@ -87,7 +87,7 @@ public class SessionStoreTest {
         assertEquals(0L, store.getLastFiredMs());
         assertNull(store.getLastTopic());
         assertEquals(0, store.getUnreadCount());
-        assertEquals(0, store.getQuietUnread());
+        assertNull(store.getLastBubbleError());
         assertNull(store.getPendingCheckInId());
         assertNull(store.getPendingCheckInText());
         assertNull(store.getCachedPrefsJson());

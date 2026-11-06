@@ -25,9 +25,14 @@ public final class CheckInPlanner {
     private static final long MINUTE_MS = 60_000L;
     private static final int DAY_MINUTES = 24 * 60;
     private static final int TITLE_MAX = 24;
-    private static final int BREAKFAST_BY = 10 * 60;
-    private static final int LUNCH_BY = 14 * 60;
-    private static final int DINNER_BY = 20 * 60;
+    private static final int SHORT_MAX = 40;
+    private static final int BREAKFAST_FROM = 7 * 60;
+    private static final int BREAKFAST_UNTIL = 11 * 60;
+    private static final int LUNCH_FROM = 12 * 60;
+    private static final int LUNCH_UNTIL = 17 * 60;
+    private static final int DINNER_FROM = 18 * 60; // runs until sleep, and nothing fires in sleep time
+    private static final int AFTERNOON_FROM = 12 * 60;
+    private static final int EVENING_FROM = 18 * 60;
 
     private CheckInPlanner() {}
 
@@ -37,7 +42,7 @@ public final class CheckInPlanner {
         long nextCheckInMs = nextCheckInMs(nowMs, tz, everyMinutes, sleepStartMin, sleepEndMin);
         Reminder soonest = nextReminder(s, nowMs);
         boolean reminderDue = soonest != null && soonest.dueAtMs <= nextCheckInMs;
-        String meal = overdueMeal(s, minute);
+        String meal = mealToAsk(s, minute);
 
         List<Topic> missing = new ArrayList<>();
         if (reminderDue) missing.add(Topic.REMINDER);
@@ -49,35 +54,42 @@ public final class CheckInPlanner {
 
         Topic topic = pick(missing, lastTopic);
         String overview = overview(s, nowMs, tz);
+        String hello = greeting(minute);
         switch (topic) {
             case REMINDER: {
                 String time = formatTime(soonest.dueAtMs, tz);
                 return new Plan(topic, shortTitle(soonest.title) + " at " + time,
-                    "Your " + soonest.title + " reminder is at " + time + ". " + overview);
+                    hello + " Your " + soonest.title + " reminder is at " + time + ". " + overview);
             }
             case MEAL: {
                 String question = "Had " + meal + " yet?";
-                return new Plan(topic, question, question + " What did you eat? " + overview);
+                return new Plan(topic, question, hello + " " + question + " What did you eat? " + overview);
             }
             case WATER:
-                return question(topic, "Time for some water?", overview);
+                return question(topic, hello, "Time for some water?", overview);
             case MOOD:
-                return question(topic, "How are you feeling?", overview);
+                return question(topic, hello, "How are you feeling?", overview);
             case ENERGY:
-                return question(topic, "How's your energy?", overview);
+                return question(topic, hello, "How's your energy?", overview);
             case CALORIES: {
                 String text = s.kcalToday + " of " + s.calorieGoal + " kcal so far";
-                return new Plan(topic, text, text + ". " + overview);
+                return new Plan(topic, text, hello + " " + text + ". " + overview);
             }
             default: {
                 String text = "Here's your day so far";
-                return new Plan(topic, text, text + ". " + overview);
+                String greeted = hello + " " + text;
+                return new Plan(topic, greeted.length() <= SHORT_MAX ? greeted : text, greeted + ". " + overview);
             }
         }
     }
 
-    private static Plan question(Topic topic, String text, String overview) {
-        return new Plan(topic, text, text + " " + overview);
+    private static Plan question(Topic topic, String hello, String text, String overview) {
+        return new Plan(topic, text, hello + " " + text + " " + overview);
+    }
+
+    private static String greeting(int minute) {
+        if (minute < AFTERNOON_FROM) return "Good morning!";
+        return minute < EVENING_FROM ? "Good afternoon!" : "Good evening!";
     }
 
     /** First missing topic that was not just asked, else the only one left, else the overview. */
@@ -91,10 +103,7 @@ public final class CheckInPlanner {
     /** Nothing fires in sleep time, so a gap that ends there runs on to the moment sleep ends. */
     private static long nextCheckInMs(long nowMs, TimeZone tz, int everyMinutes,
                                       int sleepStartMin, int sleepEndMin) {
-        long next = nowMs + everyMinutes * MINUTE_MS;
-        int minute = minuteOfDay(next, tz);
-        if (!CheckInRules.inSleep(minute, sleepStartMin, sleepEndMin)) return next;
-        return next + floorMod(sleepEndMin - minute) * MINUTE_MS;
+        return CheckInRules.afterSleep(nowMs + everyMinutes * MINUTE_MS, tz, sleepStartMin, sleepEndMin);
     }
 
     /** The open reminder due soonest from now, skipping past ones and any with no title or date. */
@@ -108,12 +117,17 @@ public final class CheckInPlanner {
         return best;
     }
 
-    private static String overdueMeal(TodaySnapshot s, int minute) {
+    /** Only the meal for this part of the day, never an earlier one. Between the windows there is none. */
+    private static String mealToAsk(TodaySnapshot s, int minute) {
         if (!s.caloriesEnabled) return null;
-        if (minute >= DINNER_BY && !s.mealTypes.contains("dinner")) return "dinner";
-        if (minute >= LUNCH_BY && !s.mealTypes.contains("lunch")) return "lunch";
-        if (minute >= BREAKFAST_BY && !s.mealTypes.contains("breakfast")) return "breakfast";
-        return null;
+        String meal = mealNow(minute);
+        return meal == null || s.mealTypes.contains(meal) ? null : meal;
+    }
+
+    private static String mealNow(int minute) {
+        if (minute >= BREAKFAST_FROM && minute < BREAKFAST_UNTIL) return "breakfast";
+        if (minute >= LUNCH_FROM && minute < LUNCH_UNTIL) return "lunch";
+        return minute >= DINNER_FROM ? "dinner" : null;
     }
 
     private static boolean behindOnWater(TodaySnapshot s, int minute, int sleepStartMin, int sleepEndMin) {

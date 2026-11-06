@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -27,8 +28,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Fires check-ins while the bubble is up, on a main-thread timer, and owns the quiet path for when it is not.
- * Instance methods are main thread only. The static entry points are safe from any thread.
+ * Fires check-ins while the bubble is up and the screen is usable, on a main-thread timer. The background path
+ * covers everything else, from the alarm and the worker. Instance methods are main thread only. The static
+ * entry points are safe from any thread.
  */
 public final class CheckInEngine {
     /** What the engine needs from the bubble. Always called on the main thread. */
@@ -49,9 +51,12 @@ public final class CheckInEngine {
     private static final String ID_PREFIX = "checkin-";
     private static final int DAY_KEY_LENGTH = 10;
 
-    /** One write at a time across the engine and the quiet path: two could each create a page for the same message. */
+    /** One write at a time across the engine and the background path: two could each create a page for the same message. */
     private static final AtomicBoolean WRITING = new AtomicBoolean(false);
     private static final AtomicBoolean SYNCING = new AtomicBoolean(false);
+    private static final AtomicBoolean BACKGROUND = new AtomicBoolean(false);
+    /** The alarm, the worker and the engine can all find one check-in due. Only the first to claim it fires. */
+    private static final Object FIRE_LOCK = new Object();
     private static volatile CheckInEngine active;
 
     private final Context ctx;
@@ -140,6 +145,7 @@ public final class CheckInEngine {
         if (!running) return;
         try {
             clearUnread(SessionStore.get(ctx));
+            CheckInNotifier.cancel(ctx);
             host.setUnread(0);
         } catch (RuntimeException e) {
             Log.w(TAG, "could not clear the unread number", e);
@@ -197,7 +203,7 @@ public final class CheckInEngine {
         long now = System.currentTimeMillis();
         TimeZone tz = TimeZone.getDefault();
         String today = FirestoreJson.dateKey(now, tz);
-        if (dropOldPending(store, today)) host.setUnread(store.getUnreadCount());
+        if (dropOldPending(ctx, store, today)) host.setUnread(store.getUnreadCount());
 
         CheckInRules.State s = currentState(store, p, now, tz);
         CheckInRules.Outcome outcome = CheckInRules.decide(s);
@@ -208,7 +214,7 @@ public final class CheckInEngine {
             prefetchIfNear(s, now);
             return;
         }
-        if (outcome != CheckInRules.Outcome.POPUP && outcome != CheckInRules.Outcome.CHAT_ONLY) return;
+        if (!CheckInRules.fires(outcome)) return;
 
         TodaySnapshot usable = pickSnapshot(snapshot, today, now, allowTodaysCopy);
         if (usable == null) { // counts as WAIT: the next tick, or the fetch landing, tries again
@@ -216,20 +222,13 @@ public final class CheckInEngine {
             refreshSnapshot(false);
             return;
         }
-        fire(store, usable, s, outcome == CheckInRules.Outcome.POPUP, today, tz);
+        fire(store, usable, s, outcome, today, tz);
     }
 
     private CheckInRules.State currentState(SessionStore store, CheckInPrefs p, long now, TimeZone tz) {
-        CheckInRules.State s = baseState(p, now, storedLastFired(store, now), tz);
-        s.signedIn = store.hasSession();
+        CheckInRules.State s = liveState(ctx, store, p, now, tz);
         s.bubbleRunning = true;
-        s.screenOn = screenUsable(isInteractive(), isKeyguardLocked());
-        s.inCall = inCall();
-        s.appInForeground = FloatState.appInForeground;
-        s.online = isOnline(ctx);
         s.panelOpen = host.isPanelOpen();
-        s.pendingWrite = store.getPendingCheckInId() != null;
-        s.quietUnread = store.getQuietUnread();
         return s;
     }
 
@@ -238,22 +237,27 @@ public final class CheckInEngine {
         if (now - lastFetchAttemptMs >= PREFETCH_MS) refreshSnapshot(true);
     }
 
-    /** Message first: everything else on this path comes after the user can see it. */
-    private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, boolean popup,
+    /** Once claimed, message first: everything else on this path comes after the user can see it. */
+    private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, CheckInRules.Outcome outcome,
                       String today, TimeZone tz) {
         CheckInPlanner.Plan plan = CheckInPlanner.plan(usable, parseTopic(store.getLastTopic()), s.nowMs, tz,
             s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
-        if (popup) {
+        if (!claim(store, plan, s.lastFiredMs, s.nowMs, today)) return;
+        if (outcome == CheckInRules.Outcome.POPUP) {
             host.showMessage(plan.shortText);
             Log.i(TAG, "due_to_visible_ms="
                 + (System.currentTimeMillis() - visibleFromMs(s.lastFiredMs, s.everyMinutes, unlockAtMs)));
+            EchoBuzz.play(ctx);
+        }
+        if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;
             store.setUnreadCount(unread);
             host.setUnread(unread);
+            if (outcome == CheckInRules.Outcome.NOTIFY) CheckInNotifier.post(ctx, plan, unread);
         }
         unlockAtMs = 0;
-        recordFired(store, plan, s.nowMs, today);
         writeInBackground(true);
+        CheckInAlarm.schedule(ctx);
     }
 
     // ---- unlock ----
@@ -349,6 +353,7 @@ public final class CheckInEngine {
             if (!store.hasSession()) return; // signed out while the read was in flight
             store.setCachedPrefsJson(fresh.toJson());
             prefs = fresh;
+            CheckInAlarm.schedule(ctx);
         } catch (IllegalStateException e) {
             Log.w(TAG, "could not cache the profile");
         }
@@ -381,11 +386,19 @@ public final class CheckInEngine {
     // ---- system state ----
 
     private boolean isInteractive() {
+        return isInteractive(ctx);
+    }
+
+    private boolean isKeyguardLocked() {
+        return isKeyguardLocked(ctx);
+    }
+
+    private static boolean isInteractive(Context ctx) {
         PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
         return pm != null && pm.isInteractive();
     }
 
-    private boolean isKeyguardLocked() {
+    private static boolean isKeyguardLocked(Context ctx) {
         KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
         return km != null && km.isKeyguardLocked();
     }
@@ -402,12 +415,41 @@ public final class CheckInEngine {
         }
     }
 
-    // ---- the quiet path ----
+    // ---- the background path ----
 
-    /** Blocking; call off the main thread. Writes a check-in to the chat when no bubble can show one. */
-    public static void runQuietPath(Context ctx) {
+    /**
+     * Blocking; call off the main thread, early, because Android's leave to start a service from an alarm
+     * lasts only seconds. Brings back a bubble that should be up, then fires only if a check-in is due.
+     */
+    public static void onAlarm(Context ctx) {
         Context app = ctx.getApplicationContext();
-        if (FloatState.bubbleRunning) return; // the engine owns firing
+        SessionStore store = SessionStore.get(app);
+        if (!store.hasSession()) return;
+        ensureProfile(app, store);
+        if (!FloatState.bubbleRunning && bubbleWanted(app)) BubbleBringUp.run(app);
+
+        CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
+        if (cached == null || !cached.onboarded) return;
+        CheckInRules.State s = liveState(app, store, cached, System.currentTimeMillis(), TimeZone.getDefault());
+        if (s.pendingWrite || CheckInRules.fires(CheckInRules.decide(s))) runBackground(app); // no network otherwise
+    }
+
+    /** Blocking; call off the main thread. Sends a check-in when the engine can't, and retries an unsaved one. */
+    public static void runBackground(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        if (!BACKGROUND.compareAndSet(false, true)) return;
+        try {
+            fireInBackground(app);
+        } finally {
+            BACKGROUND.set(false);
+        }
+    }
+
+    private static void fireInBackground(Context app) {
+        if (engineOwnsFiring(app)) {
+            onActive(e -> e.tick(false));
+            return;
+        }
         SessionStore store;
         try {
             store = SessionStore.get(app);
@@ -425,27 +467,47 @@ public final class CheckInEngine {
         long now = System.currentTimeMillis();
         TimeZone tz = TimeZone.getDefault();
         String today = FirestoreJson.dateKey(now, tz);
-        dropOldPending(store, today);
-        boolean online = isOnline(app);
-        if (online && store.getPendingCheckInId() != null) writeQuietly(app, api, store, false);
+        if (dropOldPending(app, store, today)) showUnread(store.getUnreadCount());
+        if (isOnline(app) && store.getPendingCheckInId() != null) writeQuietly(app, api, store, false);
 
-        CheckInRules.State s = baseState(p, now, storedLastFired(store, now), tz);
-        s.signedIn = true;
-        s.bubbleRunning = false;
-        s.online = online;
-        s.pendingWrite = store.getPendingCheckInId() != null;
-        s.quietUnread = store.getQuietUnread();
-        if (CheckInRules.decide(s) != CheckInRules.Outcome.QUIET) return;
+        if (!backgroundFires(CheckInRules.decide(liveState(app, store, p, now, tz)))) return;
 
         TodaySnapshot data = api.loadToday(p, tz);
-        if (!FirestoreJson.snapshotIsUsable(data, today, now)) return; // the next run tries again
-        if (FloatState.bubbleRunning) return; // it came up during the fetch
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), now, tz,
+
+        // The fetch can take 30 seconds: sleep may have begun, a call started or the bubble come up. Decide again.
+        long firedAt = System.currentTimeMillis();
+        String day = FirestoreJson.dateKey(firedAt, tz);
+        CheckInRules.State s = liveState(app, store, p, firedAt, tz);
+        CheckInRules.Outcome outcome = CheckInRules.decide(s);
+        if (!backgroundFires(outcome)) return;
+        if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
+        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), firedAt, tz,
             s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
-        store.setUnreadCount(store.getUnreadCount() + 1);
-        store.setQuietUnread(1);
-        recordFired(store, plan, now, today);
+        if (!claim(store, plan, s.lastFiredMs, firedAt, day)) return;
+        if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
+            int unread = store.getUnreadCount() + 1;
+            store.setUnreadCount(unread);
+            showUnread(unread);
+            if (outcome == CheckInRules.Outcome.NOTIFY) CheckInNotifier.post(app, plan, unread);
+        }
         writeQuietly(app, api, store, true);
+    }
+
+    /** A pop-up can only come from the engine. */
+    private static boolean backgroundFires(CheckInRules.Outcome outcome) {
+        return outcome != CheckInRules.Outcome.POPUP && CheckInRules.fires(outcome);
+    }
+
+    /**
+     * The engine's timer stops with the screen off and keeps going on a locked screen, where it can't show a
+     * pop-up. Neither is left to it: the background path sends these too, and claim() lets only one through.
+     */
+    private static boolean engineOwnsFiring(Context app) {
+        return FloatState.bubbleRunning && screenUsable(isInteractive(app), isKeyguardLocked(app));
+    }
+
+    private static void showUnread(int count) {
+        onActive(e -> e.host.setUnread(count));
     }
 
     private static void writeQuietly(Context app, EchoApi api, SessionStore store, boolean retryOnce) {
@@ -459,12 +521,35 @@ public final class CheckInEngine {
 
     // ---- shared by both paths ----
 
-    /** Fills the pending slot before any network, so a check-in the user was told about survives a kill. */
-    private static void recordFired(SessionStore store, CheckInPlanner.Plan plan, long nowMs, String today) {
-        store.setLastFiredMs(nowMs);
-        store.setLastTopic(plan.topic.name());
-        store.setPendingCheckInText(plan.fullText);
-        store.setPendingCheckInId(newMessageId(today));
+    /** Everything {@link CheckInRules#decide} needs from the phone as it is now, seen from outside the engine. */
+    private static CheckInRules.State liveState(Context ctx, SessionStore store, CheckInPrefs p, long now, TimeZone tz) {
+        CheckInRules.State s = baseState(p, now, storedLastFired(store, now), tz);
+        s.signedIn = store.hasSession();
+        s.bubbleRunning = FloatState.bubbleRunning;
+        s.bubbleRemoved = store.isBubbleRemoved();
+        s.screenOn = screenUsable(isInteractive(ctx), isKeyguardLocked(ctx));
+        s.inCall = inCall(ctx);
+        s.appInForeground = FloatState.appInForeground;
+        s.online = isOnline(ctx);
+        s.panelOpen = FloatState.panelOpen;
+        s.pendingWrite = store.getPendingCheckInId() != null;
+        return s;
+    }
+
+    /**
+     * Fills the pending slot before any network, so a check-in the user was told about survives a kill.
+     * False if another path fired this one first.
+     */
+    private static boolean claim(SessionStore store, CheckInPlanner.Plan plan, long expectedLastFiredMs,
+                                 long nowMs, String today) {
+        synchronized (FIRE_LOCK) {
+            if (store.getLastFiredMs() != expectedLastFiredMs) return false;
+            store.setLastFiredMs(nowMs);
+            store.setLastTopic(plan.topic.name());
+            store.setPendingCheckInText(plan.fullText);
+            store.setPendingCheckInId(newMessageId(today));
+            return true;
+        }
     }
 
     /** Writes what is in the pending slot and empties it on success. The id never changes, so a retry can't double-send. */
@@ -483,14 +568,14 @@ public final class CheckInEngine {
     }
 
     /** Yesterday's message must not land on today's page, and the number must stop counting it. */
-    private static boolean dropOldPending(SessionStore store, String today) {
+    private static boolean dropOldPending(Context ctx, SessionStore store, String today) {
         String id = store.getPendingCheckInId();
         String text = store.getPendingCheckInText();
         if ((id == null && text == null) || pendingIsKept(id, text, today)) return false;
         clearPending(store);
         int unread = Math.max(0, store.getUnreadCount() - 1);
         store.setUnreadCount(unread);
-        if (unread == 0) store.setQuietUnread(0);
+        if (unread == 0) CheckInNotifier.cancel(ctx);
         return true;
     }
 
@@ -501,10 +586,9 @@ public final class CheckInEngine {
 
     private static void clearUnread(SessionStore store) {
         store.setUnreadCount(0);
-        store.setQuietUnread(0);
     }
 
-    private static long storedLastFired(SessionStore store, long nowMs) {
+    static long storedLastFired(SessionStore store, long nowMs) {
         long stored = store.getLastFiredMs();
         long effective = effectiveLastFired(stored, nowMs);
         if (effective != stored) store.setLastFiredMs(effective);
@@ -521,11 +605,7 @@ public final class CheckInEngine {
             try {
                 SessionStore store = SessionStore.get(app);
                 if (!store.hasSession()) return;
-                CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
-                if (cached == null || !cached.onboarded) { // a new user finishes onboarding after the first read
-                    CheckInPrefs fresh = new EchoApi(app).getProfilePrefs();
-                    if (fresh != null && store.hasSession()) store.setCachedPrefsJson(fresh.toJson());
-                }
+                ensureProfile(app, store);
                 RefreshWorker.sync(app);
                 startBubbleWhileVisible(app);
             } catch (RuntimeException e) {
@@ -536,10 +616,21 @@ public final class CheckInEngine {
         }, "echo-checkin-sync").start();
     }
 
-    /** From a boot receiver, which may start a foreground service. Cached prefs only. */
-    public static void startBubbleFromCache(Context ctx) {
+    /** Blocking; call off the main thread. A new user finishes onboarding after the first read, so that counts as nothing cached. */
+    private static void ensureProfile(Context app, SessionStore store) {
+        CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
+        if (cached != null && cached.onboarded) return;
+        CheckInPrefs fresh = new EchoApi(app).getProfilePrefs();
+        if (fresh != null && store.hasSession()) store.setCachedPrefsJson(fresh.toJson());
+    }
+
+    /** Blocking; call off the main thread. After a reboot or an update, with no app open. If the profile can't be read yet, the alarm tries again. */
+    public static void onBoot(Context ctx) {
         Context app = ctx.getApplicationContext();
-        if (bubbleWanted(app)) ChatheadService.showQuietly(app);
+        SessionStore store = SessionStore.get(app);
+        if (store.hasSession()) ensureProfile(app, store);
+        RefreshWorker.sync(app); // also sets the alarm
+        if (bubbleWanted(app)) BubbleBringUp.run(app);
     }
 
     private static void startBubbleWhileVisible(Context app) {
@@ -578,9 +669,10 @@ public final class CheckInEngine {
         startBubbleWhileVisible(app);
     }
 
-    /** Clears both counters, and the number on the bubble if there is one. */
+    /** Clears the number, on the bubble if there is one, and the notification. */
     public static void markRead(Context ctx) {
         clearUnread(SessionStore.get(ctx.getApplicationContext()));
+        CheckInNotifier.cancel(ctx);
         onActive(e -> e.host.setUnread(0));
     }
 
@@ -644,6 +736,26 @@ public final class CheckInEngine {
     /** No popup over the lock screen, so locked counts as off. */
     static boolean screenUsable(boolean interactive, boolean keyguardLocked) {
         return interactive && !keyguardLocked;
+    }
+
+    /** Any call: Echo's own, or a phone or app call, which only shows in the audio mode. Ringing counts. */
+    static boolean inCall(Context ctx) {
+        if (inCall()) return true;
+        AudioManager audio = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        return audio != null && callAudioMode(audio.getMode());
+    }
+
+    static boolean callAudioMode(int mode) {
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
+            || mode == AudioManager.MODE_RINGTONE;
+    }
+
+    /** The stand-in bubble is a visible window, so it stays away from calls and sleep. Off the main thread is fine. */
+    static boolean standInAllowed(Context app) {
+        CheckInPrefs p = CheckInPrefs.fromJson(SessionStore.get(app).getCachedPrefsJson());
+        boolean asleep = p != null && CheckInRules.inSleep(
+            CheckInPlanner.minuteOfDay(System.currentTimeMillis(), TimeZone.getDefault()), p.sleepStartMin, p.sleepEndMin);
+        return CheckInRules.standInAllowed(inCall(app), asleep);
     }
 
     static boolean inCall() {

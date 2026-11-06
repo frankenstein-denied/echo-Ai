@@ -9,7 +9,9 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationManagerCompat;
 import com.echo.app.floating.ChatheadService;
+import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
+import com.echo.app.floating.CheckInNotifier;
 import com.echo.app.floating.FloatState;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -40,7 +42,10 @@ public class EchoBridgePlugin extends Plugin {
             SessionStore store = SessionStore.get(getContext());
             boolean userChanged = !uid.equals(store.getUid());
             store.saveSession(uid, refreshToken, apiKey, projectId);
-            if (userChanged) EchoNotificationService.clearCache();
+            if (userChanged) {
+                EchoNotificationService.clearCache();
+                CheckInNotifier.cancel(getContext());
+            }
             PinnedController.refresh(getContext());
             CheckInEngine.syncOnAppVisible(getContext());
             call.resolve();
@@ -56,6 +61,8 @@ public class EchoBridgePlugin extends Plugin {
             PinnedController.stop(getContext());
             SessionStore.get(getContext()).clearSession();
             RefreshWorker.cancel(getContext());
+            CheckInAlarm.cancel(getContext());
+            CheckInNotifier.cancel(getContext());
             ChatheadService.stop(getContext()); // again: a start in flight above may have seen the session
             call.resolve();
         } catch (IllegalStateException e) {
@@ -139,15 +146,24 @@ public class EchoBridgePlugin extends Plugin {
     @PluginMethod
     public void getCheckInStatus(PluginCall call) {
         boolean removed = false;
+        String error = null;
         try {
-            removed = SessionStore.get(getContext()).isBubbleRemoved();
+            SessionStore store = SessionStore.get(getContext());
+            removed = store.isBubbleRemoved();
+            error = store.getLastBubbleError();
         } catch (IllegalStateException ignored) {
             // report not removed
         }
+        boolean overlay = Settings.canDrawOverlays(getContext());
+        boolean running = ChatheadService.isShowing() && FloatState.bubbleRunning; // a head with no engine fires nothing
+        if (removed) error = "you removed it";
+        else if (!overlay) error = "display over other apps is off";
         JSObject ret = new JSObject();
-        ret.put("overlayAllowed", Settings.canDrawOverlays(getContext()));
+        ret.put("overlayAllowed", overlay);
         ret.put("bubbleRemoved", removed);
         ret.put("batteryOptimized", batteryOptimized());
+        ret.put("bubbleRunning", running);
+        ret.put("bubbleError", error);
         call.resolve(ret);
     }
 

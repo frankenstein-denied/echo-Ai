@@ -48,6 +48,7 @@
         <service
             android:name=".floating.ChatheadService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -56,6 +57,10 @@
 
         <receiver
             android:name=".echo.ActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".floating.CheckInAlarm"
             android:exported="false" />
 
         <receiver
@@ -92,6 +97,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Check-ins fire on time from the background. Auto-granted; the app is sideloaded, so Play policy does not apply. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- USE_EXACT_ALARM starts at Android 13, so Android 12 needs this one. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- In-app updates: open the system installer for a downloaded Echo APK. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

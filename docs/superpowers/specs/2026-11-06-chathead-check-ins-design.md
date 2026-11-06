@@ -19,19 +19,21 @@ Success: during waking hours, with no action from the user, a short message appe
 
 The small message and the bubble match the approved mockup: `.superpowers/brainstorm/1410-1793934683/content/chathead-flow.html` (A is the chosen sleep look).
 
-Firing is silent: no sound and no vibration (builder's default, marked as my call).
+Every message that reaches the user buzzes (owner's decision): a short double buzz, about 300 ms, with a matching vibration. It uses notification audio, so silent mode, the volume and Do Not Disturb are respected. The bubble's own low-priority service notification stays silent.
 
 ### What it says
 
-Each check-in asks about one thing. The full chat message is that question plus a one-line overview of today. "Daily goals" means this overview, not the Goals page and not a new kind of goal.
+Each check-in asks about one thing. The full chat message is a greeting, that question, and a one-line overview of today. "Daily goals" means this overview, not the Goals page and not a new kind of goal.
 
 - Small message: `Had lunch yet?`
-- Chat message: `Had lunch yet? So far today: 3 of 8 glasses, 540 kcal, energy not logged. Next up: Dentist at 5 PM.`
+- Chat message: `Good afternoon! Had lunch yet? What did you eat? So far today: 3 of 8 glasses, 540 kcal, energy not logged. Next up: Dentist at 5 PM.`
+
+The greeting is `Good morning!` before 12:00, `Good afternoon!` from 12:00 to 17:59, and `Good evening!` from 18:00 on. The small message has no greeting, except the overview: `Good afternoon! Here's your day so far`, when that fits in 40 characters.
 
 The question is picked in this order, using only what is still missing today:
 
 1. A reminder due before the next check-in.
-2. A meal that should have happened by now and is not logged (only when calorie tracking is on).
+2. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
 3. Water that is behind pace for the time of day.
 4. Mood not logged today.
 5. Energy not logged today.
@@ -44,26 +46,32 @@ The overview line includes water against the water target, calories (only if tra
 
 ### Sleep time
 
-Between the sleep start and end times nothing fires. A bubble that is still on screen turns into the dozing look: grey, faded, with a small "z z". It can still be tapped to open chat, and it keeps its number. When sleep time ends it wakes up. Nothing missed overnight piles up: there is only one check-in after waking, at the first moment the phone is in use.
+Between the sleep start and end times nothing fires and nothing sounds. A bubble that is still on screen turns into the dozing look: grey, faded, with a small "z z". It can still be tapped to open chat, and it keeps its number. When sleep time ends it wakes up. Nothing missed overnight piles up: there is only one check-in after waking, due the moment sleep ends.
 
 ### Removing the bubble
 
 Dragging the bubble to the X removes it.
 
 - Messages already sent stay in the chat inside the app.
-- New check-ins keep arriving in the chat quietly, with no pop-up, but never during sleep time, and at most one unread quiet check-in at a time. Nothing more is added until the user comes back and reads it (owner's decision). Timing can be looser here.
+- New check-ins keep arriving in the chat quietly, with no pop-up, no notification and no sound, but never during sleep time. Unread check-ins do not stop new ones (owner's decision).
 - The bubble stays gone, across reboots and app opens, until the user taps Type on the pinned notification or turns the setting off and on.
 - When it returns, the number shows what is still unread.
 
-### When it stays quiet
+### How a due check-in reaches the user
 
-Nothing pops up when:
+After off, sleep, not due, and offline or an unsaved check-in (these wait), the first match wins:
 
-- the user is in a call (`FloatState.callRunning`, `appCallActive`, `callFinishing`)
-- the full Echo app is on screen
-- the screen is off or the phone is locked
+| Situation | What happens |
+|---|---|
+| In a call (Echo's own: `FloatState.callRunning`, `appCallActive`, `callFinishing`; or a phone or app call, ringing included, seen in `AudioManager.getMode()`), or the full Echo app on screen | Waits, and fires once that clears |
+| Panel open, screen on and unlocked | Appears in chat, the number does not change |
+| Bubble running, screen on and unlocked | Pop-up: small message, number, buzz |
+| Bubble removed by the user | Chat only, silent, number goes up |
+| Anything else, including a locked phone (even with the panel left open) or a declined overlay permission | Notification: chat message, number goes up, notification with the buzz |
 
-In these cases the check-in waits and fires as soon as the condition clears, as long as it is not sleep time. If the panel is already open the message simply appears in chat and the number does not change. Only one check-in can be waiting; they never stack.
+Only one check-in can be waiting; they never stack. Unread check-ins never hold back the next one.
+
+The notification is on its own channel, `echo_checkins`, at high importance, and has one fixed id, so a new one replaces the last. Tapping it brings the chathead up through Type (a tap is a visible moment), or opens the Diary if the overlay is not allowed. It clears when unread clears.
 
 The gap is measured from the last check-in. Signed-out users get nothing.
 
@@ -83,24 +91,29 @@ Water target: editable on the Health page beside the water figure, default 8 gla
 
 ### Display over other apps
 
-Android does not let an app grant itself this. After sign-in and onboarding, the full app shows a one-time explanation with a button that opens the Android setting. If the user declines, check-ins still go to the chat quietly (same path as a removed bubble), and the Settings card shows that the permission is needed, with a button. Echo does not keep nagging.
+Android does not let an app grant itself this. After sign-in and onboarding, the full app shows a one-time explanation with a button that opens the Android setting. If the user declines, check-ins arrive as notifications, and the Settings card shows that the permission is needed, with a button. Echo does not keep nagging.
 
-The same card shows the existing battery optimization and TECNO auto-start advice when the bubble needs it, not just when pinned.
+The same card keeps the TECNO auto-start and recents-lock advice visible whenever check-ins are on, because a force-stop cancels Echo's alarms and nothing in the app can undo that. The battery optimization button shows while Echo is still optimized. Android 13+ also needs notification permission for the notification path, so it is requested once check-ins are on.
+
+The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. Older APKs report neither field and the line is left out.
 
 ## How it works (decided)
 
 - **Android native does the firing.** The question is chosen on the phone with no AI call and no web page involved. This is what keeps it fast.
-- **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day. Its own timer handles firing while the screen is on, and a screen-unlock listener catches anything that came due while the screen was off. This avoids the exact-alarm permission, which is not granted by default on Android 14 and up, and avoids asking Android for a background start at fire time.
-- **Why resident:** the app targets SDK 36, and on Android 15 an app can only start a foreground service from the background if it has the overlay permission and an overlay window is already visible. `RefreshWorker` runs every 15 minutes at best and can be delayed, so it is not good enough to fire on time.
-- **Started from a visible moment.** The bubble starts when the full app opens (signed in, onboarded, check-ins on, permission given, not removed), on boot and on app update (`BootReceiver`), and from Type on the notification.
-- **Coming back after a kill.** Today the bubble never restarts (`START_NOT_STICKY`, "a killed bubble must not come back by itself"). That has to change for check-ins, but a removed bubble must still stay removed. Android's documented route is to show the overlay window first, then start the service. See the first milestone.
-- **Quiet path.** `RefreshWorker` also runs when check-ins are on, even if the notification is not pinned. When the bubble is not running and a check-in is due, it writes the check-in to the chat and adds to the unread number, unless it is sleep time or an unread quiet check-in is already there. The same limit applies to a user who declined the overlay permission.
+- **An exact alarm drives firing (owner's decision).** `CheckInAlarm` uses `setExactAndAllowWhileIdle` with `USE_EXACT_ALARM`, which is auto-granted; the app is sideloaded, so Play policy does not apply. It falls back to an inexact alarm on a `SecurityException`. It does not depend on the app being open or a bubble already running. It is set again after every fire and every run, from `RefreshWorker.sync`, on boot and package replaced, and on a settings change, and cancelled on sign-out and when check-ins are off.
+- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 5 minutes, so a waiting alarm can't spin. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive.
+- **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day, with `stopWithTask="false"`. Its own timer fires while the screen is usable, and a screen-unlock listener catches anything due. With the screen off the timer stops and firing belongs to the alarm. On a locked screen the timer keeps running, so the engine and the alarm can both find a check-in due; only the first to claim it fires.
+- **Coming back after a kill.** On every alarm, if the bubble is wanted and not running, it restarts, without firing unless a check-in is due. A swipe from recents also sets a one-off alarm 2 seconds later (`onTaskRemoved`), in case the bubble died with the task. Removed bubbles, signed-out users and check-ins off never restart.
+- **How it restarts (`BubbleBringUp`).** Exact alarms are exempt from background start limits, so the alarm calls `startForegroundService` directly. If that fails, outside calls and sleep time, a stand-in bubble is added as an overlay window first, because on Android 15 an app with the overlay permission may start a foreground service from the background only while an overlay window is visible. It comes down once the real head is up. With the screen off that fallback can't work, since the window never becomes visible. Every failure is kept in `lastBubbleError`.
+- **Started with no app open.** The bubble also starts when the full app opens (signed in, onboarded, check-ins on, permission given, not removed), and from Type. Boot and package replaced set the alarm and start it from cached prefs, reading the profile first if nothing is cached. If that read fails, the alarm tries again every 15 minutes.
+- **What code can't fix.** A force-stop cancels every alarm, and a phone maker may treat a swipe from recents as one. Nothing runs again until the app is next opened. This is why the auto-start advice stays visible.
+- **Background path.** `CheckInEngine.onAlarm` and `RefreshWorker` share one background path for anything the engine can't fire. The worker stays as a safety net: it sends what the alarm missed and sets the alarm again, but it does not start the bubble. Whichever of the alarm, worker and engine claims a due check-in first fires it; the others back off. The background path decides again after its data fetch, so a fetch that runs into sleep time or a call sends nothing.
 - **Chat writes.** Native writes the message to today's diary page over the Firestore REST API (`EchoApi`), as an `assistant` message with category `general` and a new marker, `checkIn: true`. It uses the same today's page the panel picks (`pickTodayPage`: most recently updated page created today, local time), creating one with the default title (`Fri, Nov 6` style) if needed. The page update sets `updatedAt` as server request time, but leaves `preview` and `messageCount` alone, so an unanswered check-in does not change how the page looks in the list. The write must not delay the small message.
 - **Retries must not double-send.** The last-fired time is stored on the device; a retried write reuses the same document id. Echo assumes one phone per user, so two phones on one account each run their own check-ins, and a reinstall resets the gap (my call).
 - **Offline.** With no network, a check-in does not fire; it waits like the other quiet cases. If a chat write still fails after the pop-up, the message is kept in one saved slot on the device and written when the network returns, so the panel always holds what the bubble announced (my call).
 - **Days the user never touched (owner's decision).** A day only counts once the user replies. A page holding only check-ins must not mark the day as used in `weekStrip` (`lib/echo/sidebar.ts`) or create a 2nd Brain orb (`lib/echo/orbs.ts`). Leaving `messageCount` at 0 should cover both, and the builder must confirm that, including how such a page behaves in the diary list. Unanswered check-ins still show in the chat.
 - **Chat context.** Unanswered check-ins are left out of the last 10 messages sent to the router, so they can't push out real conversation. The exception is the newest check-in, which stays in so that "Yes, adobo" after "Had lunch yet?" is understood and logs a meal. No new AI code is needed.
-- **Unread number.** Stored on the device. Goes up on each check-in, clears when the panel opens or when the full app shows the Diary. Shows `9+` above nine (my call).
+- **Unread number.** Stored on the device. Goes up on each check-in with no cap, clears when the panel opens or when the full app shows the Diary. Shows `9+` above nine (my call).
 - **Sign-out** stops the bubble and clears the number and cached data for that user.
 
 ### Web changes
@@ -145,18 +158,18 @@ How:
 
 ## Anti-goals (a failure even if it works)
 
-- Pop-ups during sleep time or during a call.
+- Pop-ups, notifications or sound during sleep time, or pop-ups during a call.
 - A removed bubble coming back by itself.
-- Messages stacking up after a period away.
+- Notifications stacking up after a period away. Chat messages do keep arriving while unread (owner's decision), but the notification replaces itself.
 - Asking something already logged today, when the data was available.
 - Slowing the phone down, or a crash in the bubble taking down the app.
 - Spending AI quota just to fire a check-in.
 
 ## Order of work and risks
 
-1. **Phone test first.** Nothing about the floating features has a long track record on the TECNO. Before building it all, prove on the phone that the bubble survives a day with the screen on and off, and find out what happens after HiOS kills it, including whether "show the overlay, then start the service" works from `RefreshWorker`. If it cannot come back reliably, the fallback is that the quiet path keeps working and the bubble returns the next time the app or notification is opened.
+1. **Phone test first.** Nothing about the floating features has a long track record on the TECNO. Before building it all, prove on the phone that the bubble survives a day with the screen on and off, and find out what happens after HiOS kills it, including whether "show the overlay, then start the service" works from `RefreshWorker`. If it cannot come back reliably, the fallback is that check-ins arrive as notifications and the bubble returns the next time the app or notification is opened.
 2. Rules, then web, then native. Deploy rules before web. Web must work with older APKs that know nothing of the new bridge call.
-3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 5 / 1.4, then `scripts/release-android.sh`).
+3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 7 / 1.6, then `scripts/release-android.sh`).
 
 Android 12+ blocks touches through opaque overlays, so check on the phone that the small message and bubble don't interfere with the app below.
 

@@ -78,8 +78,9 @@ public final class SessionStore {
     }
 
     private static SharedPreferences.Editor removeCheckInState(SharedPreferences.Editor e) {
-        return e.remove("lastFiredMs").remove("lastTopic").remove("unreadCount").remove("quietUnread")
-            .remove("pendingCheckInId").remove("pendingCheckInText").remove("cachedPrefsJson");
+        return e.remove("lastFiredMs").remove("lastTopic").remove("unreadCount")
+            .remove("pendingCheckInId").remove("pendingCheckInText").remove("cachedPrefsJson")
+            .remove("lastBubbleError");
     }
 
     public synchronized boolean hasSession() {
@@ -130,9 +131,6 @@ public final class SessionStore {
     public int getUnreadCount() { return prefs.getInt("unreadCount", 0); }
     public void setUnreadCount(int v) { prefs.edit().putInt("unreadCount", v).apply(); }
 
-    public int getQuietUnread() { return prefs.getInt("quietUnread", 0); }
-    public void setQuietUnread(int v) { prefs.edit().putInt("quietUnread", v).apply(); }
-
     public boolean isBubbleRemoved() { return prefs.getBoolean("bubbleRemoved", false); }
     public void setBubbleRemoved(boolean v) { prefs.edit().putBoolean("bubbleRemoved", v).apply(); }
 
@@ -141,6 +139,10 @@ public final class SessionStore {
 
     public String getPendingCheckInText() { return prefs.getString("pendingCheckInText", null); }
     public void setPendingCheckInText(String v) { prefs.edit().putString("pendingCheckInText", v).apply(); }
+
+    /** Why the bubble last failed to start, shown in Settings. Null once a head is on screen. */
+    public String getLastBubbleError() { return prefs.getString("lastBubbleError", null); }
+    public void setLastBubbleError(String v) { prefs.edit().putString("lastBubbleError", v).apply(); }
 
     public String getCachedPrefsJson() { return prefs.getString("cachedPrefsJson", null); }
     public void setCachedPrefsJson(String v) { prefs.edit().putString("cachedPrefsJson", v).apply(); }

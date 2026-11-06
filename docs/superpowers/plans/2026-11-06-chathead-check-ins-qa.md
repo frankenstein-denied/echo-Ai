@@ -1,6 +1,6 @@
 # Chathead check-ins: QA checklist
 
-Nothing in this feature has run on a phone. From Task 8 on, the code was only compiled: no new tests and no code review, at the owner's request. Expect bugs in Tasks 8 to 10: the timer, the bubble, Settings.
+1.5 had one phone test, and check-ins did not reach the user. 1.6 fixes that with an exact alarm, and none of it has run on a phone yet. The pure logic has unit tests; the alarm, bubble restart, notification and buzz have only been compiled. Settings shows `Bubble: on` or `Bubble isn't running (<reason>)`: note that line whenever something goes wrong.
 
 ## Before testing
 
@@ -14,17 +14,22 @@ Nothing in this feature has run on a phone. From Task 8 on, the code was only co
 Leave the bubble running for 8 hours of normal use, including screen off, a swipe from recents and one reboot.
 
 - [ ] The bubble survives normal use.
-- [ ] After a kill, it returns on the next app open.
-- [ ] After a reboot, it returns by itself.
+- [ ] Swipe Echo from recents: the bubble stays, or returns within seconds.
+- [ ] Kill it another way: it returns within 15 minutes with no app open, including with the screen off.
+- [ ] After a reboot, it returns by itself with the app never opened.
+- [ ] After installing the update, it returns by itself with the app never opened.
+- [ ] It stays up, dozing, through sleep hours.
 - [ ] A phone with no lock screen still fires check-ins.
+- [ ] Settings shows `Bubble: on` while it runs, and the reason when it can't.
 
-If HiOS kills the bubble often, tell the owner. A killed bubble stays gone until the next app open, and only quiet check-ins arrive meanwhile. A stronger restart is possible but needs this result first.
+A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one. If so, nothing runs until the app is next opened, and code can't change that. Tell the owner, and check that Auto-start and the recents lock fix it.
 
 ## First run
 
 - [ ] New user: the "Let Echo check in" prompt appears once after onboarding, and Allow opens the Android setting.
 - [ ] After granting, the bubble appears with no app restart.
 - [ ] Cancelling does not prompt again. Settings shows the permission is needed, with a button.
+- [ ] Android asks for notification permission once check-ins are on, even if the notification was never pinned.
 - [ ] A user who answered no to "Remind me to check in" in onboarding starts with check-ins off.
 
 ## The moment it fires
@@ -32,7 +37,9 @@ If HiOS kills the bubble often, tell the owner. A killed bubble stays gone until
 - [ ] The small message shows for 1 second and is readable.
 - [ ] It sits on the correct side with the bubble on either edge.
 - [ ] Touches pass through it to the app underneath.
-- [ ] No sound or vibration.
+- [ ] It fires on time at a 30-minute gap, with no app open.
+- [ ] The double buzz and vibration play once per message, and aren't harsh.
+- [ ] Silent mode: no sound, no vibration. Vibrate mode: vibration only. Do Not Disturb: neither.
 - [ ] The red number goes up, and shows `9+` above nine.
 - [ ] Tapping shows all messages in full, and the number clears.
 - [ ] Opening the Diary in the full app also clears the number.
@@ -42,32 +49,43 @@ If HiOS kills the bubble often, tell the owner. A killed bubble stays gone until
 
 - [ ] A reminder due before the next check-in comes first.
 - [ ] It doesn't ask for something already logged today.
+- [ ] Meals: breakfast only 07:00 to 10:59, lunch only 12:00 to 16:59, dinner only from 18:00. At 3 PM it never asks about breakfast.
+- [ ] The chat message opens with the right greeting: morning before 12:00, afternoon to 17:59, then evening.
 - [ ] It doesn't repeat the same topic twice in a row, unless nothing else is missing.
 - [ ] With calorie tracking off, no meal or kcal mentions.
 - [ ] The overview uses the water target set on the Health page.
 
-## When it stays quiet
+## How it reaches you
 
-- [ ] Nothing pops up in a call, with Echo open, or at the lock screen.
-- [ ] It fires right after the condition clears, and only one fires.
+- [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only.
+- [ ] That holds for a phone call, a WhatsApp call, and while either is ringing.
+- [ ] Panel open: it appears in chat, with no number and no buzz.
+- [ ] Panel left open, phone locked: a notification arrives.
+- [ ] Screen off or locked: a notification with the buzz arrives on time, and the check-in is counted.
+- [ ] Overlay denied: a notification arrives, and tapping it opens the Diary.
+- [ ] Bubble gone (not removed): tapping the notification brings it back with its number.
+- [ ] A second notification replaces the first and buzzes again. The number on it goes up.
+- [ ] Opening the panel or the Diary clears the notification.
+- [ ] Check-ins keep coming while earlier ones are unread.
 - [ ] Airplane mode: nothing fires until the network returns.
 
 ## Sleep
 
-- [ ] Set sleep hours to cover now: the bubble turns grey with "z z", and nothing fires.
+- [ ] Set sleep hours to cover now: the bubble turns grey with "z z", and nothing fires or sounds.
 - [ ] Tapping the dozing bubble still opens chat.
 - [ ] Sleep crossing midnight works. Exactly one check-in comes after sleep ends.
 
 ## Removing the bubble
 
 - [ ] Drag to the X, then reboot and open the app: it stays gone.
-- [ ] One quiet check-in lands in chat, then no more until it is read, and none during sleep.
+- [ ] Check-ins keep landing in chat, with no notification or sound, and none during sleep.
+- [ ] A removed bubble does not come back at the 15-minute keep-alive, or after a reboot.
 - [ ] Tap Type on the notification: the bubble returns with its number.
 - [ ] Turning the setting off and on also brings it back.
 
 ## Accounts
 
-- [ ] Sign out: the bubble goes.
+- [ ] Sign out: the bubble goes, any check-in notification goes, and it doesn't come back at the keep-alive.
 - [ ] Sign in as another user: the number is 0, and the bubble can start.
 - [ ] The panel never shows a bubble disappearing by itself while signed in. (A warmed page reporting signed-out would stop it.)
 
@@ -83,6 +101,8 @@ If HiOS kills the bubble often, tell the owner. A killed bubble stays gone until
 
 - [ ] The Echo check-ins card shows only in the Android app.
 - [ ] Changing the gap or sleep time takes effect without a restart.
+- [ ] The Auto-start advice stays visible while check-ins are on.
+- [ ] Turning check-ins off stops the alarm: a killed bubble doesn't return.
 - [ ] Sleep start equal to sleep end is rejected.
 - [ ] The Edit target control on Health fits at phone width and saves. Offline, Save keeps spinning until reconnect (known).
 
@@ -100,11 +120,13 @@ Run `adb logcat -d -s CheckInTiming` after at least 10 check-ins and 5 panel ope
 | `tap_to_ready_ms` (cold) | same, cold | measure and report |
 | `fetch_ms`, `write_ms` | data fetch and chat write | for finding slow steps |
 
-Also check: if every open logs `cold`, the warmed panel isn't loading without a window. And compare Echo's overnight battery use in Android's battery screen.
+Also check: if every open logs `cold`, the warmed panel isn't loading without a window. And compare Echo's overnight battery use in Android's battery screen: the keep-alive now wakes the phone every 15 minutes, day and night.
 
 ## Known gaps
 
 - If a chat write keeps failing (for example, rules not deployed), new check-ins are blocked until midnight.
+- A bubble that dies while the screen is off can only return through the exact-alarm start: the overlay fallback needs a screen that is on. It is also skipped in calls and sleep time.
+- Denying notification permission leaves the notification path silent. The check-in still reaches the chat.
 - Turning the setting off leaves a bubble on screen; it just stops firing.
 - A new user may only see the bubble on the next app return if they cancel the prompt or already have the permission.
 - Older APKs show the Settings card, but it does nothing on the phone.

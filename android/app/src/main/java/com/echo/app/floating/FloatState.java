@@ -8,8 +8,10 @@ public final class FloatState {
     public static volatile boolean callFinishing = false;
     /** The full Echo app is on screen. Set by MainActivity. */
     public static volatile boolean appInForeground = false;
-    /** The bubble is up and its CheckInEngine owns firing, so the quiet path stands aside. Set by the engine. */
+    /** The bubble is up with a running CheckInEngine. Set by the engine. */
     public static volatile boolean bubbleRunning = false;
+    /** The chat panel is open. Set by ChatheadService, read off the main thread by background firing. */
+    public static volatile boolean panelOpen = false;
 
     private FloatState() {}
 }
