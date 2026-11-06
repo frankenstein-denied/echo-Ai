@@ -27,7 +27,12 @@ public class MainActivity extends BridgeActivity {
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         askForMicOnFirstLaunch();
-        AppUpdater.checkOnLaunch(this);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        AppUpdater.checkOnOpen(this);
     }
 
     @Override
