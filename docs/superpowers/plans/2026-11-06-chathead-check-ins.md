@@ -319,7 +319,7 @@ git commit -m "feat(android): choose what each check-in asks"
   - `static boolean snapshotIsUsable(TodaySnapshot s, String todayKey, long nowMs)`, true when the date matches and it is under 2 hours old
 - Produces in `CheckInPrefs`: public fields `enabled, everyMinutes, sleepStartMin, sleepEndMin, waterGoal, caloriesEnabled, calorieGoal` and `static CheckInPrefs defaults()`
 - Produces in `EchoApi`: `CheckInPrefs getProfilePrefs()`, `TodaySnapshot loadToday(CheckInPrefs p, TimeZone tz)` (null only on real failure), `boolean writeCheckIn(String messageId, String text, TimeZone tz)`
-- Produces in `SessionStore`: getters and setters for `lastFiredMs`, `lastTopic`, `unreadCount`, `quietUnread`, `bubbleRemoved`, `pendingCheckInId`, `pendingCheckInText`, plus `cachedPrefsJson`. `clearSession()` also clears all of these.
+- Produces in `SessionStore`: getters and setters for `lastFiredMs`, `lastTopic`, `unreadCount`, `quietUnread`, `bubbleRemoved`, `pendingCheckInId`, `pendingCheckInText`, plus `cachedPrefsJson`. `clearSession()` clears these except `bubbleRemoved` (see the ledger ruling).
 
 - [ ] **Step 1: Write the failing tests** in `FirestoreJsonTest`
 
