@@ -72,7 +72,7 @@ public class CheckInPrefsTest {
         cached.sleepStartMin = 100;
         cached.sleepEndMin = 200;
         cached.waterGoal = 5;
-        CheckInPrefs m = CheckInPrefs.merged(cached, true, 4, "25:00", "7:00", 31);
+        CheckInPrefs m = CheckInPrefs.merged(cached, true, 0, "25:00", "7:00", 31);
         assertEquals(60, m.everyMinutes);
         assertEquals(100, m.sleepStartMin);
         assertEquals(200, m.sleepEndMin);

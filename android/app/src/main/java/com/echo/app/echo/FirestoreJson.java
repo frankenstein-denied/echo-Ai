@@ -17,7 +17,7 @@ import org.json.JSONObject;
 
 /** Pure helpers for Firestore REST JSON. No Android dependencies. */
 public final class FirestoreJson {
-    private static final int MIN_CHECK_IN_GAP = 5;
+    private static final int MIN_CHECK_IN_GAP = 1;
     private static final int MAX_CHECK_IN_GAP = 43200; // 30 days, same limits as firestore.rules
     private static final int MIN_WATER_GOAL = 1;
     private static final int MAX_WATER_GOAL = 30;
