@@ -32,7 +32,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
- * In-app updates for the sideloaded APK. On launch it reads version.json from the newest GitHub
+ * In-app updates for the sideloaded APK. Each time the app comes to the front it reads version.json from the newest GitHub
  * release; if that version is newer it offers "Update now", downloads echo.apk with DownloadManager
  * and opens Android's installer (which always asks the user to confirm; silent installs are not
  * possible outside the Play Store). Publish new versions with scripts/release-android.sh.
@@ -42,25 +42,37 @@ public final class AppUpdater {
     private static final String VERSION_URL = RELEASES + "version.json";
     private static final String APK_URL = RELEASES + "echo.apk";
     private static final String PREFS = "echo_updates";
-    private static final String PREF_LAST_CHECK = "last_check_ms";
     private static final String PREF_PENDING_INSTALL = "pending_install";
-    private static final long CHECK_INTERVAL_MS = 10 * 60 * 1000L; // at most every 10 min
     private static final String APK_DIR = "updates";
     private static final String APK_NAME = "echo-update.apk";
 
+    // Main thread only, except checking, which the check thread clears.
+    private static boolean promptOpen;
+    private static boolean downloading;
+    private static volatile boolean checking;
+
     private AppUpdater() {}
 
-    /** Call from onCreate: checks for a newer version in the background (throttled). */
-    public static void checkOnLaunch(Activity activity) {
-        SharedPreferences prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        long now = System.currentTimeMillis();
-        if (now - prefs.getLong(PREF_LAST_CHECK, 0) < CHECK_INTERVAL_MS) return;
-        prefs.edit().putLong(PREF_LAST_CHECK, now).apply();
+    /** The prompt returns on every open, unless it is up already or an update is under way. */
+    static boolean shouldCheck(boolean promptOpen, boolean checking, boolean downloading, boolean pendingInstall) {
+        return !promptOpen && !checking && !downloading && !pendingInstall;
+    }
+
+    /** Call from onStart, so "Later" only lasts until the next open. Checks in the background. */
+    public static void checkOnOpen(Activity activity) {
+        boolean pendingInstall = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(PREF_PENDING_INSTALL, false) && canInstall(activity); // refused: offer it again
+        if (!shouldCheck(promptOpen, checking, downloading, pendingInstall)) return;
+        checking = true;
         final int installed = installedVersionCode(activity);
         new Thread(() -> {
-            UpdateInfo info = UpdateInfo.parse(fetch(VERSION_URL));
-            if (info == null || !info.isNewerThan(installed)) return;
-            activity.runOnUiThread(() -> offer(activity, info));
+            try {
+                UpdateInfo info = UpdateInfo.parse(fetch(VERSION_URL));
+                if (info == null || !info.isNewerThan(installed)) return;
+                activity.runOnUiThread(() -> offer(activity, info));
+            } finally {
+                checking = false;
+            }
         }, "echo-update-check").start();
     }
 
@@ -74,7 +86,7 @@ public final class AppUpdater {
     }
 
     private static void offer(Activity activity, UpdateInfo info) {
-        if (activity.isFinishing() || activity.isDestroyed()) return;
+        if (promptOpen || downloading || activity.isFinishing() || activity.isDestroyed()) return;
         LayoutInflater inflater = LayoutInflater.from(activity);
         View view = inflater.inflate(R.layout.dialog_update, null);
         ((TextView) view.findViewById(R.id.update_title))
@@ -95,9 +107,11 @@ public final class AppUpdater {
             download(activity);
         });
         view.findViewById(R.id.update_later).setOnClickListener(v -> dialog.dismiss());
+        dialog.setOnDismissListener(d -> promptOpen = false);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
+        promptOpen = true;
         dialog.show();
     }
 
@@ -107,6 +121,7 @@ public final class AppUpdater {
         if (old.exists()) old.delete();
         DownloadManager dm = (DownloadManager) app.getSystemService(Context.DOWNLOAD_SERVICE);
         if (dm == null) return;
+        downloading = true;
         DownloadManager.Request req = new DownloadManager.Request(Uri.parse(APK_URL))
             .setTitle("Echo update")
             .setDescription("Downloading the new version of Echo")
@@ -125,6 +140,7 @@ public final class AppUpdater {
                 } catch (IllegalArgumentException ignored) {
                     // already unregistered
                 }
+                downloading = false;
                 if (!succeeded(dm, id)) {
                     Toast.makeText(app, "Update download failed. Try again later.", Toast.LENGTH_LONG).show();
                     return;
