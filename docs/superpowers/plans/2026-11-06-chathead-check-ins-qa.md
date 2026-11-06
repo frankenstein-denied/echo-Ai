@@ -79,7 +79,8 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 - [ ] Drag to the X, then wait for the next check-in: the bubble comes back with the message, buzz and number.
 - [ ] During sleep time, a dismissed bubble stays gone until the first check-in after sleep.
-- [ ] Between check-ins it stays gone, including across a reboot or an app open.
+- [ ] Opening Echo brings it back at once, and Settings shows `Bubble: on`.
+- [ ] Between check-ins, with Echo closed, it stays gone, including across a reboot.
 - [ ] Tap Type on the notification: the bubble returns with its number.
 - [ ] Turning the setting off and on also brings it back.
 
