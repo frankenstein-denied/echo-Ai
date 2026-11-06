@@ -22,6 +22,7 @@ public class CheckInAlarm extends BroadcastReceiver {
     private static final int REQUEST_NEXT = 4301;
     private static final int REQUEST_RESTART = 4302;
     private static final long RESTART_DELAY_MS = 2_000L;
+    private static final long SOON_MS = 5_000L;
     /** Android calls a receiver hung after 60 seconds. Network timeouts can add up to more than that. */
     private static final long FINISH_BY_MS = 45_000L;
 
@@ -31,7 +32,7 @@ public class CheckInAlarm extends BroadcastReceiver {
         armProvisional(app);
         new Thread(() -> {
             try {
-                CheckInEngine.onAlarm(app);
+                CheckInEngine.onAlarm(app, CheckInRules.WAKE_ALARM);
             } catch (RuntimeException e) {
                 Log.w(TAG, "alarm failed", e);
             } finally {
@@ -91,6 +92,11 @@ public class CheckInAlarm extends BroadcastReceiver {
         }
     }
 
+    /** Replaces the next alarm with one in a few seconds. That run sets the real one again. */
+    static void scheduleSoon(Context ctx) {
+        set(ctx.getApplicationContext(), REQUEST_NEXT, System.currentTimeMillis() + SOON_MS);
+    }
+
     /** One run shortly after the task is swiped away, in case the bubble died with it. Its own slot, so the next check-in stays set. */
     static void scheduleRestart(Context ctx) {
         Context app = ctx.getApplicationContext();
@@ -107,6 +113,30 @@ public class CheckInAlarm extends BroadcastReceiver {
         if (alarms == null) return;
         alarms.cancel(pendingIntent(app, REQUEST_NEXT));
         alarms.cancel(pendingIntent(app, REQUEST_RESTART));
+        noteNextWake(app, 0L);
+    }
+
+    /** The time the next alarm is set for, as Settings shows it, or null with none set. */
+    public static String nextWake(SessionStore store) {
+        long atMs = store.getNextWakeMs();
+        return atMs <= 0 ? null : CheckInRules.when(atMs, System.currentTimeMillis(), TimeZone.getDefault());
+    }
+
+    /** The last background run, as Settings shows it, or null before the first. */
+    public static String lastWake(SessionStore store) {
+        String source = store.getLastWakeSource();
+        if (source == null) return null;
+        String when = CheckInRules.when(store.getLastWakeMs(), System.currentTimeMillis(), TimeZone.getDefault());
+        return CheckInRules.wakeLine(source, when, store.getLastWakeResult());
+    }
+
+    /** Only for Settings, so a failure here must not cost the alarm. */
+    private static void noteNextWake(Context app, long atMs) {
+        try {
+            SessionStore.get(app).setNextWakeMs(atMs);
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "could not save the next wake");
+        }
     }
 
     private static void set(Context app, int requestCode, long atMs) {
@@ -119,6 +149,7 @@ public class CheckInAlarm extends BroadcastReceiver {
             Log.w(TAG, "exact alarm refused, using an inexact one", e);
             alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi);
         }
+        if (requestCode == REQUEST_NEXT) noteNextWake(app, atMs);
     }
 
     private static PendingIntent pendingIntent(Context app, int requestCode) {

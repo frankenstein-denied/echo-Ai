@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { Download, LogOut, Play } from 'lucide-react'
 import { updateCalorieSettings, updateCheckInSettings, watchCalorieSettings, watchCheckInSettings, type UserProfile } from '@/lib/firestore'
-import { bubbleStatusLine, gapParts, parseGap, resolveCheckInSettings, type CheckInSettings, type GapUnit } from '@/lib/echo/check-ins'
+import { bubbleStatusLine, gapIsUnsaved, gapLabel, gapParts, parseGap, resolveCheckInSettings, sleepProblem, wakeStatusLines, type CheckInSettings, type GapUnit } from '@/lib/echo/check-ins'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
@@ -21,11 +21,26 @@ import {
   setNativePinned,
 } from '@/lib/native/echo-bridge'
 
-function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minutes: number) => void }) {
+const SAVED_NOTE_MS = 4000
+
+/** A note that clears itself a few seconds after it is set. */
+function useSavedNote() {
+  const [note, setNote] = useState('')
+  useEffect(() => {
+    if (!note) return
+    const timer = setTimeout(() => setNote(''), SAVED_NOTE_MS)
+    return () => clearTimeout(timer)
+  }, [note])
+  return [note, setNote] as const
+}
+
+function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minutes: number) => Promise<boolean> }) {
   const [text, setText] = useState(() => String(gapParts(minutes).value))
   const [unit, setUnit] = useState<GapUnit>(() => gapParts(minutes).unit)
   const [error, setError] = useState('')
   const [shown, setShown] = useState(minutes)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useSavedNote()
 
   // A failed save or another device moved the gap. What the user typed for this same gap stays as typed.
   if (minutes !== shown) {
@@ -40,10 +55,16 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
 
   const plural = Number(text.trim()) === 1 ? '' : 's'
 
-  const commit = (raw: string, u: GapUnit) => {
-    const next = parseGap(raw, u)
+  const save = async () => {
+    if (busy) return
+    const next = parseGap(text, unit)
     setError(next === null ? 'Choose between 1 minute and 30 days.' : '')
-    if (next !== null && next !== minutes) onSave(next)
+    if (next === null || next === minutes) return
+    setNote('')
+    setBusy(true)
+    const saved = await onSave(next)
+    setBusy(false)
+    if (saved) setNote(`Saved. Next check-in in about ${gapLabel(next)}.`)
   }
 
   return (
@@ -54,19 +75,20 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
           inputMode="numeric"
           value={text}
           aria-invalid={error ? true : undefined}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => commit(text, unit)}
+          onChange={(e) => {
+            setText(e.target.value)
+            setError('')
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Enter') void save()
           }}
         />
         <Select
           aria-label="Check-in gap unit"
           value={unit}
           onChange={(e) => {
-            const u = e.target.value as GapUnit
-            setUnit(u)
-            commit(text, u)
+            setUnit(e.target.value as GapUnit)
+            setError('')
           }}
         >
           <option value="minutes">{`Minute${plural}`}</option>
@@ -74,7 +96,58 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
           <option value="days">{`Day${plural}`}</option>
         </Select>
       </div>
+      <Button variant="secondary" onClick={() => void save()} loading={busy} disabled={!gapIsUnsaved(text, unit, minutes)} className="justify-self-start max-sm:w-full">
+        Save
+      </Button>
       {error && <Alert variant="danger">{error}</Alert>}
+      {note && <p role="status" className="text-xs text-muted-foreground">{note}</p>}
+    </>
+  )
+}
+
+function CheckInSleepField({ start, end, onSave }: { start: string; end: string; onSave: (start: string, end: string) => Promise<boolean> }) {
+  // The inputs can hold a pair that is not saved yet (start equal to end).
+  const [draft, setDraft] = useState({ start, end })
+  const [shown, setShown] = useState({ start, end })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useSavedNote()
+
+  // A failed save or another device moved the times.
+  if (start !== shown.start || end !== shown.end) {
+    setShown({ start, end })
+    setDraft({ start, end })
+    setError('')
+  }
+
+  const change = (next: { start: string; end: string }) => {
+    setDraft(next)
+    setError('')
+  }
+
+  const save = async () => {
+    if (busy) return
+    const problem = sleepProblem(draft.start, draft.end)
+    setError(problem)
+    if (problem) return
+    setNote('')
+    setBusy(true)
+    const saved = await onSave(draft.start, draft.end)
+    setBusy(false)
+    if (saved) setNote('Saved.')
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Sleep starts" type="time" value={draft.start} onChange={(e) => change({ ...draft, start: e.target.value })} />
+        <Input label="Sleep ends" type="time" value={draft.end} onChange={(e) => change({ ...draft, end: e.target.value })} />
+      </div>
+      <Button variant="secondary" onClick={() => void save()} loading={busy} disabled={draft.start === start && draft.end === end} className="justify-self-start max-sm:w-full">
+        Save sleep time
+      </Button>
+      {error && <Alert variant="danger">{error}</Alert>}
+      {note && <p role="status" className="text-xs text-muted-foreground">{note}</p>}
     </>
   )
 }
@@ -99,12 +172,11 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [pinError, setPinError] = useState(false)
   const [batteryOptimized, setBatteryOptimized] = useState(false)
   const [checkIn, setCheckIn] = useState<CheckInSettings>(() => resolveCheckInSettings(profile))
-  // The time inputs can hold a pair that is not saved yet (start equal to end).
-  const [sleep, setSleep] = useState({ start: checkIn.sleepStart, end: checkIn.sleepEnd })
-  const [sleepError, setSleepError] = useState('')
   const [checkInError, setCheckInError] = useState('')
   const [overlayAllowed, setOverlayAllowed] = useState(true)
   const [bubbleLine, setBubbleLine] = useState<string | null>(null)
+  const [wakeLines, setWakeLines] = useState<string[]>([])
+  const [notificationsAllowed, setNotificationsAllowed] = useState(true)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -121,6 +193,17 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
     setPrefs(loadVoicePrefs())
   }, [])
 
+  const readCheckInStatus = () => {
+    getCheckInStatus()
+      .then((s) => {
+        if (!s || !mounted.current) return
+        setOverlayAllowed(s.overlayAllowed)
+        setBubbleLine(bubbleStatusLine(s))
+        setWakeLines(wakeStatusLines(s))
+      })
+      .catch(() => null)
+  }
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     setIsNative(true)
@@ -128,19 +211,11 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
       .then((s) => {
         if (!s || !mounted.current) return
         setPinnedState(s.pinned && s.notificationsAllowed)
+        setNotificationsAllowed(s.notificationsAllowed)
         setBatteryOptimized(s.batteryOptimized)
       })
       .catch(() => null)
 
-    const readCheckInStatus = () => {
-      getCheckInStatus()
-        .then((s) => {
-          if (!s || !mounted.current) return
-          setOverlayAllowed(s.overlayAllowed)
-          setBubbleLine(bubbleStatusLine(s))
-        })
-        .catch(() => null)
-    }
     readCheckInStatus()
 
     // Re-check after returning from the system battery / notification / overlay settings.
@@ -151,6 +226,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
         .then((s) => {
           if (!s || !mounted.current) return
           setPinnedState(s.pinned && s.notificationsAllowed)
+          setNotificationsAllowed(s.notificationsAllowed)
           setBatteryOptimized(s.batteryOptimized)
         })
         .catch(() => null)
@@ -181,7 +257,10 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
       await setNativePinned(true)
       if (mounted.current) setPinnedState(true)
       const s = await getNativeStatus()
-      if (s && mounted.current) setBatteryOptimized(s.batteryOptimized)
+      if (s && mounted.current) {
+        setNotificationsAllowed(s.notificationsAllowed)
+        setBatteryOptimized(s.batteryOptimized)
+      }
     } catch {
       if (mounted.current) setPinError(true)
     } finally {
@@ -219,38 +298,27 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
     [user.uid],
   )
 
-  const showCheckIn = (s: CheckInSettings) => {
-    setCheckIn(s)
-    setSleep({ start: s.sleepStart, end: s.sleepEnd })
-    setSleepError('')
-  }
-
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
-    return watchCheckInSettings(user.uid, showCheckIn, () => {})
+    return watchCheckInSettings(user.uid, setCheckIn, () => {})
   }, [user.uid])
 
-  // No busy state: a save offline only resolves once back online, and the watcher in CheckInsPrompt still tells native.
-  const saveCheckIn = async (patch: Partial<CheckInSettings>) => {
+  // A save offline only resolves once back online, and the watcher in CheckInsPrompt still tells native. True once saved.
+  const saveCheckIn = async (patch: Partial<CheckInSettings>): Promise<boolean> => {
     const prev = checkIn
     const next = { ...checkIn, ...patch }
     setCheckInError('')
-    showCheckIn(next)
+    setCheckIn(next)
     try {
       await updateCheckInSettings(user.uid, patch)
       await setCheckInSettings(next)
+      readCheckInStatus()
+      return true
     } catch (e) {
-      showCheckIn(prev)
+      setCheckIn(prev)
       setCheckInError(e instanceof Error ? e.message : 'Could not save your check-in settings.')
+      return false
     }
-  }
-
-  const changeSleep = (start: string, end: string) => {
-    setSleep({ start, end })
-    if (!start || !end) return setSleepError('Enter both times.')
-    if (start === end) return setSleepError('Sleep start and end must be different.')
-    setSleepError('')
-    void saveCheckIn({ sleepStart: start, sleepEnd: end })
   }
 
   const saveCalories = async (patch: { caloriesEnabled?: boolean; calorieGoal?: number | null }, onFail?: () => void) => {
@@ -390,12 +458,8 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             </div>
             {checkIn.enabled && (
               <div className="mt-4 grid gap-3">
-                <CheckInGapField minutes={checkIn.everyMinutes} onSave={(everyMinutes) => void saveCheckIn({ everyMinutes })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Sleep starts" type="time" value={sleep.start} onChange={(e) => changeSleep(e.target.value, sleep.end)} />
-                  <Input label="Sleep ends" type="time" value={sleep.end} onChange={(e) => changeSleep(sleep.start, e.target.value)} />
-                </div>
-                {sleepError && <Alert variant="danger">{sleepError}</Alert>}
+                <CheckInGapField minutes={checkIn.everyMinutes} onSave={(everyMinutes) => saveCheckIn({ everyMinutes })} />
+                <CheckInSleepField start={checkIn.sleepStart} end={checkIn.sleepEnd} onSave={(sleepStart, sleepEnd) => saveCheckIn({ sleepStart, sleepEnd })} />
               </div>
             )}
             {checkInError && (
@@ -413,7 +477,13 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
                 </Alert>
               </div>
             )}
+            {checkIn.enabled && !notificationsAllowed && (
+              <div className="mt-3">
+                <Alert variant="warning">Notifications are blocked for Echo, so check-ins can&apos;t reach you while the phone is locked or the bubble is gone. Allow them in Android settings.</Alert>
+              </div>
+            )}
             {checkIn.enabled && bubbleLine && <p className="mt-3 text-xs text-muted-foreground">{bubbleLine}</p>}
+            {checkIn.enabled && wakeLines.map((line) => <p key={line} className="mt-1 text-xs text-muted-foreground">{line}</p>)}
             {checkIn.enabled && batteryAdvice}
           </Card>
         )}

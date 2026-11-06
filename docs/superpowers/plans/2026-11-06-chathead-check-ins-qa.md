@@ -21,6 +21,9 @@ Leave the bubble running for 8 hours of normal use, including screen off, a swip
 - [ ] It stays up, dozing, through sleep hours.
 - [ ] A phone with no lock screen still fires check-ins.
 - [ ] Settings shows `Bubble: on` while it runs, and the reason when it can't.
+- [ ] `Last wake` moves on after alarms, and `Next wake` shows a time still ahead. If it is in the past, the alarm was not delivered.
+- [ ] A `worker` line with nothing to do doesn't replace an `alarm` line. A wake on another day shows the day, for example `Next wake: Sat 07:00`.
+- [ ] Block notifications for Echo: Settings warns about it, and the warning goes once they are allowed.
 
 A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one. If so, nothing runs until the app is next opened, and code can't change that. Tell the owner, and check that Auto-start and the recents lock fix it.
 
@@ -57,7 +60,8 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 ## How it reaches you
 
-- [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only.
+- [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only: within about a minute, or about 5 seconds after leaving Echo.
+- [ ] Timing doesn't drift: at a 30-minute gap, check-ins stay on the same half-hour grid across a day. One that was held back is followed by the next on that grid, which can be sooner than a full gap.
 - [ ] That holds for a phone call, a WhatsApp call, and while either is ringing.
 - [ ] Panel open: it appears in chat, with no number and no buzz.
 - [ ] Panel left open, phone locked: a notification arrives.
@@ -104,8 +108,13 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] Changing the gap or sleep time takes effect without a restart.
 - [ ] Message me every shows a number and a Minutes, Hours or Days select, side by side at phone width.
 - [ ] A stored gap opens in its largest whole unit: 120 shows 2 Hours, 1440 shows 1 Day, 90 shows 90 Minutes. The unit names follow the number as it is typed.
-- [ ] The number saves on leaving the field and on Enter. Changing the unit keeps the number and saves.
-- [ ] 31 days, 0, an empty box and 1.5 each show `Choose between 1 minute and 30 days.` and save nothing. Fixing the value clears it.
+- [ ] Nothing saves on leaving the field or changing the unit. Save, or Enter in the box, saves.
+- [ ] Save is disabled until the gap differs from the stored one, and shows busy while saving. The same gap in another unit (120 Minutes for 2 Hours) leaves it disabled.
+- [ ] After saving, `Saved. Next check-in in about <gap>.` shows for a few seconds, and `Next wake` updates.
+- [ ] The first check-in comes one gap after saving. Changing sleep time or the water target doesn't restart the timer.
+- [ ] 31 days, 0, an empty box and 1.5 each show `Choose between 1 minute and 30 days.` on Save and save nothing. Fixing the value clears it.
+- [ ] Sleep time saves only with its Save button, shows `Saved.`, and rejects equal or empty times.
+- [ ] Offline, Save keeps spinning until reconnect (known).
 - [ ] 1 minute and 30 days both save and survive reopening Settings.
 - [ ] At a 1-minute gap, check-ins arrive about every minute with the screen on, and none in sleep time.
 - [ ] At a 2-day gap, the next one comes two days later, or at sleep end if that lands in sleep. The bubble still stays up through the keep-alive.

@@ -147,10 +147,14 @@ public class EchoBridgePlugin extends Plugin {
     public void getCheckInStatus(PluginCall call) {
         boolean removed = false;
         String error = null;
+        String lastWake = null;
+        String nextWake = null;
         try {
             SessionStore store = SessionStore.get(getContext());
             removed = store.isBubbleRemoved();
             error = store.getLastBubbleError();
+            lastWake = CheckInAlarm.lastWake(store);
+            nextWake = CheckInAlarm.nextWake(store);
         } catch (IllegalStateException ignored) {
             // report not removed
         }
@@ -164,6 +168,8 @@ public class EchoBridgePlugin extends Plugin {
         ret.put("batteryOptimized", batteryOptimized());
         ret.put("bubbleRunning", running);
         ret.put("bubbleError", error);
+        ret.put("lastWake", lastWake);
+        ret.put("nextWake", nextWake);
         call.resolve(ret);
     }
 

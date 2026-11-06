@@ -1,5 +1,9 @@
 package com.echo.app.floating;
 
+import com.echo.app.echo.FirestoreJson;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.TimeZone;
 
 /** Pure decisions for chathead check-ins: when one fires, and how it reaches the user. */
@@ -37,10 +41,14 @@ public final class CheckInRules {
     /** A bubble that should be up is looked at this often, day and night. */
     static final long KEEP_ALIVE_MS = 15 * 60_000L;
 
+    public static final String WAKE_ALARM = "alarm";
+    public static final String WAKE_WORKER = "worker";
+
     private static final long MINUTE_MS = 60_000L;
+    private static final long WEEK_MS = 7 * 24 * 60 * MINUTE_MS;
     private static final int DAY_MINUTES = 24 * 60;
     /** A check-in that is due but had to wait. Keeps a waiting alarm from firing again at once. */
-    private static final long RETRY_MS = 5 * MINUTE_MS;
+    private static final long RETRY_MS = MINUTE_MS;
 
     private CheckInRules() {}
 
@@ -67,6 +75,17 @@ public final class CheckInRules {
         return o == Outcome.POPUP || o == Outcome.CHAT_ONLY || o == Outcome.NOTIFY;
     }
 
+    /**
+     * What to store as the last check-in, so lateness doesn't push every later one back: the latest
+     * lastFiredMs + k * gap, k >= 1, that isn't after now. With no such time, or an unset or future
+     * lastFiredMs, now. The next one falls due after now, so one wait can't fire twice.
+     */
+    static long anchoredFireMs(long lastFiredMs, int everyMinutes, long nowMs) {
+        long gapMs = everyMinutes * MINUTE_MS;
+        if (lastFiredMs <= 0 || lastFiredMs > nowMs || nowMs - lastFiredMs < gapMs) return nowMs;
+        return lastFiredMs + (nowMs - lastFiredMs) / gapMs * gapMs;
+    }
+
     /** Nothing fires in sleep time, so a moment inside it moves on to when sleep ends. */
     static long afterSleep(long ms, TimeZone tz, int sleepStartMin, int sleepEndMin) {
         int minute = CheckInPlanner.minuteOfDay(ms, tz);
@@ -83,6 +102,31 @@ public final class CheckInRules {
         long due = lastFiredMs + everyMinutes * MINUTE_MS;
         long checkIn = afterSleep(due > nowMs ? due : nowMs + RETRY_MS, tz, sleepStartMin, sleepEndMin);
         return keepAlive ? Math.min(checkIn, nowMs + KEEP_ALIVE_MS) : checkIn;
+    }
+
+    /** 24-hour HH:MM. */
+    static String clock(int minuteOfDay) {
+        return String.format(Locale.ROOT, "%02d:%02d", minuteOfDay / 60, minuteOfDay % 60);
+    }
+
+    /** The clock time, after the day if that isn't today: a weekday within a week, otherwise the date. */
+    static String when(long atMs, long nowMs, TimeZone tz) {
+        String clock = clock(CheckInPlanner.minuteOfDay(atMs, tz));
+        if (FirestoreJson.dateKey(atMs, tz).equals(FirestoreJson.dateKey(nowMs, tz))) return clock;
+        SimpleDateFormat day = new SimpleDateFormat(Math.abs(atMs - nowMs) < WEEK_MS ? "EEE" : "MMM d", Locale.ENGLISH);
+        day.setTimeZone(tz);
+        return day.format(new Date(atMs)) + " " + clock;
+    }
+
+    /** What Settings shows of the last background run. */
+    static String wakeLine(String source, String when, String result) {
+        return source + " " + when + ": " + result;
+    }
+
+    /** A worker run that did nothing must not hide the evidence that the alarm was delivered. */
+    static boolean keepsLastWake(String source, String result, String lastSource) {
+        return WAKE_WORKER.equals(source) && WAKE_ALARM.equals(lastSource)
+            && (Outcome.NOT_DUE.name().equals(result) || Outcome.SLEEPING.name().equals(result));
     }
 
     /** Whether a failed restart may fall back to putting a visible window on screen. */

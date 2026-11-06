@@ -42,6 +42,23 @@ export function parseGap(raw: string, unit: GapUnit): number | null {
   return isGap(minutes) ? minutes : null
 }
 
+/** Whether Save has anything to do. An invalid box counts, so Save can say why. The same gap in another unit doesn't. */
+export function gapIsUnsaved(raw: string, unit: GapUnit, stored: number): boolean {
+  return parseGap(raw, unit) !== stored
+}
+
+/** A gap in words, in its largest whole unit: `2 hours`, `1 day`, `90 minutes`. */
+export function gapLabel(minutes: number): string {
+  const { value, unit } = gapParts(minutes)
+  return `${value} ${value === 1 ? unit.slice(0, -1) : unit}`
+}
+
+/** What is wrong with a sleep window, or an empty string if it can be saved. */
+export function sleepProblem(start: string, end: string): string {
+  if (!start || !end) return 'Enter both times.'
+  return start === end ? 'Sleep start and end must be different.' : ''
+}
+
 /** The typed water target, or null unless it is a whole number in range. */
 export function parseWaterGoal(raw: string): number | null {
   const t = raw.trim()
@@ -59,6 +76,14 @@ export function bubbleStatusLine(s: { bubbleRunning?: boolean; bubbleError?: str
   if (s.bubbleRunning === undefined) return null
   if (s.bubbleError) return `Bubble isn't running (${s.bubbleError})`
   return s.bubbleRunning ? 'Bubble: on' : "Bubble isn't running"
+}
+
+/** The muted Settings lines about background runs. An older APK reports neither, and nothing shows. */
+export function wakeStatusLines(s: { lastWake?: string | null; nextWake?: string | null }): string[] {
+  const lines: string[] = []
+  if (s.lastWake) lines.push(`Last wake: ${s.lastWake}`)
+  if (s.nextWake) lines.push(`Next wake: ${s.nextWake}`)
+  return lines
 }
 
 // Absent or bad fields read as the defaults. An absent switch reads as on, unless onboarding said no to reminders.

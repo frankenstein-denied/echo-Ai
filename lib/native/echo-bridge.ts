@@ -15,6 +15,9 @@ export type CheckInStatus = {
   /** Absent on APKs before 1.6. */
   bubbleRunning?: boolean
   bubbleError?: string | null
+  /** Absent on APKs before 1.11. */
+  lastWake?: string | null
+  nextWake?: string | null
 }
 
 export type EchoSession = { uid: string; refreshToken: string; apiKey: string; projectId: string }

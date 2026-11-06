@@ -46,6 +46,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         FloatState.appInForeground = false;
+        CheckInEngine.onAppLeft(this);
         super.onPause();
     }
 

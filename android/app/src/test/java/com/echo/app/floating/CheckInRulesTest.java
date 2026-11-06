@@ -253,12 +253,12 @@ public class CheckInRulesTest {
 
     @Test public void overdueCheckInRetriesInsteadOfFiringAtOnce() {
         long now = at(6, 15, 0);
-        assertEquals(now + 5 * MINUTE_MS, alarm(at(6, 12, 0), 120, now, false));
+        assertEquals(now + MINUTE_MS, alarm(at(6, 12, 0), 120, now, false));
     }
 
     @Test public void checkInDueThisInstantStillRetries() {
         long now = at(6, 14, 0);
-        assertEquals(now + 5 * MINUTE_MS, alarm(at(6, 12, 0), 120, now, false));
+        assertEquals(now + MINUTE_MS, alarm(at(6, 12, 0), 120, now, false));
     }
 
     @Test public void overdueRetryDoesNotWakeTheUserInSleep() {
@@ -285,11 +285,83 @@ public class CheckInRulesTest {
 
     @Test public void keepAliveBeatsTheRetryOnlyWhenSooner() {
         long now = at(6, 15, 0);
-        assertEquals(now + 5 * MINUTE_MS, alarm(at(6, 12, 0), 120, now, true));
+        assertEquals(now + MINUTE_MS, alarm(at(6, 12, 0), 120, now, true));
     }
 
     @Test public void bubbleNeedsCheckInsOnAndSignIn() {
         assertFalse(CheckInRules.shouldStartBubble(false, true, true, false));
         assertFalse(CheckInRules.shouldStartBubble(true, false, true, false));
+    }
+
+    // ---- no drift ----
+
+    @Test public void onTimeKeepsTheScheduledTime() {
+        assertEquals(at(6, 14, 0), CheckInRules.anchoredFireMs(at(6, 12, 0), 120, at(6, 14, 0)));
+    }
+
+    @Test public void lateByLessThanAGapKeepsTheScheduledTime() {
+        assertEquals(at(6, 14, 0), CheckInRules.anchoredFireMs(at(6, 12, 0), 120, at(6, 14, 7)));
+    }
+
+    @Test public void lateBySeveralGapsLandsOnTheLatestScheduledTime() {
+        assertEquals(at(6, 20, 0), CheckInRules.anchoredFireMs(at(6, 12, 0), 120, at(6, 21, 30)));
+    }
+
+    @Test public void afterSleepTheNextCheckInIsStillAhead() {
+        long now = at(7, 7, 0);
+        long stored = CheckInRules.anchoredFireMs(at(6, 21, 0), 180, now);
+        assertEquals(at(7, 6, 0), stored);
+        assertTrue(stored + 180 * MINUTE_MS > now);
+    }
+
+    @Test public void unsetOrFutureLastFiredReturnsNow() {
+        assertEquals(at(6, 12, 0), CheckInRules.anchoredFireMs(0, 120, at(6, 12, 0)));
+        assertEquals(at(6, 12, 0), CheckInRules.anchoredFireMs(at(6, 13, 0), 120, at(6, 12, 0)));
+    }
+
+    @Test public void notYetDueReturnsNow() {
+        assertEquals(at(6, 13, 0), CheckInRules.anchoredFireMs(at(6, 12, 0), 120, at(6, 13, 0)));
+    }
+
+    // ---- the wake lines ----
+
+    @Test public void clockIsTwentyFourHourWithLeadingZeros() {
+        assertEquals("00:05", CheckInRules.clock(5));
+        assertEquals("09:30", CheckInRules.clock(9 * 60 + 30));
+        assertEquals("18:40", CheckInRules.clock(18 * 60 + 40));
+    }
+
+    @Test public void wakeLineShowsTheSourceTimeAndResult() {
+        assertEquals("alarm 18:40: POPUP", CheckInRules.wakeLine("alarm", "18:40", "POPUP"));
+        assertEquals("worker Sat 07:02: no profile", CheckInRules.wakeLine("worker", "Sat 07:02", "no profile"));
+    }
+
+    @Test public void todayShowsOnlyTheClock() {
+        assertEquals("18:40", CheckInRules.when(at(6, 18, 40), at(6, 9, 0), TZ));
+    }
+
+    @Test public void anotherDayShowsItsWeekday() {
+        assertEquals("Sat 07:00", CheckInRules.when(at(7, 7, 0), at(6, 22, 0), TZ));
+        assertEquals("Thu 23:50", CheckInRules.when(at(5, 23, 50), at(6, 0, 10), TZ));
+    }
+
+    @Test public void aWeekOrMoreAwayShowsTheDate() {
+        assertEquals("Nov 13 07:00", CheckInRules.when(at(13, 7, 0), at(6, 7, 0), TZ));
+    }
+
+    @Test public void aWorkerThatDidNothingKeepsTheAlarmLine() {
+        assertTrue(CheckInRules.keepsLastWake("worker", "NOT_DUE", "alarm"));
+        assertTrue(CheckInRules.keepsLastWake("worker", "SLEEPING", "alarm"));
+    }
+
+    @Test public void aWorkerThatFiresOrFindsNoAlarmLineStillWrites() {
+        assertFalse(CheckInRules.keepsLastWake("worker", "NOTIFY", "alarm"));
+        assertFalse(CheckInRules.keepsLastWake("worker", "NOT_DUE", "worker"));
+        assertFalse(CheckInRules.keepsLastWake("worker", "NOT_DUE", "boot"));
+        assertFalse(CheckInRules.keepsLastWake("worker", "NOT_DUE", null));
+    }
+
+    @Test public void anAlarmAlwaysWrites() {
+        assertFalse(CheckInRules.keepsLastWake("alarm", "NOT_DUE", "alarm"));
     }
 }

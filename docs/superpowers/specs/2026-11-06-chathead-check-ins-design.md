@@ -72,7 +72,7 @@ Only one check-in can be waiting; they never stack. Unread check-ins never hold 
 
 The notification is on its own channel, `echo_checkins`, at high importance, and has one fixed id, so a new one replaces the last. Tapping it brings the chathead up through Type (a tap is a visible moment), or opens the Diary if the overlay is not allowed. It clears when unread clears.
 
-The gap is measured from the last check-in. Signed-out users get nothing.
+The gap is measured from when the last check-in was scheduled, not from when it finally fired, so lateness doesn't push every later one back. A check-in that waited can therefore be followed by the next one sooner than a full gap. Signed-out users get nothing.
 
 ## Settings
 
@@ -81,8 +81,8 @@ New card in Settings, "Echo check-ins", shown only in the Android app (`isNative
 | Setting | Default | Notes |
 |---|---|---|
 | Check-ins on or off | On | Off removes the bubble's auto-firing. It does not delete messages. |
-| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 1 minute to 30 days (1 minute is for testing; raise it before the public release) (owner's decision). Saves on blur, Enter or a unit change. Out of range shows `Choose between 5 minutes and 30 days.` and saves nothing. Stored as whole minutes, 5 to 43200; anything else reads as 120. |
-| Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. |
+| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 1 minute to 30 days (1 minute is for testing; raise it before the public release) (owner's decision). Saves with its Save button, or Enter in the box. Save is disabled until the gap differs from the stored one. Saving shows `Saved. Next check-in in about <gap>.` and restarts the timer, so the first check-in comes one gap later. Other settings don't restart it. Out of range shows `Choose between 1 minute and 30 days.` and saves nothing. Stored as whole minutes, 1 to 43200; anything else reads as 120. |
+| Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. Saves with its own Save button and shows `Saved.` |
 
 Water target: editable on the Health page beside the water figure, default 8 glasses, whole numbers 1 to 30 (range is my call). It replaces the fixed `WATER_TARGET` in `lib/echo/body-fill.ts`, and it applies on the web too. Past days use the current target.
 
@@ -94,13 +94,21 @@ Android does not let an app grant itself this. After sign-in and onboarding, the
 
 The same card keeps the TECNO auto-start and recents-lock advice visible whenever check-ins are on, because a force-stop cancels Echo's alarms and nothing in the app can undo that. The battery optimization button shows while Echo is still optimized. Android 13+ also needs notification permission for the notification path, so it is requested once check-ins are on.
 
-The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. Older APKs report neither field and the line is left out.
+The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. APKs before 1.6 report neither field and the line is left out.
+
+Two more muted lines show what the background is doing, on 1.11 and later:
+
+- `Last wake: alarm 18:40: POPUP`: the last background run, as `<source> <time>: <result>`. The source is `alarm`, `worker` or `boot`. The result is the decided outcome, or `signed out` or `no profile`. A worker run that finds `NOT_DUE` or `SLEEPING` doesn't replace an `alarm` line, so the line keeps the evidence that the alarm was delivered.
+- `Next wake: 18:45`: when the next alarm is set for. A time in the past means the alarm was not delivered.
+- Both times show only the clock for today, the weekday for another day within a week (`Sat 07:00`), and otherwise the date (`Nov 13 07:00`).
+
+If notifications are blocked for Echo, the card warns that check-ins can't reach the user while the phone is locked or the bubble is gone.
 
 ## How it works (decided)
 
 - **Android native does the firing.** The question is chosen on the phone with no AI call and no web page involved. This is what keeps it fast.
 - **An exact alarm drives firing (owner's decision).** `CheckInAlarm` uses `setExactAndAllowWhileIdle` with `USE_EXACT_ALARM`, which is auto-granted; the app is sideloaded, so Play policy does not apply. It falls back to an inexact alarm on a `SecurityException`. It does not depend on the app being open or a bubble already running. It is set again after every fire and every run, from `RefreshWorker.sync`, on boot and package replaced, and on a settings change, and cancelled on sign-out and when check-ins are off.
-- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 5 minutes, so a waiting alarm can't spin. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
+- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 1 minute, so a waiting alarm can't spin. When the full app leaves the screen with a check-in due, the alarm is set about 5 seconds out. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
 - **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day, with `stopWithTask="false"`. Its own timer fires while the screen is usable, and a screen-unlock listener catches anything due. With the screen off the timer stops and firing belongs to the alarm. On a locked screen the timer keeps running, so the engine and the alarm can both find a check-in due; only the first to claim it fires.
 - **Coming back after a kill.** On every alarm, if the bubble is wanted and not running, it restarts, without firing unless a check-in is due. A swipe from recents also sets a one-off alarm 2 seconds later (`onTaskRemoved`), in case the bubble died with the task. Removed bubbles, signed-out users and check-ins off never restart.
 - **How it restarts (`BubbleBringUp`).** Exact alarms are exempt from background start limits, so the alarm calls `startForegroundService` directly. If that fails, outside calls and sleep time, a stand-in bubble is added as an overlay window first, because on Android 15 an app with the overlay permission may start a foreground service from the background only while an overlay window is visible. It comes down once the real head is up. With the screen off that fallback can't work, since the window never becomes visible. Every failure is kept in `lastBubbleError`.
@@ -168,7 +176,7 @@ How:
 
 1. **Phone test first.** Nothing about the floating features has a long track record on the TECNO. Before building it all, prove on the phone that the bubble survives a day with the screen on and off, and find out what happens after HiOS kills it, including whether "show the overlay, then start the service" works from `RefreshWorker`. If it cannot come back reliably, the fallback is that check-ins arrive as notifications and the bubble returns the next time the app or notification is opened.
 2. Rules, then web, then native. Deploy rules before web. Web must work with older APKs that know nothing of the new bridge call.
-3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 7 / 1.6, then `scripts/release-android.sh`).
+3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 12 / 1.11, then `scripts/release-android.sh`).
 
 Android 12+ blocks touches through opaque overlays, so check on the phone that the small message and bubble don't interfere with the app below.
 

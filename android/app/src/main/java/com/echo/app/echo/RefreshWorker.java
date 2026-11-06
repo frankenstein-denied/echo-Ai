@@ -12,6 +12,7 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
+import com.echo.app.floating.CheckInRules;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -72,7 +73,7 @@ public class RefreshWorker extends Worker {
         // refresh() no-ops unless pinned and signed in, and swallows background-start restrictions.
         PinnedController.refresh(getApplicationContext());
         try {
-            CheckInEngine.onAlarm(getApplicationContext());
+            CheckInEngine.onAlarm(getApplicationContext(), CheckInRules.WAKE_WORKER);
         } catch (RuntimeException e) {
             Log.w("CheckInTiming", "background check-in failed", e); // the next run tries again
         } finally {
