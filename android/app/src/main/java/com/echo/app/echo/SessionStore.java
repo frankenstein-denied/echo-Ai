@@ -52,10 +52,13 @@ public final class SessionStore {
             .remove("idToken").remove("idTokenExpiresAtMs").apply();
     }
 
-    /** Clears the session and token cache; keeps UI prefs (pinned, tab, batteryPrompted). */
+    /** Clears the session, token cache and check-in state; keeps UI prefs (pinned, tab, batteryPrompted). */
     public synchronized void clearSession() {
         prefs.edit().remove("uid").remove("refreshToken").remove("apiKey").remove("projectId")
-            .remove("idToken").remove("idTokenExpiresAtMs").apply();
+            .remove("idToken").remove("idTokenExpiresAtMs")
+            .remove("lastFiredMs").remove("lastTopic").remove("unreadCount").remove("quietUnread")
+            .remove("bubbleRemoved").remove("pendingCheckInId").remove("pendingCheckInText")
+            .remove("cachedPrefsJson").apply();
     }
 
     public synchronized boolean hasSession() {
@@ -96,4 +99,28 @@ public final class SessionStore {
 
     public boolean isBatteryPrompted() { return prefs.getBoolean("batteryPrompted", false); }
     public void setBatteryPrompted(boolean v) { prefs.edit().putBoolean("batteryPrompted", v).apply(); }
+
+    public long getLastFiredMs() { return prefs.getLong("lastFiredMs", 0L); }
+    public void setLastFiredMs(long v) { prefs.edit().putLong("lastFiredMs", v).apply(); }
+
+    public String getLastTopic() { return prefs.getString("lastTopic", null); }
+    public void setLastTopic(String v) { prefs.edit().putString("lastTopic", v).apply(); }
+
+    public int getUnreadCount() { return prefs.getInt("unreadCount", 0); }
+    public void setUnreadCount(int v) { prefs.edit().putInt("unreadCount", v).apply(); }
+
+    public int getQuietUnread() { return prefs.getInt("quietUnread", 0); }
+    public void setQuietUnread(int v) { prefs.edit().putInt("quietUnread", v).apply(); }
+
+    public boolean isBubbleRemoved() { return prefs.getBoolean("bubbleRemoved", false); }
+    public void setBubbleRemoved(boolean v) { prefs.edit().putBoolean("bubbleRemoved", v).apply(); }
+
+    public String getPendingCheckInId() { return prefs.getString("pendingCheckInId", null); }
+    public void setPendingCheckInId(String v) { prefs.edit().putString("pendingCheckInId", v).apply(); }
+
+    public String getPendingCheckInText() { return prefs.getString("pendingCheckInText", null); }
+    public void setPendingCheckInText(String v) { prefs.edit().putString("pendingCheckInText", v).apply(); }
+
+    public String getCachedPrefsJson() { return prefs.getString("cachedPrefsJson", null); }
+    public void setCachedPrefsJson(String v) { prefs.edit().putString("cachedPrefsJson", v).apply(); }
 }

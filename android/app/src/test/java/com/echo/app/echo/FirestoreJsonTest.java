@@ -2,10 +2,12 @@ package com.echo.app.echo;
 
 import static org.junit.Assert.*;
 
+import com.echo.app.floating.TodaySnapshot;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -169,5 +171,268 @@ public class FirestoreJsonTest {
 
     @Test public void latestNotesQueryAsksServerForNewestFirst() {
         assertEquals("?pageSize=3&orderBy=updatedAt%20desc", FirestoreJson.latestNotesQuery(3));
+    }
+
+    private static String profile(String fields) {
+        return "{\"name\":\"projects/p/databases/(default)/documents/users/u\",\"fields\":{" + fields + "}}";
+    }
+
+    @Test public void profileDefaultsAndOnboardingNo() {
+        CheckInPrefs p = FirestoreJson.parseProfile("{\"fields\":{}}");
+        assertTrue(p.enabled);
+        assertEquals(120, p.everyMinutes);
+        assertEquals(22 * 60, p.sleepStartMin);
+        assertEquals(7 * 60, p.sleepEndMin);
+        assertEquals(8, p.waterGoal);
+        assertTrue(p.caloriesEnabled);
+        assertNull(p.calorieGoal);
+        assertFalse(FirestoreJson.parseProfile("{\"fields\":{\"remindersEnabled\":{\"booleanValue\":false}}}").enabled);
+    }
+
+    @Test public void profileExplicitSwitchBeatsOnboardingAnswer() {
+        assertTrue(FirestoreJson.parseProfile(profile(
+            "\"remindersEnabled\":{\"booleanValue\":false},\"checkInsEnabled\":{\"booleanValue\":true}")).enabled);
+        assertFalse(FirestoreJson.parseProfile(profile(
+            "\"remindersEnabled\":{\"booleanValue\":true},\"checkInsEnabled\":{\"booleanValue\":false}")).enabled);
+        assertFalse(FirestoreJson.parseProfile(profile(
+            "\"remindersEnabled\":{\"booleanValue\":false},\"checkInsEnabled\":{\"stringValue\":\"yes\"}")).enabled);
+    }
+
+    @Test public void profileReadsStoredValues() {
+        CheckInPrefs p = FirestoreJson.parseProfile(profile(
+            "\"checkInEveryMinutes\":{\"integerValue\":\"30\"},\"sleepStart\":{\"stringValue\":\"23:15\"},"
+            + "\"sleepEnd\":{\"stringValue\":\"06:05\"},\"waterGoal\":{\"integerValue\":\"12\"},"
+            + "\"caloriesEnabled\":{\"booleanValue\":false},\"calorieGoal\":{\"integerValue\":\"1800\"}"));
+        assertEquals(30, p.everyMinutes);
+        assertEquals(23 * 60 + 15, p.sleepStartMin);
+        assertEquals(6 * 60 + 5, p.sleepEndMin);
+        assertEquals(12, p.waterGoal);
+        assertFalse(p.caloriesEnabled);
+        assertEquals(Integer.valueOf(1800), p.calorieGoal);
+    }
+
+    @Test public void profileBadStoredValuesFallBack() {
+        CheckInPrefs p = FirestoreJson.parseProfile(profile(
+            "\"checkInEveryMinutes\":{\"integerValue\":\"45\"},\"sleepStart\":{\"stringValue\":\"24:00\"},"
+            + "\"sleepEnd\":{\"stringValue\":\"7:00\"},\"waterGoal\":{\"integerValue\":\"31\"},"
+            + "\"calorieGoal\":{\"stringValue\":\"1800\"}"));
+        assertEquals(120, p.everyMinutes);
+        assertEquals(22 * 60, p.sleepStartMin);
+        assertEquals(7 * 60, p.sleepEndMin);
+        assertEquals(8, p.waterGoal);
+        assertNull(p.calorieGoal);
+        assertEquals(8, FirestoreJson.parseProfile(profile("\"waterGoal\":{\"integerValue\":\"0\"}")).waterGoal);
+        assertEquals(8, FirestoreJson.parseProfile(profile("\"waterGoal\":{\"doubleValue\":2.5}")).waterGoal);
+        assertEquals(8, FirestoreJson.parseProfile(profile("\"waterGoal\":{\"stringValue\":\"9\"}")).waterGoal);
+        assertEquals(120, FirestoreJson.parseProfile(profile("\"checkInEveryMinutes\":{\"stringValue\":\"60\"}")).everyMinutes);
+    }
+
+    @Test public void profileUnreadableDocReadsAsDefaults() {
+        assertTrue(FirestoreJson.parseProfile(null).enabled);
+        assertEquals(120, FirestoreJson.parseProfile("not json").everyMinutes);
+    }
+
+    @Test public void prefsDefaultsMatchTheWeb() {
+        CheckInPrefs p = CheckInPrefs.defaults();
+        assertTrue(p.enabled);
+        assertEquals(120, p.everyMinutes);
+        assertEquals(1320, p.sleepStartMin);
+        assertEquals(420, p.sleepEndMin);
+        assertEquals(8, p.waterGoal);
+        assertTrue(p.caloriesEnabled);
+        assertNull(p.calorieGoal);
+    }
+
+    @Test public void oldHealthLogWithOnlyMoodCounts() {
+        TodaySnapshot s = new TodaySnapshot();
+        FirestoreJson.applyHealthLog("{\"fields\":{\"mood\":{\"integerValue\":\"7\"}}}", s);
+        assertTrue(s.moodLogged);
+        assertNull(s.moodTag);
+        assertFalse(s.energyLogged);
+        assertEquals(0, s.waterGlasses);
+    }
+
+    @Test public void healthLogReadsEverything() {
+        TodaySnapshot s = new TodaySnapshot();
+        FirestoreJson.applyHealthLog("{\"fields\":{\"moodTag\":{\"stringValue\":\"happy\"},"
+            + "\"energy\":{\"stringValue\":\"low\"},\"waterGlasses\":{\"integerValue\":\"3\"}}}", s);
+        assertTrue(s.moodLogged);
+        assertEquals("happy", s.moodTag);
+        assertTrue(s.energyLogged);
+        assertEquals("low", s.energy);
+        assertEquals(3, s.waterGlasses);
+    }
+
+    @Test public void emptyHealthLogLogsNothing() {
+        TodaySnapshot s = new TodaySnapshot();
+        FirestoreJson.applyHealthLog("{\"fields\":{\"waterGlasses\":{\"integerValue\":\"0\"}}}", s);
+        assertFalse(s.moodLogged);
+        assertFalse(s.energyLogged);
+        assertNull(s.energy);
+        FirestoreJson.applyHealthLog(null, s);
+        assertFalse(s.moodLogged);
+    }
+
+    @Test public void mealsAddUpAndLowercaseTheirTypes() {
+        TodaySnapshot s = new TodaySnapshot();
+        FirestoreJson.applyMeals("[{\"document\":{\"name\":\"x/meals/m1\",\"fields\":{"
+            + "\"mealType\":{\"stringValue\":\"breakfast\"},\"totalCalories\":{\"integerValue\":\"350\"}}},\"readTime\":\"t\"},"
+            + "{\"document\":{\"name\":\"x/meals/m2\",\"fields\":{"
+            + "\"mealType\":{\"stringValue\":\"Lunch\"},\"totalCalories\":{\"integerValue\":\"190\"}}},\"readTime\":\"t\"}]", s);
+        assertEquals(540, s.kcalToday);
+        assertEquals(2, s.mealTypes.size());
+        assertTrue(s.mealTypes.contains("breakfast"));
+        assertTrue(s.mealTypes.contains("lunch"));
+    }
+
+    @Test public void noMealsLeavesAnEmptySet() {
+        TodaySnapshot s = new TodaySnapshot();
+        s.mealTypes = null;
+        FirestoreJson.applyMeals("[{\"readTime\":\"t\"}]", s);
+        assertEquals(0, s.kcalToday);
+        assertNotNull(s.mealTypes);
+        assertTrue(s.mealTypes.isEmpty());
+    }
+
+    @Test public void mealsQueryAsksForOneDay() throws Exception {
+        JSONObject q = new JSONObject(FirestoreJson.mealsQuery("2026-11-06")).getJSONObject("structuredQuery");
+        assertEquals("meals", q.getJSONArray("from").getJSONObject(0).getString("collectionId"));
+        JSONObject f = q.getJSONObject("where").getJSONObject("fieldFilter");
+        assertEquals("date", f.getJSONObject("field").getString("fieldPath"));
+        assertEquals("EQUAL", f.getString("op"));
+        assertEquals("2026-11-06", f.getJSONObject("value").getString("stringValue"));
+    }
+
+    private static final String PAGE = "projects/p/databases/(default)/documents/users/u/diaryPages/pg";
+    private static final String MESSAGE = PAGE + "/messages/m1";
+
+    private static void assertTransforms(JSONObject write, String... fields) throws Exception {
+        JSONArray t = write.getJSONArray("updateTransforms");
+        assertEquals(fields.length, t.length());
+        for (int i = 0; i < fields.length; i++) {
+            assertEquals(fields[i], t.getJSONObject(i).getString("fieldPath"));
+            assertEquals("REQUEST_TIME", t.getJSONObject(i).getString("setToServerValue"));
+        }
+    }
+
+    @Test public void checkInCommitLeavesPreviewAlone() throws Exception {
+        JSONArray writes = new JSONObject(FirestoreJson.buildCheckInCommit(PAGE, MESSAGE, "Had lunch yet?", null))
+            .getJSONArray("writes");
+        assertEquals(2, writes.length());
+
+        JSONObject message = writes.getJSONObject(0);
+        assertEquals(MESSAGE, message.getJSONObject("update").getString("name"));
+        JSONObject f = message.getJSONObject("update").getJSONObject("fields");
+        assertEquals(4, f.length());
+        assertEquals("assistant", f.getJSONObject("role").getString("stringValue"));
+        assertEquals("Had lunch yet?", f.getJSONObject("text").getString("stringValue"));
+        assertEquals("general", f.getJSONObject("category").getString("stringValue"));
+        assertTrue(f.getJSONObject("checkIn").getBoolean("booleanValue"));
+        assertTransforms(message, "createdAt");
+        assertFalse(message.getJSONObject("currentDocument").getBoolean("exists"));
+        assertFalse(message.has("updateMask"));
+
+        JSONObject page = writes.getJSONObject(1);
+        assertEquals(PAGE, page.getJSONObject("update").getString("name"));
+        assertEquals(0, page.getJSONObject("update").getJSONObject("fields").length());
+        assertEquals(0, page.getJSONObject("updateMask").getJSONArray("fieldPaths").length());
+        assertTransforms(page, "updatedAt");
+        assertTrue(page.getJSONObject("currentDocument").getBoolean("exists"));
+        assertFalse(page.toString().contains("preview"));
+        assertFalse(page.toString().contains("messageCount"));
+        assertFalse(page.toString().contains("lastMessageAt"));
+    }
+
+    @Test public void checkInCommitCreatesPageWhenNeeded() throws Exception {
+        JSONArray writes = new JSONObject(FirestoreJson.buildCheckInCommit(PAGE, MESSAGE, "Hi", "Fri, Nov 6"))
+            .getJSONArray("writes");
+        assertEquals(2, writes.length());
+        assertEquals(MESSAGE, writes.getJSONObject(0).getJSONObject("update").getString("name"));
+
+        JSONObject page = writes.getJSONObject(1);
+        assertEquals(PAGE, page.getJSONObject("update").getString("name"));
+        JSONObject f = page.getJSONObject("update").getJSONObject("fields");
+        assertEquals(3, f.length());
+        assertEquals("Fri, Nov 6", f.getJSONObject("title").getString("stringValue"));
+        assertEquals("", f.getJSONObject("preview").getString("stringValue"));
+        assertEquals("0", f.getJSONObject("messageCount").getString("integerValue"));
+        assertFalse(page.getJSONObject("currentDocument").getBoolean("exists"));
+        assertFalse(page.has("updateMask"));
+        assertTransforms(page, "createdAt", "updatedAt", "lastMessageAt");
+    }
+
+    private static String pageEntry(String id, String createdAt) {
+        String created = createdAt == null ? "" : "\"createdAt\":{\"timestampValue\":\"" + createdAt + "\"}";
+        return "{\"document\":{\"name\":\"x/diaryPages/" + id + "\",\"fields\":{" + created + "}},\"readTime\":\"t\"}";
+    }
+
+    private static final TimeZone MANILA = TimeZone.getTimeZone("GMT+08:00");
+    private static final long NOV_6_10AM_MANILA = 1793930400000L; // 2026-11-06T02:00:00Z
+
+    @Test public void pickTodayPageUsesLocalDay() {
+        assertEquals("2026-11-06T02:00:00Z", FirestoreJson.toRfc3339(NOV_6_10AM_MANILA));
+        // 23:30 and 00:30 local time: either side of midnight in UTC+8, but the same day in UTC.
+        String json = "[" + pageEntry("yesterday", "2026-11-05T15:30:00Z") + ","
+            + pageEntry("today", "2026-11-05T16:30:00Z") + "]";
+        assertEquals("today", FirestoreJson.pickTodayPageId(json, NOV_6_10AM_MANILA, MANILA));
+    }
+
+    @Test public void pickTodayPageTakesTheFirstMatch() {
+        String json = "[" + pageEntry("newest", "2026-11-06T00:30:00Z") + ","
+            + pageEntry("older", "2026-11-06T01:00:00Z") + "]";
+        assertEquals("newest", FirestoreJson.pickTodayPageId(json, NOV_6_10AM_MANILA, MANILA));
+    }
+
+    @Test public void pickTodayPageIsNullWhenNoneFits() {
+        assertNull(FirestoreJson.pickTodayPageId("[" + pageEntry("yesterday", "2026-11-05T15:30:00Z") + "]", NOV_6_10AM_MANILA, MANILA));
+        assertNull(FirestoreJson.pickTodayPageId("[" + pageEntry("undated", null) + "]", NOV_6_10AM_MANILA, MANILA));
+        assertNull(FirestoreJson.pickTodayPageId("[{\"readTime\":\"t\"}]", NOV_6_10AM_MANILA, MANILA));
+        assertNull(FirestoreJson.pickTodayPageId(null, NOV_6_10AM_MANILA, MANILA));
+    }
+
+    @Test public void todaysPageQueryListsNewestUpdatedFirst() throws Exception {
+        JSONObject q = new JSONObject(FirestoreJson.todaysPageQuery()).getJSONObject("structuredQuery");
+        assertEquals("diaryPages", q.getJSONArray("from").getJSONObject(0).getString("collectionId"));
+        JSONObject order = q.getJSONArray("orderBy").getJSONObject(0);
+        assertEquals("updatedAt", order.getJSONObject("field").getString("fieldPath"));
+        assertEquals("DESCENDING", order.getString("direction"));
+        assertTrue(q.getInt("limit") > 0);
+        assertFalse(q.has("where"));
+    }
+
+    @Test public void dateKeyAndPageTitleUseLocalTime() {
+        long lateNov5Utc = NOV_6_10AM_MANILA - 9 * 3_600_000L - 30 * 60_000L;
+        assertEquals("2026-11-05T16:30:00Z", FirestoreJson.toRfc3339(lateNov5Utc));
+        assertEquals("2026-11-06", FirestoreJson.dateKey(lateNov5Utc, MANILA));
+        assertEquals("2026-11-05", FirestoreJson.dateKey(lateNov5Utc, TimeZone.getTimeZone("UTC")));
+        assertEquals("Fri, Nov 6", FirestoreJson.pageTitle(lateNov5Utc, MANILA));
+    }
+
+    private static TodaySnapshot snapshot(String dateKey, long fetchedAtMs) {
+        TodaySnapshot s = new TodaySnapshot();
+        s.dateKey = dateKey;
+        s.fetchedAtMs = fetchedAtMs;
+        return s;
+    }
+
+    @Test public void freshSnapshotFromTodayIsUsable() {
+        long now = NOV_6_10AM_MANILA;
+        assertTrue(FirestoreJson.snapshotIsUsable(snapshot("2026-11-06", now - 119 * 60_000L), "2026-11-06", now));
+    }
+
+    @Test public void snapshotFromYesterdayIsNotUsable() {
+        long now = NOV_6_10AM_MANILA;
+        TodaySnapshot s = snapshot("2026-11-06", now - 10 * 60_000L);
+        assertFalse(FirestoreJson.snapshotIsUsable(s, "2026-11-07", now));
+    }
+
+    @Test public void snapshotOlderThanTwoHoursIsNotUsable() {
+        long now = NOV_6_10AM_MANILA;
+        assertFalse(FirestoreJson.snapshotIsUsable(snapshot("2026-11-06", now - 121 * 60_000L), "2026-11-06", now));
+        assertFalse(FirestoreJson.snapshotIsUsable(snapshot("2026-11-06", now - 120 * 60_000L), "2026-11-06", now));
+    }
+
+    @Test public void missingSnapshotIsNotUsable() {
+        assertFalse(FirestoreJson.snapshotIsUsable(null, "2026-11-06", NOV_6_10AM_MANILA));
     }
 }
