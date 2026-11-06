@@ -38,6 +38,8 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.ServiceCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import com.echo.app.MainActivity;
 import com.echo.app.R;
 import com.echo.app.echo.DeepLinks;
@@ -64,6 +66,8 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final float TARGET_BOTTOM_DP = 48f;
     private static final float PANEL_MARGIN_DP = 12f;
     private static final float PANEL_TOP_DP = 48f;
+    private static final float PANEL_MIN_DP = 200f;
+    private static final int NO_SAVED_Y = -1;
     private static final float PANEL_HEIGHT_FRACTION = 0.8f;
     static final float DIM_WINDOW_ALPHA = 0.8f; // Android 12+ blocks touches through anything more opaque
     private static final float MESSAGE_MAX_WIDTH_DP = 240f;
@@ -72,7 +76,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final float MESSAGE_CORNER_DP = 14f;
     private static final float MESSAGE_TAIL_DP = 4f;
     private static final long MESSAGE_SLIDE_MS = 150L;
-    private static final long MESSAGE_VISIBLE_MS = 1_000L;
+    private static final long MESSAGE_VISIBLE_MS = 2_500L;
     private static final long WARM_KEEP_MS = 30 * 60_000L;
 
     /** Panel root that turns Back into "shrink". */
@@ -172,6 +176,9 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private View removeTarget;
     private View dim;
     private PanelRoot panel;
+    private WindowManager.LayoutParams panelParams;
+    private int panelFullHeight;
+    private int headYBeforeKeyboard = NO_SAVED_Y;
     private FrameLayout panelBody;
     private WebView web;
     private String webDay; // the local day the page was loaded
@@ -519,6 +526,8 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             panel.addView(LayoutInflater.from(this).inflate(R.layout.float_panel, panel, false));
             panelBody = panel.findViewById(R.id.float_panel_body);
             panel.findViewById(R.id.float_panel_open).setOnClickListener(v -> pageListener.onOpenInApp());
+            // Before Android 11 a window can't tell the keyboard is up unless it overlaps, so the panel would bounce.
+            if (Build.VERSION.SDK_INT >= 30) ViewCompat.setOnApplyWindowInsetsListener(panel, this::onPanelInsets);
         }
         String today = FirestoreJson.dateKey(System.currentTimeMillis(), TimeZone.getDefault());
         if (web == null) {
@@ -559,8 +568,8 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             dimParams.alpha = DIM_WINDOW_ALPHA;
             windows.addView(dim, dimParams);
 
-            WindowManager.LayoutParams panelParams = overlayParams(
-                screenW - 2 * margin, Math.round(screenH * PANEL_HEIGHT_FRACTION), ChatheadGeometry.panelFlags());
+            panelFullHeight = Math.round(screenH * PANEL_HEIGHT_FRACTION);
+            panelParams = overlayParams(screenW - 2 * margin, panelFullHeight, ChatheadGeometry.panelFlags());
             panelParams.gravity = Gravity.TOP | Gravity.START;
             panelParams.x = margin;
             panelParams.y = Math.round(PANEL_TOP_DP * density);
@@ -591,6 +600,51 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         }
     }
 
+    /** An overlay window has a fixed height, so SOFT_INPUT_ADJUST_RESIZE can't shrink it for the keyboard. */
+    private WindowInsetsCompat onPanelInsets(View view, WindowInsetsCompat insets) {
+        int ime = WindowInsetsCompat.Type.ime();
+        boolean keyboardVisible = insets.isVisible(ime);
+        int overlap = insets.getInsets(ime).bottom;
+        int laidOutHeight = view.getHeight();
+        main.post(() -> fitPanelToKeyboard(laidOutHeight, keyboardVisible, overlap)); // not in the middle of an insets pass
+        return insets;
+    }
+
+    private void fitPanelToKeyboard(int laidOutHeight, boolean keyboardVisible, int overlap) {
+        if (!panelOpen || tornDown || panelParams == null) return;
+        int minHeight = Math.round(PANEL_MIN_DP * getResources().getDisplayMetrics().density);
+        int height = ChatheadGeometry.panelHeight(laidOutHeight > 0 ? laidOutHeight : panelParams.height,
+            panelFullHeight, minHeight, keyboardVisible, overlap);
+        if (height != panelParams.height) {
+            panelParams.height = height;
+            try {
+                windows.updateViewLayout(panel, panelParams);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "could not fit the panel to the keyboard", e);
+            }
+        }
+        if (keyboardVisible) keepHeadOnPanel(); else restoreHeadY();
+    }
+
+    /** The keyboard would cover a bubble sitting low on the screen, and tapping it is how the panel shrinks. */
+    private void keepHeadOnPanel() {
+        if (head == null) return;
+        int lowest = panelParams.y + panelParams.height - headSize;
+        if (headParams.y <= lowest) return;
+        if (headYBeforeKeyboard == NO_SAVED_Y) headYBeforeKeyboard = headParams.y;
+        headParams.y = lowest;
+        updateHead();
+    }
+
+    private void restoreHeadY() {
+        if (headYBeforeKeyboard == NO_SAVED_Y) return;
+        if (head != null) {
+            headParams.y = headYBeforeKeyboard;
+            updateHead();
+        }
+        headYBeforeKeyboard = NO_SAVED_Y;
+    }
+
     private void closePanel() {
         if (!panelOpen) return;
         removePanelWindows();
@@ -600,6 +654,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         panelOpen = false;
         FloatState.panelOpen = false;
         tapAtMs = 0; // closed before the page was ready: nothing to time
+        restoreHeadY();
         removeWindow(panel); // the panel view (and its WebView) is kept for the next open
         removeWindow(dim);
         dim = null;

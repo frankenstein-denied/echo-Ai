@@ -5,8 +5,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.view.View;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.webkit.WebView;
 import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.EchoBridgePlugin;
@@ -26,7 +29,24 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
+        keepWebViewAboveKeyboard();
         askForMicOnFirstLaunch();
+    }
+
+    /**
+     * Capacitor's SystemBars pads the decor view by the keyboard, and it runs first because insets go top
+     * down. This adds only what that leaves uncovered, so the keyboard is never counted twice.
+     */
+    private void keepWebViewAboveKeyboard() {
+        WebView web = getBridge() == null ? null : getBridge().getWebView();
+        if (web == null || !(web.getParent() instanceof View)) return;
+        View decor = getWindow().getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener((View) web.getParent(), (holder, insets) -> {
+            int ime = WindowInsetsCompat.Type.ime();
+            int keyboard = insets.isVisible(ime) ? insets.getInsets(ime).bottom : 0;
+            holder.setPadding(0, 0, 0, Math.max(0, keyboard - decor.getPaddingBottom()));
+            return insets;
+        });
     }
 
     @Override
@@ -46,6 +66,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         FloatState.appInForeground = false;
+        CheckInEngine.onAppLeft(this);
         super.onPause();
     }
 

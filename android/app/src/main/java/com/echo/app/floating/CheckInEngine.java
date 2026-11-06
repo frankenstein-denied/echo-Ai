@@ -49,6 +49,8 @@ public final class CheckInEngine {
     private static final long UNLOCK_CAP_MS = 1_500L;
     private static final int DEFAULT_GAP = 120;
     private static final String ID_PREFIX = "checkin-";
+    private static final String WAKE_SIGNED_OUT = "signed out";
+    private static final String WAKE_NO_PROFILE = "no profile";
     private static final int DAY_KEY_LENGTH = 10;
 
     /** One write at a time across the engine and the background path: two could each create a page for the same message. */
@@ -240,9 +242,8 @@ public final class CheckInEngine {
     /** Once claimed, message first: everything else on this path comes after the user can see it. */
     private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, CheckInRules.Outcome outcome,
                       String today, TimeZone tz) {
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(usable, parseTopic(store.getLastTopic()), s.nowMs, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
-        if (!claim(store, plan, s.lastFiredMs, s.nowMs, today)) return;
+        CheckInPlanner.Plan plan = planFor(store, usable, s, tz);
+        if (!claim(store, plan, s, tz, today)) return;
         if (outcome == CheckInRules.Outcome.POPUP) {
             host.showMessage(plan.shortText);
             Log.i(TAG, "due_to_visible_ms="
@@ -420,19 +421,37 @@ public final class CheckInEngine {
     /**
      * Blocking; call off the main thread, early, because Android's leave to start a service from an alarm
      * lasts only seconds. Brings back a bubble that should be up, then fires only if a check-in is due.
+     * The source names this wake in the line Settings shows.
      */
-    public static void onAlarm(Context ctx) {
+    public static void onAlarm(Context ctx, String source) {
         Context app = ctx.getApplicationContext();
         SessionStore store = SessionStore.get(app);
-        if (!store.hasSession()) return;
-        ensureProfile(app, store);
+        if (store.hasSession()) ensureProfile(app, store);
         CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
-        if (cached == null || !cached.onboarded) return;
+        if (!store.hasSession() || cached == null || !cached.onboarded) {
+            noteWake(store, source, wakeResult(app, store));
+            return;
+        }
         bringBackIfDue(app, store, cached);
         if (!FloatState.bubbleRunning && bubbleWanted(app)) BubbleBringUp.run(app);
 
         CheckInRules.State s = liveState(app, store, cached, System.currentTimeMillis(), TimeZone.getDefault());
-        if (s.pendingWrite || CheckInRules.fires(CheckInRules.decide(s))) runBackground(app); // no network otherwise
+        CheckInRules.Outcome outcome = CheckInRules.decide(s);
+        noteWake(store, source, outcome.name()); // before the network, so a kill during the fetch still shows it
+        if (s.pendingWrite || CheckInRules.fires(outcome)) runBackground(app); // no network otherwise
+    }
+
+    /** The owner has no adb: Settings shows this, so a background run can be seen to have happened. */
+    private static void noteWake(SessionStore store, String source, String result) {
+        if (CheckInRules.keepsLastWake(source, result, store.getLastWakeSource())) return;
+        store.setLastWake(source, result, System.currentTimeMillis());
+    }
+
+    private static String wakeResult(Context app, SessionStore store) {
+        if (!store.hasSession()) return WAKE_SIGNED_OUT;
+        CheckInPrefs p = CheckInPrefs.fromJson(store.getCachedPrefsJson());
+        if (p == null || !p.onboarded) return WAKE_NO_PROFILE;
+        return CheckInRules.decide(liveState(app, store, p, System.currentTimeMillis(), TimeZone.getDefault())).name();
     }
 
     /** Like a Messenger chat head: the X dismisses the bubble until the next message, which brings it back. */
@@ -489,9 +508,8 @@ public final class CheckInEngine {
         CheckInRules.Outcome outcome = CheckInRules.decide(s);
         if (!backgroundFires(outcome)) return;
         if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), firedAt, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
-        if (!claim(store, plan, s.lastFiredMs, firedAt, day)) return;
+        CheckInPlanner.Plan plan = planFor(store, data, s, tz);
+        if (!claim(store, plan, s, tz, day)) return;
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;
             store.setUnreadCount(unread);
@@ -543,16 +561,28 @@ public final class CheckInEngine {
         return s;
     }
 
+    private static CheckInPlanner.Plan planFor(SessionStore store, TodaySnapshot data, CheckInRules.State s, TimeZone tz) {
+        String day = chatDay(s, tz);
+        return CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), s.nowMs, tz, s.everyMinutes, s.sleepStartMin,
+            s.sleepEndMin, (int) (s.nowMs / MINUTE_MS), day.equals(store.getMorningChatDay()), day.equals(store.getNightChatDay()));
+    }
+
+    private static String chatDay(CheckInRules.State s, TimeZone tz) {
+        return CheckInPlanner.wakingDay(s.nowMs, tz, s.sleepEndMin);
+    }
+
     /**
      * Fills the pending slot before any network, so a check-in the user was told about survives a kill.
      * False if another path fired this one first.
      */
-    private static boolean claim(SessionStore store, CheckInPlanner.Plan plan, long expectedLastFiredMs,
-                                 long nowMs, String today) {
+    private static boolean claim(SessionStore store, CheckInPlanner.Plan plan, CheckInRules.State s, TimeZone tz,
+                                 String today) {
         synchronized (FIRE_LOCK) {
-            if (store.getLastFiredMs() != expectedLastFiredMs) return false;
-            store.setLastFiredMs(nowMs);
+            if (store.getLastFiredMs() != s.lastFiredMs) return false;
+            store.setLastFiredMs(CheckInRules.anchoredFireMs(s.lastFiredMs, s.everyMinutes, s.nowMs));
             store.setLastTopic(plan.topic.name());
+            if (plan.topic == CheckInPlanner.Topic.MORNING) store.setMorningChatDay(chatDay(s, tz));
+            if (plan.topic == CheckInPlanner.Topic.NIGHT) store.setNightChatDay(chatDay(s, tz));
             store.setPendingCheckInText(plan.fullText);
             store.setPendingCheckInId(newMessageId(today));
             return true;
@@ -624,6 +654,20 @@ public final class CheckInEngine {
         }, "echo-checkin-sync").start();
     }
 
+    /** Call when the full app leaves the screen. A check-in that waited for that fires soon after, not at the next retry. */
+    public static void onAppLeft(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        try {
+            SessionStore store = SessionStore.get(app);
+            CheckInPrefs p = CheckInPrefs.fromJson(store.getCachedPrefsJson());
+            if (p == null || !p.onboarded) return;
+            CheckInRules.State s = liveState(app, store, p, System.currentTimeMillis(), TimeZone.getDefault());
+            if (CheckInRules.fires(CheckInRules.decide(s))) CheckInAlarm.scheduleSoon(app);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not check for a waiting check-in", e); // the retry alarm still comes
+        }
+    }
+
     /** Blocking; call off the main thread. A new user finishes onboarding after the first read, so that counts as nothing cached. */
     private static void ensureProfile(Context app, SessionStore store) {
         CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
@@ -639,6 +683,7 @@ public final class CheckInEngine {
         if (store.hasSession()) ensureProfile(app, store);
         RefreshWorker.sync(app); // also sets the alarm
         if (bubbleWanted(app)) BubbleBringUp.run(app);
+        noteWake(store, "boot", wakeResult(app, store));
     }
 
     private static void startBubbleWhileVisible(Context app) {
@@ -657,6 +702,8 @@ public final class CheckInEngine {
     /**
      * Settings from the web, which has already saved them to the profile. With no cache yet there is nothing
      * to merge into, so the profile is read instead. Off then on brings back a removed bubble and restarts the gap.
+     * A new gap restarts it too, so the first check-in comes one gap after saving. The web pushes on any
+     * profile write, so only a real change counts.
      */
     public static void applySettings(Context ctx, boolean enabled, int everyMinutes, String sleepStart,
                                      String sleepEnd, int waterGoal) {
@@ -667,10 +714,9 @@ public final class CheckInEngine {
             syncOnAppVisible(app);
             return;
         }
-        if (turnedOn(cached, enabled)) {
-            store.setBubbleRemoved(false);
-            store.setLastFiredMs(System.currentTimeMillis());
-        }
+        boolean on = turnedOn(cached, enabled);
+        if (on) store.setBubbleRemoved(false);
+        if (on || gapChanged(cached, everyMinutes)) store.setLastFiredMs(System.currentTimeMillis());
         store.setCachedPrefsJson(CheckInPrefs.merged(cached, enabled, everyMinutes, sleepStart, sleepEnd, waterGoal).toJson());
         RefreshWorker.sync(app);
         onActive(CheckInEngine::reloadPrefs);
@@ -813,5 +859,10 @@ public final class CheckInEngine {
 
     static boolean turnedOn(CheckInPrefs cached, boolean enabledNow) {
         return cached != null && !cached.enabled && enabledNow;
+    }
+
+    /** A gap that wouldn't be stored changes nothing. */
+    static boolean gapChanged(CheckInPrefs cached, int everyMinutes) {
+        return cached != null && FirestoreJson.isCheckInGap(everyMinutes) && cached.everyMinutes != everyMinutes;
     }
 }

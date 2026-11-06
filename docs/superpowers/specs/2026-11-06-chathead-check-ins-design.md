@@ -13,7 +13,7 @@ Success: during waking hours, with no action from the user, a short message appe
 ### The moment it fires
 
 1. A small message slides out beside the bubble, on the side away from the screen edge. It shows Echo's name and a short question, cut to fit.
-2. It vanishes after 1 second (owner's decision). It never blocks touches on the app underneath.
+2. It vanishes after 2.5 seconds (owner's decision). It never blocks touches on the app underneath.
 3. The red number on the bubble goes up by one, like a Messenger chathead.
 4. Tapping the bubble opens the chat panel. All of the messages are there in full, and the number clears. The user answers there like any Echo chat.
 
@@ -23,26 +23,31 @@ Every message that reaches the user buzzes (owner's decision): a short double bu
 
 ### What it says
 
-Each check-in asks about one thing. The full chat message is a greeting, that question, and a one-line overview of today. "Daily goals" means this overview, not the Goals page and not a new kind of goal.
+Echo talks like a friend, not a logging app (owner's decision). Each check-in asks about one thing, in one or two warm sentences. There are no stats: no counts of zero, no field lists, and no mention of logging or tracking. A number only appears as a friend would say it, as in `You're over halfway to your water goal`.
 
-- Small message: `Had lunch yet?`
-- Chat message: `Good afternoon! Had lunch yet? What did you eat? So far today: 3 of 8 glasses, 540 kcal, energy not logged. Next up: Dentist at 5 PM.`
+- Small message: `Have you had lunch yet?`, at most 40 characters and never with the name.
+- Chat message: `Hey, Sam, have you had lunch yet? What did you get?`
 
-The greeting is `Good morning!` before 12:00, `Good afternoon!` from 12:00 to 17:59, and `Good evening!` from 18:00 on. The small message has no greeting, except the overview: `Good afternoon! Here's your day so far`, when that fits in 40 characters.
+Echo goes by the user's own sleep hours, so morning means after their wake time, not a fixed clock. Each topic has at least three lines, by part of day where that matters. Greetings are part of the wording. The line moves on once per gap, so check-ins in a row read differently. `preferredName` appears in about one message in three, and only when it is set.
 
-The question is picked in this order, using only what is still missing today:
+The topic is picked in this order, using only what is still missing today:
 
 1. A reminder due before the next check-in. One on a different day and 12 or more hours away names its day, since a long gap can reach that far and the time alone could read as already past.
-2. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
-3. Water that is behind pace for the time of day.
-4. Mood not logged today.
-5. Energy not logged today.
-6. Calories compared with the goal, when a goal is set and it is worth mentioning.
-7. Nothing missing: a friendly overview of the day.
+2. The good morning chat: the first check-in within 2 hours after sleep end, once per day. It asks about sleep and energy: `Good morning, Sam! How did you sleep? How's your energy today?`
+3. The good night chat: the first check-in within the last 90 minutes before sleep start, once per day. It asks about energy and winds down: `Getting close to bedtime. How's your energy after today? Sleep well, Sam.`
+4. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
+5. Water that is behind pace for the time of day, at any waking time except the last hour before sleep.
+6. Mood not logged today, only between those two chat windows.
+7. Calories close to or past the goal, when a goal is set.
+8. Nothing missing: a friendly line for the part of the day.
+
+Energy is asked only in the two chats. If it is already logged today, the chat drops that question and stays warm. A day for these chats turns over at the wake time, so a bedtime past midnight still counts as the day before. With equal sleep times (never asleep) there are no chats, and mood can come at any time.
 
 The same topic should not be asked twice in a row unless nothing else applies. Wording comes from a small set of fixed templates. No AI writes these messages.
 
-The overview line includes water against the water target, calories (only if tracking is on), mood and energy if logged, reminders left today with the next one, and a mention of a long-term goal only if the builder finds it useful. It leaves out anything turned off.
+### Typing with the keyboard up
+
+The keyboard must never cover Echo's type box. In the full app, `MainActivity` uses `adjustResize`, and Capacitor's `SystemBars` pads the decor view by the keyboard. A listener on the WebView's holder adds only what that leaves, so the keyboard is never counted twice. In the chathead panel, a fixed-height overlay window, the panel's height is cut to end above the keyboard and restored when it hides or the panel closes, on Android 11 and later. The bubble moves up with it if the keyboard would cover it, and goes back afterwards.
 
 ### Sleep time
 
@@ -72,7 +77,7 @@ Only one check-in can be waiting; they never stack. Unread check-ins never hold 
 
 The notification is on its own channel, `echo_checkins`, at high importance, and has one fixed id, so a new one replaces the last. Tapping it brings the chathead up through Type (a tap is a visible moment), or opens the Diary if the overlay is not allowed. It clears when unread clears.
 
-The gap is measured from the last check-in. Signed-out users get nothing.
+The gap is measured from when the last check-in was scheduled, not from when it finally fired, so lateness doesn't push every later one back. A check-in that waited can therefore be followed by the next one sooner than a full gap. Signed-out users get nothing.
 
 ## Settings
 
@@ -81,8 +86,8 @@ New card in Settings, "Echo check-ins", shown only in the Android app (`isNative
 | Setting | Default | Notes |
 |---|---|---|
 | Check-ins on or off | On | Off removes the bubble's auto-firing. It does not delete messages. |
-| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 1 minute to 30 days (1 minute is for testing; raise it before the public release) (owner's decision). Saves on blur, Enter or a unit change. Out of range shows `Choose between 5 minutes and 30 days.` and saves nothing. Stored as whole minutes, 5 to 43200; anything else reads as 120. |
-| Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. |
+| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 1 minute to 30 days (1 minute is for testing; raise it before the public release) (owner's decision). Saves with its Save button, or Enter in the box. Save is disabled until the gap differs from the stored one. Saving shows `Saved. Next check-in in about <gap>.` and restarts the timer, so the first check-in comes one gap later. Other settings don't restart it. Out of range shows `Choose between 1 minute and 30 days.` and saves nothing. Stored as whole minutes, 1 to 43200; anything else reads as 120. |
+| Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. Saves with its own Save button and shows `Saved.` |
 
 Water target: editable on the Health page beside the water figure, default 8 glasses, whole numbers 1 to 30 (range is my call). It replaces the fixed `WATER_TARGET` in `lib/echo/body-fill.ts`, and it applies on the web too. Past days use the current target.
 
@@ -94,13 +99,21 @@ Android does not let an app grant itself this. After sign-in and onboarding, the
 
 The same card keeps the TECNO auto-start and recents-lock advice visible whenever check-ins are on, because a force-stop cancels Echo's alarms and nothing in the app can undo that. The battery optimization button shows while Echo is still optimized. Android 13+ also needs notification permission for the notification path, so it is requested once check-ins are on.
 
-The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. Older APKs report neither field and the line is left out.
+The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. APKs before 1.6 report neither field and the line is left out.
+
+Two more muted lines show what the background is doing, on 1.11 and later:
+
+- `Last wake: alarm 18:40: POPUP`: the last background run, as `<source> <time>: <result>`. The source is `alarm`, `worker` or `boot`. The result is the decided outcome, or `signed out` or `no profile`. A worker run that finds `NOT_DUE` or `SLEEPING` doesn't replace an `alarm` line, so the line keeps the evidence that the alarm was delivered.
+- `Next wake: 18:45`: when the next alarm is set for. A time in the past means the alarm was not delivered.
+- Both times show only the clock for today, the weekday for another day within a week (`Sat 07:00`), and otherwise the date (`Nov 13 07:00`).
+
+If notifications are blocked for Echo, the card warns that check-ins can't reach the user while the phone is locked or the bubble is gone.
 
 ## How it works (decided)
 
 - **Android native does the firing.** The question is chosen on the phone with no AI call and no web page involved. This is what keeps it fast.
 - **An exact alarm drives firing (owner's decision).** `CheckInAlarm` uses `setExactAndAllowWhileIdle` with `USE_EXACT_ALARM`, which is auto-granted; the app is sideloaded, so Play policy does not apply. It falls back to an inexact alarm on a `SecurityException`. It does not depend on the app being open or a bubble already running. It is set again after every fire and every run, from `RefreshWorker.sync`, on boot and package replaced, and on a settings change, and cancelled on sign-out and when check-ins are off.
-- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 5 minutes, so a waiting alarm can't spin. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
+- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 1 minute, so a waiting alarm can't spin. When the full app leaves the screen with a check-in due, the alarm is set about 5 seconds out. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
 - **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day, with `stopWithTask="false"`. Its own timer fires while the screen is usable, and a screen-unlock listener catches anything due. With the screen off the timer stops and firing belongs to the alarm. On a locked screen the timer keeps running, so the engine and the alarm can both find a check-in due; only the first to claim it fires.
 - **Coming back after a kill.** On every alarm, if the bubble is wanted and not running, it restarts, without firing unless a check-in is due. A swipe from recents also sets a one-off alarm 2 seconds later (`onTaskRemoved`), in case the bubble died with the task. Removed bubbles, signed-out users and check-ins off never restart.
 - **How it restarts (`BubbleBringUp`).** Exact alarms are exempt from background start limits, so the alarm calls `startForegroundService` directly. If that fails, outside calls and sleep time, a stand-in bubble is added as an overlay window first, because on Android 15 an app with the overlay permission may start a foreground service from the background only while an overlay window is visible. It comes down once the real head is up. With the screen off that fallback can't work, since the window never becomes visible. Every failure is kept in `lastBubbleError`.
@@ -168,7 +181,7 @@ How:
 
 1. **Phone test first.** Nothing about the floating features has a long track record on the TECNO. Before building it all, prove on the phone that the bubble survives a day with the screen on and off, and find out what happens after HiOS kills it, including whether "show the overlay, then start the service" works from `RefreshWorker`. If it cannot come back reliably, the fallback is that check-ins arrive as notifications and the bubble returns the next time the app or notification is opened.
 2. Rules, then web, then native. Deploy rules before web. Web must work with older APKs that know nothing of the new bridge call.
-3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 7 / 1.6, then `scripts/release-android.sh`).
+3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 12 / 1.11, then `scripts/release-android.sh`).
 
 Android 12+ blocks touches through opaque overlays, so check on the phone that the small message and bubble don't interfere with the app below.
 

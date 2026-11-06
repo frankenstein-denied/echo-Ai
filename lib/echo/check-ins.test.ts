@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleStatusLine, DEFAULT_WATER_GOAL, gapMinutes, gapParts, MAX_GAP_MINUTES, MAX_WATER_GOAL, MIN_GAP_MINUTES, MIN_WATER_GOAL, parseGap, parseWaterGoal, resolveCheckInSettings } from './check-ins'
+import { bubbleStatusLine, DEFAULT_WATER_GOAL, gapIsUnsaved, gapLabel, gapMinutes, gapParts, MAX_GAP_MINUTES, MAX_WATER_GOAL, MIN_GAP_MINUTES, MIN_WATER_GOAL, parseGap, parseWaterGoal, resolveCheckInSettings, sleepProblem, wakeStatusLines } from './check-ins'
 
 describe('resolveCheckInSettings', () => {
   it('uses the defaults for an empty profile', () => {
@@ -96,6 +96,53 @@ describe('parseWaterGoal', () => {
   })
   it('rejects anything else', () => {
     for (const t of ['', ' ', '0', '31', '2.5', '-3', '1e1', 'abc']) expect(parseWaterGoal(t)).toBeNull()
+  })
+})
+
+describe('gapIsUnsaved', () => {
+  it('is false for what is stored, in any unit', () => {
+    expect(gapIsUnsaved('2', 'hours', 120)).toBe(false)
+    expect(gapIsUnsaved('120', 'minutes', 120)).toBe(false)
+  })
+
+  it('is true for a different gap', () => {
+    expect(gapIsUnsaved('3', 'hours', 120)).toBe(true)
+    expect(gapIsUnsaved('2', 'minutes', 120)).toBe(true)
+  })
+
+  it('is true for invalid input, so Save can show why', () => {
+    expect(gapIsUnsaved('', 'hours', 120)).toBe(true)
+    expect(gapIsUnsaved('31', 'days', 120)).toBe(true)
+  })
+})
+
+describe('gapLabel', () => {
+  it('uses the largest whole unit and the right plural', () => {
+    expect(gapLabel(120)).toBe('2 hours')
+    expect(gapLabel(60)).toBe('1 hour')
+    expect(gapLabel(1440)).toBe('1 day')
+    expect(gapLabel(90)).toBe('90 minutes')
+    expect(gapLabel(1)).toBe('1 minute')
+  })
+})
+
+describe('sleepProblem', () => {
+  it('needs both times, and two different ones', () => {
+    expect(sleepProblem('', '07:00')).toBe('Enter both times.')
+    expect(sleepProblem('22:00', '')).toBe('Enter both times.')
+    expect(sleepProblem('22:00', '22:00')).toBe('Sleep start and end must be different.')
+    expect(sleepProblem('22:00', '07:00')).toBe('')
+  })
+})
+
+describe('wakeStatusLines', () => {
+  it('shows nothing on an older APK', () => {
+    expect(wakeStatusLines({})).toEqual([])
+  })
+
+  it('shows what is known', () => {
+    expect(wakeStatusLines({ lastWake: 'alarm 18:40: POPUP', nextWake: '18:45' })).toEqual(['Last wake: alarm 18:40: POPUP', 'Next wake: 18:45'])
+    expect(wakeStatusLines({ lastWake: null, nextWake: 'Sat 07:00' })).toEqual(['Next wake: Sat 07:00'])
   })
 })
 

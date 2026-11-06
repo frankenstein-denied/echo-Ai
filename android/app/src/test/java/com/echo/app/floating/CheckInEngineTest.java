@@ -180,4 +180,14 @@ public class CheckInEngineTest {
         assertFalse(CheckInEngine.turnedOn(prefs(false, true), false));
         assertFalse(CheckInEngine.turnedOn(null, true));
     }
+
+    @Test public void gapChangedOnlyForARealStorableChange() {
+        CheckInPrefs p = prefs(true, true);
+        p.everyMinutes = 120;
+        assertTrue(CheckInEngine.gapChanged(p, 30));
+        assertFalse(CheckInEngine.gapChanged(p, 120));
+        assertFalse(CheckInEngine.gapChanged(p, 0));
+        assertFalse(CheckInEngine.gapChanged(p, 43201));
+        assertFalse(CheckInEngine.gapChanged(null, 30));
+    }
 }

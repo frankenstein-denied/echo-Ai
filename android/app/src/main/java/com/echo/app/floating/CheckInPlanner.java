@@ -9,7 +9,7 @@ import java.util.TimeZone;
 
 /** Pure choice of what a check-in asks. Fixed templates only: nothing here calls an AI. */
 public final class CheckInPlanner {
-    public enum Topic { REMINDER, MEAL, WATER, MOOD, ENERGY, CALORIES, OVERVIEW }
+    public enum Topic { REMINDER, MORNING, NIGHT, MEAL, WATER, MOOD, CALORIES, OVERVIEW }
 
     public static final class Plan {
         public final Topic topic;
@@ -28,7 +28,6 @@ public final class CheckInPlanner {
     /** Closer than this, a reminder on the next day is plainly tonight or the coming morning. */
     private static final long NAME_THE_DAY_FROM_MS = 12 * 60 * MINUTE_MS;
     private static final int TITLE_MAX = 24;
-    private static final int SHORT_MAX = 40;
     private static final int BREAKFAST_FROM = 7 * 60;
     private static final int BREAKFAST_UNTIL = 11 * 60;
     private static final int LUNCH_FROM = 12 * 60;
@@ -36,68 +35,192 @@ public final class CheckInPlanner {
     private static final int DINNER_FROM = 18 * 60; // runs until sleep, and nothing fires in sleep time
     private static final int AFTERNOON_FROM = 12 * 60;
     private static final int EVENING_FROM = 18 * 60;
+    /** The good morning chat belongs to this long after the user's wake time. */
+    private static final int MORNING_CHAT_MINUTES = 120;
+    /** The good night chat belongs to this long before the user's sleep time. */
+    private static final int NIGHT_CHAT_MINUTES = 90;
+    private static final int NO_WATER_BEFORE_SLEEP_MINUTES = 60;
+
+    /*
+     * The wording, as {chat message, small message} pairs. The small message never carries the name, so it
+     * always fits. "{, name}" is dropped when no name is set. One line in three has it, so about one
+     * message in three uses the name. Never mention logging, tracking or a count of zero here.
+     */
+    private static final String[][] BREAKFAST = {
+        {"Morning! Did you get some breakfast in?", "Did you get some breakfast in?"},
+        {"Good morning{, name}. What's for breakfast today?", "What's for breakfast today?"},
+        {"Hey, had anything to eat yet this morning?", "Had anything to eat yet?"},
+    };
+    private static final String[][] LUNCH = {
+        {"Hey{, name}, have you had lunch yet? What did you get?", "Have you had lunch yet?"},
+        {"It's about lunchtime. Don't skip it! What are you having?", "It's about lunchtime."},
+        {"Lunch break yet? Tell me what you ate.", "Lunch break yet?"},
+    };
+    private static final String[][] DINNER = {
+        {"Good evening{, name}. What's for dinner tonight?", "What's for dinner tonight?"},
+        {"Had dinner yet? I want to hear what you made.", "Had dinner yet?"},
+        {"Evening! Did you get something good to eat?", "Did you get something good to eat?"},
+    };
+    private static final String[][] WATER_NONE = {
+        {"Have you had any water today? Go grab a glass for me.", "Have you had any water today?"},
+        {"Hey{, name}, don't forget to drink some water today.", "Don't forget to drink some water."},
+        {"Thirsty yet? A glass of water would do you good.", "Thirsty yet?"},
+    };
+    private static final String[][] WATER_SOME = {
+        {"Quick water break? You're doing well so far.", "Quick water break?"},
+        {"Hey{, name}, time for another glass of water?", "Time for another glass of water?"},
+        {"Keep it up! How about a little more water?", "How about a little more water?"},
+    };
+    private static final String[][] WATER_HALF = {
+        {"You're over halfway to your water goal. One more glass?", "Over halfway to your water goal!"},
+        {"Nice work on the water today{, name}. Keep going?", "Nice work on the water today."},
+        {"Your water's looking good today. One more glass?", "One more glass of water?"},
+    };
+    private static final String[][] MOOD = {
+        {"How's your day going so far?", "How's your day going so far?"},
+        {"Hey{, name}, how are you feeling right now?", "How are you feeling right now?"},
+        {"Just checking in. How's today treating you?", "How's today treating you?"},
+    };
+    private static final String[][] GOOD_MORNING = {
+        {"Good morning{, name}! How did you sleep? How's your energy today?", "Good morning! How did you sleep?"},
+        {"Morning! Did you sleep okay? How's your energy feeling?", "Morning! Did you sleep okay?"},
+        {"Hey, you're up! How was your sleep? Got much energy today?", "Hey, you're up! How was your sleep?"},
+    };
+    /** For a day whose energy is already logged: the same chat, without asking twice. */
+    private static final String[][] GOOD_MORNING_WARM = {
+        {"Good morning{, name}! How did you sleep?", "Good morning! How did you sleep?"},
+        {"Morning! Did you sleep okay?", "Morning! Did you sleep okay?"},
+        {"Hey, you're up! Hope you slept well.", "Hey, you're up! Hope you slept well."},
+    };
+    private static final String[][] GOOD_NIGHT = {
+        {"Getting close to bedtime. How's your energy after today? Sleep well{, name}.", "Getting close to bedtime."},
+        {"Almost time to wind down. How much energy do you have left?", "Almost time to wind down."},
+        {"Long day? How's your energy now it's nearly bedtime?", "Long day? How's your energy?"},
+    };
+    private static final String[][] GOOD_NIGHT_WARM = {
+        {"Getting close to bedtime. Hope today was kind to you. Sleep well{, name}.", "Getting close to bedtime."},
+        {"Almost time to wind down. Anything good from today?", "Almost time to wind down."},
+        {"Long day? Take it easy tonight, it's nearly bedtime.", "It's nearly bedtime."},
+    };
+    private static final String[][] FOOD_NEAR = {
+        {"You've eaten pretty well today, you're close to your goal.", "You're close to your food goal."},
+        {"Hey{, name}, you're getting close to your food goal for today.", "Getting close to your food goal."},
+        {"Nice, you're nearly at your food goal today.", "Nearly at your food goal."},
+    };
+    private static final String[][] FOOD_REACHED = {
+        {"You've reached your food goal for today. How are you feeling?", "You've reached your food goal."},
+        {"Hey{, name}, that's your food goal reached today. Feeling good?", "That's your food goal reached."},
+        {"You hit your food goal today. How was everything?", "You hit your food goal today."},
+    };
+    private static final String[][] DAY_MORNING = {
+        {"Hope your morning's going well. Anything on your mind?", "Hope your morning's going well."},
+        {"Good morning{, name}. What's the plan for today?", "What's the plan for today?"},
+        {"Morning! Anything you're looking forward to today?", "Looking forward to anything today?"},
+    };
+    private static final String[][] DAY_AFTERNOON = {
+        {"How's the afternoon going? Tell me something good.", "How's the afternoon going?"},
+        {"Hey{, name}, how's your afternoon so far?", "How's your afternoon so far?"},
+        {"Good afternoon! Anything fun happen today?", "Anything fun happen today?"},
+    };
+    private static final String[][] DAY_EVENING = {
+        {"How was your day? I'd love to hear about it.", "How was your day?"},
+        {"Good evening{, name}. Anything good happen today?", "Anything good happen today?"},
+        {"Winding down yet? Tell me about your day.", "Winding down yet?"},
+    };
+    /** The small message for a reminder is its title and time, built in {@link #plan}. */
+    private static final String[] REMINDER = {
+        "Hey, don't forget {title} {when}.",
+        "Just a heads up: {title} {when}.",
+        "Hey{, name}, {title} is coming up {when}.",
+    };
 
     private CheckInPlanner() {}
 
+    /**
+     * The seed picks the wording: the same seed always gives the same line. The two flags say the good
+     * morning and good night chats already happened on this {@link #wakingDay}.
+     */
     public static Plan plan(TodaySnapshot s, Topic lastTopic, long nowMs, TimeZone tz,
-                            int everyMinutes, int sleepStartMin, int sleepEndMin) {
+                            int everyMinutes, int sleepStartMin, int sleepEndMin, int seed,
+                            boolean morningDone, boolean nightDone) {
         int minute = minuteOfDay(nowMs, tz);
         long nextCheckInMs = nextCheckInMs(nowMs, tz, everyMinutes, sleepStartMin, sleepEndMin);
         Reminder soonest = nextReminder(s, nowMs);
         boolean reminderDue = soonest != null && soonest.dueAtMs <= nextCheckInMs;
         String meal = mealToAsk(s, minute);
+        boolean sleeps = sleepStartMin != sleepEndMin; // equal times mean never asleep: no day to open or close
+        boolean morningTime = sleeps && floorMod(minute - sleepEndMin) < MORNING_CHAT_MINUTES;
+        int untilSleep = floorMod(sleepStartMin - minute);
+        boolean nightTime = sleeps && untilSleep <= NIGHT_CHAT_MINUTES;
+        boolean waterTime = !sleeps || untilSleep > NO_WATER_BEFORE_SLEEP_MINUTES;
 
         List<Topic> missing = new ArrayList<>();
         if (reminderDue) missing.add(Topic.REMINDER);
+        if (morningTime && !morningDone) missing.add(Topic.MORNING);
+        if (nightTime && !nightDone) missing.add(Topic.NIGHT);
         if (meal != null) missing.add(Topic.MEAL);
-        if (behindOnWater(s, minute, sleepStartMin, sleepEndMin)) missing.add(Topic.WATER);
-        if (!s.moodLogged) missing.add(Topic.MOOD);
-        if (!s.energyLogged) missing.add(Topic.ENERGY);
+        if (waterTime && behindOnWater(s, minute, sleepStartMin, sleepEndMin)) missing.add(Topic.WATER);
+        if (!s.moodLogged && !morningTime && !nightTime) missing.add(Topic.MOOD);
         if (nearCalorieGoal(s)) missing.add(Topic.CALORIES);
 
         Topic topic = pick(missing, lastTopic);
-        String overview = overview(s, nowMs, tz);
-        String hello = greeting(minute);
+        // Check-ins land one gap apart, so a plain seed % 3 would pick the same line every time on a gap of 60 or 120.
+        int step = seed / Math.max(1, everyMinutes);
+        String name = usableName(s.preferredName);
         switch (topic) {
             case REMINDER: {
                 String time = formatTime(soonest.dueAtMs, tz);
-                if (!sameDay(soonest.dueAtMs, nowMs, tz) && soonest.dueAtMs - nowMs >= NAME_THE_DAY_FROM_MS) { // the time alone could read as past
-                    String day = FirestoreJson.pageTitle(soonest.dueAtMs, tz);
-                    return new Plan(topic, shortTitle(soonest.title) + " on " + day,
-                        hello + " Your " + soonest.title + " reminder is on " + day + " at " + time + ". " + overview);
-                }
-                return new Plan(topic, shortTitle(soonest.title) + " at " + time,
-                    hello + " Your " + soonest.title + " reminder is at " + time + ". " + overview);
+                boolean nameTheDay = !sameDay(soonest.dueAtMs, nowMs, tz) && soonest.dueAtMs - nowMs >= NAME_THE_DAY_FROM_MS; // the time alone could read as past
+                String day = FirestoreJson.pageTitle(soonest.dueAtMs, tz);
+                String when = nameTheDay ? "on " + day + " at " + time : "at " + time;
+                String full = withName(REMINDER[Math.floorMod(step, REMINDER.length)], name)
+                    .replace("{when}", when).replace("{title}", soonest.title);
+                return new Plan(topic, shortTitle(soonest.title) + (nameTheDay ? " on " + day : " at " + time), full);
             }
-            case MEAL: {
-                String question = "Had " + meal + " yet?";
-                return new Plan(topic, question, hello + " " + question + " What did you eat? " + overview);
-            }
+            case MORNING:
+                return say(topic, s.energyLogged ? GOOD_MORNING_WARM : GOOD_MORNING, step, name);
+            case NIGHT:
+                return say(topic, s.energyLogged ? GOOD_NIGHT_WARM : GOOD_NIGHT, step, name);
+            case MEAL:
+                return say(topic, mealLines(meal), step, name);
             case WATER:
-                return question(topic, hello, "Time for some water?", overview);
+                return say(topic, waterLines(s), step, name);
             case MOOD:
-                return question(topic, hello, "How are you feeling?", overview);
-            case ENERGY:
-                return question(topic, hello, "How's your energy?", overview);
-            case CALORIES: {
-                String text = s.kcalToday + " of " + s.calorieGoal + " kcal so far";
-                return new Plan(topic, text, hello + " " + text + ". " + overview);
-            }
-            default: {
-                String text = "Here's your day so far";
-                String greeted = hello + " " + text;
-                return new Plan(topic, greeted.length() <= SHORT_MAX ? greeted : text, greeted + ". " + overview);
-            }
+                return say(topic, MOOD, step, name);
+            case CALORIES:
+                return say(topic, s.kcalToday >= s.calorieGoal ? FOOD_REACHED : FOOD_NEAR, step, name);
+            default:
+                return say(topic, minute < AFTERNOON_FROM ? DAY_MORNING : minute < EVENING_FROM ? DAY_AFTERNOON : DAY_EVENING, step, name);
         }
     }
 
-    private static Plan question(Topic topic, String hello, String text, String overview) {
-        return new Plan(topic, text, hello + " " + text + " " + overview);
+    /** The user's day, which turns over at their wake time: a late bedtime past midnight still counts as yesterday. */
+    static String wakingDay(long nowMs, TimeZone tz, int sleepEndMin) {
+        return FirestoreJson.dateKey(nowMs - sleepEndMin * MINUTE_MS, tz);
     }
 
-    private static String greeting(int minute) {
-        if (minute < AFTERNOON_FROM) return "Good morning!";
-        return minute < EVENING_FROM ? "Good afternoon!" : "Good evening!";
+    private static Plan say(Topic topic, String[][] lines, int step, String name) {
+        String[] line = lines[Math.floorMod(step, lines.length)];
+        return new Plan(topic, line[1], withName(line[0], name));
+    }
+
+    private static String withName(String text, String name) {
+        return text.replace("{, name}", name == null ? "" : ", " + name);
+    }
+
+    private static String usableName(String name) {
+        String trimmed = name == null ? "" : name.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String[][] mealLines(String meal) {
+        if ("breakfast".equals(meal)) return BREAKFAST;
+        return "lunch".equals(meal) ? LUNCH : DINNER;
+    }
+
+    private static String[][] waterLines(TodaySnapshot s) {
+        if (s.waterGlasses <= 0) return WATER_NONE;
+        return s.waterGlasses * 2 >= s.waterGoal ? WATER_HALF : WATER_SOME;
     }
 
     /** First missing topic that was not just asked, else the only one left, else the overview. */
@@ -149,23 +272,6 @@ public final class CheckInPlanner {
     private static boolean nearCalorieGoal(TodaySnapshot s) {
         if (!s.caloriesEnabled || s.calorieGoal == null || s.calorieGoal <= 0) return false;
         return s.kcalToday * 100L >= s.calorieGoal * 90L;
-    }
-
-    private static String overview(TodaySnapshot s, long nowMs, TimeZone tz) {
-        StringBuilder out = new StringBuilder("So far today: ")
-            .append(s.waterGlasses).append(" of ").append(s.waterGoal).append(" glasses");
-        if (s.caloriesEnabled) out.append(", ").append(s.kcalToday).append(" kcal");
-        if (s.moodLogged) out.append(", mood ").append(valueOrLogged(s.moodTag));
-        out.append(", energy ").append(s.energyLogged ? valueOrLogged(s.energy) : "not logged").append('.');
-        Reminder next = nextReminder(s, nowMs);
-        if (next != null && sameDay(next.dueAtMs, nowMs, tz)) {
-            out.append(" Next up: ").append(next.title).append(" at ").append(formatTime(next.dueAtMs, tz)).append('.');
-        }
-        return out.toString();
-    }
-
-    private static String valueOrLogged(String value) {
-        return value == null || value.isEmpty() ? "logged" : value;
     }
 
     private static String shortTitle(String title) {

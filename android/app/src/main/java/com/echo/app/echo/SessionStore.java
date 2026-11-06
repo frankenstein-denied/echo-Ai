@@ -80,7 +80,8 @@ public final class SessionStore {
     private static SharedPreferences.Editor removeCheckInState(SharedPreferences.Editor e) {
         return e.remove("lastFiredMs").remove("lastTopic").remove("unreadCount")
             .remove("pendingCheckInId").remove("pendingCheckInText").remove("cachedPrefsJson")
-            .remove("lastBubbleError");
+            .remove("lastBubbleError").remove("lastWakeSource").remove("lastWakeResult").remove("lastWakeMs")
+            .remove("nextWakeMs").remove("morningChatDay").remove("nightChatDay");
     }
 
     public synchronized boolean hasSession() {
@@ -143,6 +144,27 @@ public final class SessionStore {
     /** Why the bubble last failed to start, shown in Settings. Null once a head is on screen. */
     public String getLastBubbleError() { return prefs.getString("lastBubbleError", null); }
     public void setLastBubbleError(String v) { prefs.edit().putString("lastBubbleError", v).apply(); }
+
+    /** The waking day of the last good morning chat, so there is only one a day. */
+    public String getMorningChatDay() { return prefs.getString("morningChatDay", null); }
+    public void setMorningChatDay(String v) { prefs.edit().putString("morningChatDay", v).apply(); }
+
+    /** The waking day of the last good night chat, so there is only one a day. */
+    public String getNightChatDay() { return prefs.getString("nightChatDay", null); }
+    public void setNightChatDay(String v) { prefs.edit().putString("nightChatDay", v).apply(); }
+
+    /** What the last background run did, shown in Settings. Kept in parts, because the day shown depends on when it is read. */
+    public String getLastWakeSource() { return prefs.getString("lastWakeSource", null); }
+    public String getLastWakeResult() { return prefs.getString("lastWakeResult", null); }
+    public long getLastWakeMs() { return prefs.getLong("lastWakeMs", 0L); }
+    public void setLastWake(String source, String result, long atMs) {
+        prefs.edit().putString("lastWakeSource", source).putString("lastWakeResult", result)
+            .putLong("lastWakeMs", atMs).apply();
+    }
+
+    /** When the next check-in alarm is set for, shown in Settings. 0 with none set. */
+    public long getNextWakeMs() { return prefs.getLong("nextWakeMs", 0L); }
+    public void setNextWakeMs(long v) { prefs.edit().putLong("nextWakeMs", v).apply(); }
 
     public String getCachedPrefsJson() { return prefs.getString("cachedPrefsJson", null); }
     public void setCachedPrefsJson(String v) { prefs.edit().putString("cachedPrefsJson", v).apply(); }

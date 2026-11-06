@@ -68,6 +68,7 @@ public final class EchoApi {
             snapshot.dateKey = FirestoreJson.dateKey(now, tz);
             snapshot.fetchedAtMs = now;
             snapshot.waterGoal = p.waterGoal;
+            snapshot.preferredName = p.preferredName;
             snapshot.caloriesEnabled = p.caloriesEnabled;
             snapshot.calorieGoal = p.calorieGoal;
 

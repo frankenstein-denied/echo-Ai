@@ -175,6 +175,8 @@ public final class FirestoreJson {
         double calories = pickNumber(f, "calorieGoal", Double.NaN);
         if (!Double.isNaN(calories)) p.calorieGoal = (int) calories;
         p.onboarded = pickBool(f, "onboarded", false);
+        String name = pickString(f, "preferredName", "").trim();
+        if (!name.isEmpty()) p.preferredName = name;
         return p;
     }
 

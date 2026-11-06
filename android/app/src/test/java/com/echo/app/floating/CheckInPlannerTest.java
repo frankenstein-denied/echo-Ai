@@ -56,7 +56,7 @@ public class CheckInPlannerTest {
     }
 
     private static Plan plan(TodaySnapshot s, Topic last, long nowMs, int everyMinutes) {
-        return CheckInPlanner.plan(s, last, nowMs, TZ, everyMinutes, SLEEP_START, SLEEP_END);
+        return CheckInPlanner.plan(s, last, nowMs, TZ, everyMinutes, SLEEP_START, SLEEP_END, 0, true, true);
     }
 
     private static Plan plan(TodaySnapshot s, long nowMs) {
@@ -91,7 +91,7 @@ public class CheckInPlannerTest {
         Plan p = plan(s, null, now, TWO_DAYS);
         assertEquals(Topic.REMINDER, p.topic);
         assertEquals("Dentist on Sat, Nov 7", p.shortText);
-        assertTrue(p.fullText.contains("Your Dentist reminder is on Sat, Nov 7 at 4 PM."));
+        assertEquals("Hey, don't forget Dentist on Sat, Nov 7 at 4 PM.", p.fullText);
     }
 
     @Test public void reminderTomorrowAtAnEarlierClockTimeNamesItsDay() {
@@ -191,13 +191,13 @@ public class CheckInPlannerTest {
         s.mealTypes.remove("dinner");
         Plan p = plan(s, at(14, 30));
         assertEquals(Topic.MEAL, p.topic);
-        assertEquals("Had lunch yet?", p.shortText);
+        assertEquals("Have you had lunch yet?", p.shortText);
     }
 
     private static void assertMeal(String meal, TodaySnapshot s, int hour, int minute) {
         Plan p = plan(s, at(hour, minute));
         assertEquals(Topic.MEAL, p.topic);
-        assertEquals("Had " + meal + " yet?", p.shortText);
+        assertTrue(p.shortText, p.shortText.contains(meal));
     }
 
     private static void assertNoMeal(TodaySnapshot s, int hour, int minute) {
@@ -253,7 +253,7 @@ public class CheckInPlannerTest {
     @Test public void noDinnerQuestionAfterMidnightWithALateSleep() {
         TodaySnapshot s = allLogged();
         s.mealTypes.remove("dinner");
-        assertNotEquals(Topic.MEAL, CheckInPlanner.plan(s, null, at(0, 30), TZ, 120, 2 * 60, 7 * 60).topic);
+        assertNotEquals(Topic.MEAL, CheckInPlanner.plan(s, null, at(0, 30), TZ, 120, 2 * 60, 7 * 60, 0, true, true).topic);
     }
 
     @Test public void neverAsksMealsWithCaloriesOff() {
@@ -272,7 +272,7 @@ public class CheckInPlannerTest {
         s.waterGlasses = 3;
         Plan behind = plan(s, at(14, 30));
         assertEquals(Topic.WATER, behind.topic);
-        assertEquals("Time for some water?", behind.shortText);
+        assertEquals("Quick water break?", behind.shortText);
 
         s.waterGlasses = 4;
         assertNotEquals(Topic.WATER, plan(s, at(14, 30)).topic);
@@ -282,10 +282,10 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.waterGlasses = 3;
         // Awake 09:00 to 01:00 is 960 minutes. At 17:00 the pace is floor(8 * 480 / 960) = 4.
-        Plan p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60);
+        Plan p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0, true, true);
         assertEquals(Topic.WATER, p.topic);
         s.waterGlasses = 4;
-        p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60);
+        p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0, true, true);
         assertNotEquals(Topic.WATER, p.topic);
     }
 
@@ -293,11 +293,11 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.waterGlasses = 3;
         // Equal times mean never asleep, so the pace runs midnight to midnight.
-        assertNotEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(11, 59), TZ, 120, 420, 420).topic); // pace 3
-        assertEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(12, 0), TZ, 120, 420, 420).topic); // pace 4
+        assertNotEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(11, 59), TZ, 120, 420, 420, 0, true, true).topic); // pace 3
+        assertEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(12, 0), TZ, 120, 420, 420, 0, true, true).topic); // pace 4
     }
 
-    @Test public void moodComesBeforeEnergy() {
+    @Test public void unloggedEnergyIsNotAskedAtMidday() {
         TodaySnapshot s = allLogged();
         s.moodLogged = false;
         s.moodTag = null;
@@ -305,16 +305,7 @@ public class CheckInPlannerTest {
         s.energy = null;
         Plan p = plan(s, at(14, 30));
         assertEquals(Topic.MOOD, p.topic);
-        assertEquals("How are you feeling?", p.shortText);
-    }
-
-    @Test public void energyIsItsOwnTopic() {
-        TodaySnapshot s = allLogged();
-        s.energyLogged = false;
-        s.energy = null;
-        Plan p = plan(s, at(14, 30));
-        assertEquals(Topic.ENERGY, p.topic);
-        assertEquals("How's your energy?", p.shortText);
+        assertEquals("How's your day going so far?", p.shortText);
     }
 
     @Test public void priorityOrderIsFixed() {
@@ -334,8 +325,6 @@ public class CheckInPlannerTest {
         s.waterGlasses = 8;
         assertEquals(Topic.MOOD, plan(s, now).topic);
         s.moodLogged = true;
-        assertEquals(Topic.ENERGY, plan(s, now).topic);
-        s.energyLogged = true;
         assertEquals(Topic.CALORIES, plan(s, now).topic);
         s.calorieGoal = null;
         assertEquals(Topic.OVERVIEW, plan(s, now).topic);
@@ -347,7 +336,7 @@ public class CheckInPlannerTest {
         s.kcalToday = 1800;
         Plan p = plan(s, at(14, 30));
         assertEquals(Topic.CALORIES, p.topic);
-        assertEquals("1800 of 2000 kcal so far", p.shortText);
+        assertEquals("You're close to your food goal.", p.shortText);
 
         s.kcalToday = 1799;
         assertNotEquals(Topic.CALORIES, plan(s, at(14, 30)).topic);
@@ -356,9 +345,9 @@ public class CheckInPlannerTest {
     @Test public void doesNotRepeatTopic() {
         TodaySnapshot s = allLogged();
         s.moodLogged = false;
-        s.energyLogged = false;
-        Plan p = plan(s, Topic.MOOD, at(14, 30), 120);
-        assertEquals(Topic.ENERGY, p.topic);
+        s.waterGlasses = 0;
+        Plan p = plan(s, Topic.WATER, at(14, 30), 120);
+        assertEquals(Topic.MOOD, p.topic);
     }
 
     @Test public void repeatsWhenOnlyOneTopicLeft() {
@@ -371,7 +360,7 @@ public class CheckInPlannerTest {
     @Test public void everythingLoggedGivesOverview() {
         Plan p = plan(allLogged(), at(14, 30));
         assertEquals(Topic.OVERVIEW, p.topic);
-        assertEquals("Good afternoon! Here's your day so far", p.shortText);
+        assertEquals("How's the afternoon going?", p.shortText);
         // The overview repeats when it is the only thing left to say.
         assertEquals(Topic.OVERVIEW, plan(allLogged(), Topic.OVERVIEW, at(14, 30), 120).topic);
     }
@@ -386,80 +375,7 @@ public class CheckInPlannerTest {
         s.energy = null;
         s.openReminders.add(reminder("Dentist", at(17, 0)));
         Plan p = plan(s, at(14, 30));
-        assertEquals("Good afternoon! Had lunch yet? What did you eat? So far today: 3 of 8 glasses, 540 kcal, energy not logged. Next up: Dentist at 5 PM.", p.fullText);
-    }
-
-    @Test public void greetingFollowsTheClock() {
-        assertTrue(plan(allLogged(), at(7, 0)).fullText.startsWith("Good morning! "));
-        assertTrue(plan(allLogged(), at(11, 59)).fullText.startsWith("Good morning! "));
-        assertTrue(plan(allLogged(), at(12, 0)).fullText.startsWith("Good afternoon! "));
-        assertTrue(plan(allLogged(), at(17, 59)).fullText.startsWith("Good afternoon! "));
-        assertTrue(plan(allLogged(), at(18, 0)).fullText.startsWith("Good evening! "));
-        assertTrue(plan(allLogged(), at(21, 59)).fullText.startsWith("Good evening! "));
-    }
-
-    @Test public void onlyTheOverviewGreetsInItsShortText() {
-        assertEquals("Good morning! Here's your day so far", plan(allLogged(), at(9, 0)).shortText);
-        assertEquals("Good evening! Here's your day so far", plan(allLogged(), at(19, 0)).shortText);
-        assertTrue(plan(allLogged(), at(14, 0)).shortText.length() <= 40);
-
-        TodaySnapshot s = allLogged();
-        s.moodLogged = false;
-        assertEquals("How are you feeling?", plan(s, at(9, 0)).shortText);
-    }
-
-    @Test public void everyTopicsFullTextStartsWithTheGreeting() {
-        TodaySnapshot water = allLogged();
-        water.waterGlasses = 0;
-        assertTrue(plan(water, at(15, 0)).fullText.startsWith("Good afternoon! Time for some water? "));
-
-        TodaySnapshot energy = allLogged();
-        energy.energyLogged = false;
-        assertTrue(plan(energy, at(15, 0)).fullText.startsWith("Good afternoon! How's your energy? "));
-
-        TodaySnapshot calories = allLogged();
-        calories.kcalToday = 1800;
-        calories.calorieGoal = 2000;
-        assertTrue(plan(calories, at(15, 0)).fullText.startsWith("Good afternoon! 1800 of 2000 kcal so far. "));
-    }
-
-    @Test public void overviewShowsLoggedValuesPlainly() {
-        Plan p = plan(allLogged(), at(14, 30));
-        assertEquals("Good afternoon! Here's your day so far. So far today: 8 of 8 glasses, 540 kcal, mood happy, energy high.", p.fullText);
-    }
-
-    @Test public void missingMoodIsLeftOutOfTheOverview() {
-        TodaySnapshot s = allLogged();
-        s.moodLogged = false;
-        s.moodTag = null;
-        Plan p = plan(s, at(14, 30));
-        assertEquals("Good afternoon! How are you feeling? So far today: 8 of 8 glasses, 540 kcal, energy high.", p.fullText);
-    }
-
-    @Test public void loggedMoodWithNoTagStillReadsAsLogged() {
-        TodaySnapshot s = allLogged();
-        s.moodTag = null;
-        assertTrue(plan(s, at(14, 30)).fullText.contains("540 kcal, mood logged, energy high."));
-    }
-
-    @Test public void reminderFullTextUsesItsOwnQuestionForm() {
-        TodaySnapshot s = allLogged();
-        s.openReminders.add(reminder("Dentist", at(15, 30)));
-        Plan p = plan(s, at(14, 30));
-        assertEquals("Good afternoon! Your Dentist reminder is at 3:30 PM. So far today: 8 of 8 glasses, 540 kcal, mood happy, energy high. Next up: Dentist at 3:30 PM.", p.fullText);
-    }
-
-    @Test public void nextUpIsTheEarliestReminderLeftToday() {
-        TodaySnapshot s = allLogged();
-        s.openReminders.add(reminder("Gym", at(19, 0)));
-        s.openReminders.add(reminder("Dentist", at(17, 30)));
-        assertTrue(plan(s, at(14, 30)).fullText.endsWith(" Next up: Dentist at 5:30 PM."));
-    }
-
-    @Test public void nextUpLeavesOutTomorrow() {
-        TodaySnapshot s = allLogged();
-        s.openReminders.add(reminder("Dentist", at(23, 59) + 10 * 60 * MINUTE_MS));
-        assertFalse(plan(s, at(14, 30)).fullText.contains("Next up"));
+        assertEquals("Hey, have you had lunch yet? What did you get?", p.fullText);
     }
 
     @Test public void timesUseThePhonesTimeZone() {
@@ -467,7 +383,7 @@ public class CheckInPlannerTest {
         long now = at(14, 30);
         s.openReminders.add(reminder("Dentist", at(15, 0)));
         TimeZone tokyo = TimeZone.getTimeZone("Asia/Tokyo"); // one hour ahead of Manila
-        Plan p = CheckInPlanner.plan(s, null, now, tokyo, 120, SLEEP_START, SLEEP_END);
+        Plan p = CheckInPlanner.plan(s, null, now, tokyo, 120, SLEEP_START, SLEEP_END, 0, true, true);
         assertEquals("Dentist at 4 PM", p.shortText);
     }
 
@@ -487,7 +403,7 @@ public class CheckInPlannerTest {
         s.mealTypes.remove("lunch");
         // In July a fixed offset would read this as 13:00, before lunch is overdue.
         long now = at(ny, 2026, Calendar.JULY, 1, 14, 0);
-        Plan p = CheckInPlanner.plan(s, null, now, ny, 120, SLEEP_START, SLEEP_END);
+        Plan p = CheckInPlanner.plan(s, null, now, ny, 120, SLEEP_START, SLEEP_END, 0, true, true);
         assertEquals(Topic.MEAL, p.topic);
     }
 
@@ -513,5 +429,155 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("12345678901234567890123😀 and more", at(15, 0)));
         assertEquals("12345678901234567890123… at 3 PM", plan(s, at(14, 30)).shortText);
+    }
+
+    // ---- the voice ----
+
+    private static final String LONG_NAME = "Maximiliana Alexandrina Featherstonehaugh-Cholmondeley";
+    private static final int GAP = 120;
+
+    private static Plan voiced(TodaySnapshot s, long nowMs, int step) {
+        return CheckInPlanner.plan(s, null, nowMs, TZ, GAP, SLEEP_START, SLEEP_END, step * GAP, true, true);
+    }
+
+    /** One snapshot and time for every list of lines. */
+    private static Object[][] everySituation() {
+        TodaySnapshot breakfast = allLogged();
+        breakfast.mealTypes.remove("breakfast");
+        TodaySnapshot lunch = allLogged();
+        lunch.mealTypes.remove("lunch");
+        TodaySnapshot dinner = allLogged();
+        dinner.mealTypes.remove("dinner");
+        TodaySnapshot noWater = allLogged();
+        noWater.waterGlasses = 0;
+        TodaySnapshot someWater = allLogged();
+        someWater.waterGlasses = 2;
+        TodaySnapshot halfWater = allLogged();
+        halfWater.waterGlasses = 5;
+        TodaySnapshot mood = allLogged();
+        mood.moodLogged = false;
+        TodaySnapshot foodNear = allLogged();
+        foodNear.calorieGoal = 2000;
+        foodNear.kcalToday = 1900;
+        TodaySnapshot foodReached = allLogged();
+        foodReached.calorieGoal = 2000;
+        foodReached.kcalToday = 2300;
+        TodaySnapshot reminderToday = allLogged();
+        reminderToday.openReminders.add(reminder("Dentist", at(15, 30)));
+        return new Object[][] {
+            {breakfast, at(8, 0), Topic.MEAL}, {lunch, at(13, 0), Topic.MEAL}, {dinner, at(19, 0), Topic.MEAL},
+            {noWater, at(15, 0), Topic.WATER}, {someWater, at(15, 0), Topic.WATER}, {halfWater, at(20, 0), Topic.WATER},
+            {mood, at(15, 0), Topic.MOOD},
+            {foodNear, at(15, 0), Topic.CALORIES}, {foodReached, at(15, 0), Topic.CALORIES},
+            {reminderToday, at(14, 30), Topic.REMINDER},
+            {allLogged(), at(9, 0), Topic.OVERVIEW}, {allLogged(), at(15, 0), Topic.OVERVIEW}, {allLogged(), at(20, 0), Topic.OVERVIEW},
+        };
+    }
+
+    @Test public void noMessageReadsLikeStats() {
+        String[] banned = {"0 of", "not logged", "kcal", "So far today", "Next up", "log", "track", "{"};
+        for (Object[] c : everySituation()) {
+            for (int step = 0; step < 3; step++) {
+                TodaySnapshot s = (TodaySnapshot) c[0];
+                s.preferredName = "Sam";
+                Plan p = voiced(s, (Long) c[1], step);
+                assertEquals(c[2], p.topic);
+                for (String word : banned) {
+                    assertFalse(p.fullText, p.fullText.contains(word));
+                    assertFalse(p.shortText, p.shortText.contains(word));
+                }
+            }
+        }
+    }
+
+    @Test public void everyShortTextFitsEvenWithALongName() {
+        for (Object[] c : everySituation()) {
+            for (int step = 0; step < 3; step++) {
+                TodaySnapshot s = (TodaySnapshot) c[0];
+                s.preferredName = LONG_NAME;
+                String text = voiced(s, (Long) c[1], step).shortText;
+                assertTrue(text, text.length() <= 40);
+            }
+        }
+    }
+
+    @Test public void consecutiveCheckInsUseDifferentLines() {
+        for (Object[] c : everySituation()) {
+            TodaySnapshot s = (TodaySnapshot) c[0];
+            long now = (Long) c[1];
+            assertNotEquals(voiced(s, now, 0).fullText, voiced(s, now, 1).fullText);
+            assertNotEquals(voiced(s, now, 1).fullText, voiced(s, now, 2).fullText);
+            assertNotEquals(voiced(s, now, 0).fullText, voiced(s, now, 2).fullText);
+        }
+    }
+
+    @Test public void aFewMinutesLateStillMovesToTheNextLine() {
+        TodaySnapshot s = allLogged();
+        s.moodLogged = false;
+        int base = 29_000_040; // a multiple of the gap, as a real minute count would be on the grid
+        String first = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + 2, true, true).fullText;
+        String next = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + GAP + 3, true, true).fullText;
+        assertNotEquals(first, next);
+    }
+
+    @Test public void theSameSeedGivesTheSameLine() {
+        TodaySnapshot s = allLogged();
+        assertEquals(voiced(s, at(15, 0), 7).fullText, voiced(s, at(15, 0), 7).fullText);
+    }
+
+    @Test public void theNameIsUsedOnlyWhenSet() {
+        TodaySnapshot s = allLogged();
+        s.moodLogged = false;
+        assertEquals("Hey, how are you feeling right now?", voiced(s, at(15, 0), 1).fullText);
+        s.preferredName = "   ";
+        assertEquals("Hey, how are you feeling right now?", voiced(s, at(15, 0), 1).fullText);
+        s.preferredName = "Sam";
+        assertEquals("Hey, Sam, how are you feeling right now?", voiced(s, at(15, 0), 1).fullText);
+        assertFalse(voiced(s, at(15, 0), 1).shortText.contains("Sam"));
+    }
+
+    @Test public void theNameComesUpAboutOneTimeInThree() {
+        TodaySnapshot s = allLogged();
+        s.moodLogged = false;
+        s.preferredName = "Sam";
+        int named = 0;
+        for (int step = 0; step < 30; step++) {
+            if (voiced(s, at(15, 0), step).fullText.contains("Sam")) named++;
+        }
+        assertEquals(10, named);
+    }
+
+    @Test public void waterWordingFollowsHowFarAlong() {
+        TodaySnapshot s = allLogged();
+        s.waterGlasses = 0;
+        assertEquals("Have you had any water today? Go grab a glass for me.", plan(s, at(15, 0)).fullText);
+        s.waterGlasses = 2;
+        assertEquals("Quick water break? You're doing well so far.", plan(s, at(15, 0)).fullText);
+        s.waterGlasses = 5;
+        assertEquals("You're over halfway to your water goal. One more glass?", plan(s, at(20, 0)).fullText);
+    }
+
+    @Test public void foodGoalWordingNeverCallsAnOverGoalDayClose() {
+        TodaySnapshot s = allLogged();
+        s.calorieGoal = 2000;
+        s.kcalToday = 1900;
+        assertEquals("You've eaten pretty well today, you're close to your goal.", plan(s, at(15, 0)).fullText);
+        s.kcalToday = 2300;
+        assertEquals("You've reached your food goal for today. How are you feeling?", plan(s, at(15, 0)).fullText);
+    }
+
+    @Test public void nothingMissingFollowsThePartOfTheDay() {
+        assertEquals("Hope your morning's going well. Anything on your mind?", plan(allLogged(), at(11, 59)).fullText);
+        assertEquals("How's the afternoon going? Tell me something good.", plan(allLogged(), at(12, 0)).fullText);
+        assertEquals("How's the afternoon going? Tell me something good.", plan(allLogged(), at(17, 59)).fullText);
+        assertEquals("How was your day? I'd love to hear about it.", plan(allLogged(), at(18, 0)).fullText);
+    }
+
+    @Test public void reminderLinesNameTheTitleAndTime() {
+        TodaySnapshot s = allLogged();
+        s.openReminders.add(reminder("Dentist", at(15, 30)));
+        assertEquals("Hey, don't forget Dentist at 3:30 PM.", voiced(s, at(14, 30), 0).fullText);
+        assertEquals("Just a heads up: Dentist at 3:30 PM.", voiced(s, at(14, 30), 1).fullText);
+        assertEquals("Hey, Dentist is coming up at 3:30 PM.", voiced(s, at(14, 30), 2).fullText);
     }
 }

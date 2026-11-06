@@ -21,6 +21,9 @@ Leave the bubble running for 8 hours of normal use, including screen off, a swip
 - [ ] It stays up, dozing, through sleep hours.
 - [ ] A phone with no lock screen still fires check-ins.
 - [ ] Settings shows `Bubble: on` while it runs, and the reason when it can't.
+- [ ] `Last wake` moves on after alarms, and `Next wake` shows a time still ahead. If it is in the past, the alarm was not delivered.
+- [ ] A `worker` line with nothing to do doesn't replace an `alarm` line. A wake on another day shows the day, for example `Next wake: Sat 07:00`.
+- [ ] Block notifications for Echo: Settings warns about it, and the warning goes once they are allowed.
 
 A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one. If so, nothing runs until the app is next opened, and code can't change that. Tell the owner, and check that Auto-start and the recents lock fix it.
 
@@ -34,7 +37,7 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 ## The moment it fires
 
-- [ ] The small message shows for 1 second and is readable.
+- [ ] The small message shows for 2.5 seconds and is readable.
 - [ ] It sits on the correct side with the bubble on either edge.
 - [ ] Touches pass through it to the app underneath.
 - [ ] It fires on time at a 30-minute gap, with no app open.
@@ -50,14 +53,23 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] A reminder due before the next check-in comes first.
 - [ ] It doesn't ask for something already logged today.
 - [ ] Meals: breakfast only 07:00 to 10:59, lunch only 12:00 to 16:59, dinner only from 18:00. At 3 PM it never asks about breakfast.
-- [ ] The chat message opens with the right greeting: morning before 12:00, afternoon to 17:59, then evening.
+- [ ] Messages read like a friend: one or two sentences, with no stats, no `0 of`, no `not logged`, no `kcal`.
+- [ ] Greetings match the time of day. The same line doesn't come twice in a row.
+- [ ] Your preferred name appears in about one message in three, and never in the small message. With no name set, the lines still read naturally.
+- [ ] Water wording changes with none, some and over halfway.
+- [ ] Good morning chat: the first check-in within 2 hours after sleep end asks about sleep and energy, once that day.
+- [ ] Good night chat: the first check-in within the last 90 minutes before sleep start asks about energy and winds down, once that day.
+- [ ] With energy already logged, neither chat asks about it. Energy is never asked at any other time.
+- [ ] Mood is asked only between the two chat windows. Water is never asked in the last hour before sleep.
+- [ ] With a bedtime past midnight, the good night chat doesn't come twice. With equal sleep times, neither chat comes.
 - [ ] It doesn't repeat the same topic twice in a row, unless nothing else is missing.
-- [ ] With calorie tracking off, no meal or kcal mentions.
-- [ ] The overview uses the water target set on the Health page.
+- [ ] With calorie tracking off, no meal or food goal mentions.
+- [ ] `Over halfway` follows the water target set on the Health page.
 
 ## How it reaches you
 
-- [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only.
+- [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only: within about a minute, or about 5 seconds after leaving Echo.
+- [ ] Timing doesn't drift: at a 30-minute gap, check-ins stay on the same half-hour grid across a day. One that was held back is followed by the next on that grid, which can be sooner than a full gap.
 - [ ] That holds for a phone call, a WhatsApp call, and while either is ringing.
 - [ ] Panel open: it appears in chat, with no number and no buzz.
 - [ ] Panel left open, phone locked: a notification arrives.
@@ -68,6 +80,16 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] Opening the panel or the Diary clears the notification.
 - [ ] Check-ins keep coming while earlier ones are unread.
 - [ ] Airplane mode: nothing fires until the network returns.
+
+## Keyboard
+
+- [ ] Full app, Diary: tap the type box. It sits right above the keyboard with no gap, and the tab bar hides.
+- [ ] Close the keyboard: the layout returns to normal, with the tab bar back and no gap at the bottom.
+- [ ] Other text fields in the full app, such as Settings, stay visible while typing.
+- [ ] Chathead panel: tap the type box. The panel ends above the keyboard and the type box is visible.
+- [ ] The bubble stays above the panel and can be tapped. If it sat low, it moves up, then returns when the keyboard closes.
+- [ ] Close the keyboard: the panel returns to full height. Close the panel with the keyboard open: it reopens at full height.
+- [ ] Rotate with the keyboard open in both places, and try the emoji or a taller keyboard.
 
 ## Sleep
 
@@ -104,8 +126,13 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] Changing the gap or sleep time takes effect without a restart.
 - [ ] Message me every shows a number and a Minutes, Hours or Days select, side by side at phone width.
 - [ ] A stored gap opens in its largest whole unit: 120 shows 2 Hours, 1440 shows 1 Day, 90 shows 90 Minutes. The unit names follow the number as it is typed.
-- [ ] The number saves on leaving the field and on Enter. Changing the unit keeps the number and saves.
-- [ ] 31 days, 0, an empty box and 1.5 each show `Choose between 1 minute and 30 days.` and save nothing. Fixing the value clears it.
+- [ ] Nothing saves on leaving the field or changing the unit. Save, or Enter in the box, saves.
+- [ ] Save is disabled until the gap differs from the stored one, and shows busy while saving. The same gap in another unit (120 Minutes for 2 Hours) leaves it disabled.
+- [ ] After saving, `Saved. Next check-in in about <gap>.` shows for a few seconds, and `Next wake` updates.
+- [ ] The first check-in comes one gap after saving. Changing sleep time or the water target doesn't restart the timer.
+- [ ] 31 days, 0, an empty box and 1.5 each show `Choose between 1 minute and 30 days.` on Save and save nothing. Fixing the value clears it.
+- [ ] Sleep time saves only with its Save button, shows `Saved.`, and rejects equal or empty times.
+- [ ] Offline, Save keeps spinning until reconnect (known).
 - [ ] 1 minute and 30 days both save and survive reopening Settings.
 - [ ] At a 1-minute gap, check-ins arrive about every minute with the screen on, and none in sleep time.
 - [ ] At a 2-day gap, the next one comes two days later, or at sleep end if that lands in sleep. The bubble still stays up through the keep-alive.
@@ -145,4 +172,3 @@ Also check: if every open logs `cold`, the warmed panel isn't loading without a 
 - The small message is slightly see-through (alpha 0.8), because Android blocks touches through more solid overlays.
 - Overdue reminders are never mentioned at a check-in. A reminder that falls between two check-ins can be skipped.
 - A reminder early tomorrow can be asked the night before, with no day named.
-- Reminder check-ins repeat in the full text: `Your Dentist reminder is at 3:30 PM. ... Next up: Dentist at 3:30 PM.`
