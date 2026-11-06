@@ -11,7 +11,6 @@ public final class CheckInRules {
         WAIT,
         POPUP,
         CHAT_ONLY,
-        QUIET,
         NOTIFY
     }
 
@@ -20,7 +19,6 @@ public final class CheckInRules {
         public boolean enabled;
         public boolean signedIn;
         public boolean bubbleRunning;
-        public boolean bubbleRemoved;
         /** On and unlocked. */
         public boolean screenOn;
         public boolean inCall;
@@ -61,12 +59,12 @@ public final class CheckInRules {
         if (s.inCall || s.appInForeground) return Outcome.WAIT;
         if (s.panelOpen && s.screenOn) return Outcome.CHAT_ONLY; // on a locked phone nobody is reading it
         if (s.bubbleRunning && s.screenOn) return Outcome.POPUP;
-        return s.bubbleRemoved ? Outcome.QUIET : Outcome.NOTIFY;
+        return Outcome.NOTIFY;
     }
 
     /** True for the outcomes that send a check-in. */
     public static boolean fires(Outcome o) {
-        return o == Outcome.POPUP || o == Outcome.CHAT_ONLY || o == Outcome.QUIET || o == Outcome.NOTIFY;
+        return o == Outcome.POPUP || o == Outcome.CHAT_ONLY || o == Outcome.NOTIFY;
     }
 
     /** Nothing fires in sleep time, so a moment inside it moves on to when sleep ends. */

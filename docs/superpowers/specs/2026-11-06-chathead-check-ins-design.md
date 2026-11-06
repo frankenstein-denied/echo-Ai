@@ -50,11 +50,11 @@ Between the sleep start and end times nothing fires and nothing sounds. A bubble
 
 ### Removing the bubble
 
-Dragging the bubble to the X removes it.
+Dragging the bubble to the X dismisses it until the next check-in, like a Messenger chat head (owner's decision, replacing "stays gone").
 
 - Messages already sent stay in the chat inside the app.
-- New check-ins keep arriving in the chat quietly, with no pop-up, no notification and no sound, but never during sleep time. Unread check-ins do not stop new ones (owner's decision).
-- The bubble stays gone, across reboots and app opens, until the user taps Type on the pinned notification or turns the setting off and on.
+- The next due check-in brings it back, never during sleep time. Keep-alive, reboots and app opens do not bring it back on their own.
+- Unread check-ins do not stop new ones (owner's decision).
 - When it returns, the number shows what is still unread.
 
 ### How a due check-in reaches the user
@@ -66,7 +66,6 @@ After off, sleep, not due, and offline or an unsaved check-in (these wait), the 
 | In a call (Echo's own: `FloatState.callRunning`, `appCallActive`, `callFinishing`; or a phone or app call, ringing included, seen in `AudioManager.getMode()`), or the full Echo app on screen | Waits, and fires once that clears |
 | Panel open, screen on and unlocked | Appears in chat, the number does not change |
 | Bubble running, screen on and unlocked | Pop-up: small message, number, buzz |
-| Bubble removed by the user | Chat only, silent, number goes up |
 | Anything else, including a locked phone (even with the panel left open) or a declined overlay permission | Notification: chat message, number goes up, notification with the buzz |
 
 Only one check-in can be waiting; they never stack. Unread check-ins never hold back the next one.
@@ -159,7 +158,7 @@ How:
 ## Anti-goals (a failure even if it works)
 
 - Pop-ups, notifications or sound during sleep time, or pop-ups during a call.
-- A removed bubble coming back by itself.
+- A dismissed bubble coming back outside a check-in.
 - Notifications stacking up after a period away. Chat messages do keep arriving while unread (owner's decision), but the notification replaces itself.
 - Asking something already logged today, when the data was available.
 - Slowing the phone down, or a crash in the bubble taking down the app.

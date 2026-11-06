@@ -115,20 +115,9 @@ public class CheckInRulesTest {
         assertEquals(NOTIFY, decide(s));
     }
 
-    @Test public void removedBubbleGoesQuietlyToChat() {
-        CheckInRules.State s = dueAndClear();
-        s.bubbleRunning = false;
-        s.bubbleRemoved = true;
-        assertEquals(QUIET, decide(s));
-
-        s.screenOn = false;
-        assertEquals(QUIET, decide(s));
-    }
-
     @Test public void onlyRealSendsCountAsFiring() {
         assertTrue(CheckInRules.fires(POPUP));
         assertTrue(CheckInRules.fires(CHAT_ONLY));
-        assertTrue(CheckInRules.fires(QUIET));
         assertTrue(CheckInRules.fires(NOTIFY));
         assertFalse(CheckInRules.fires(OFF));
         assertFalse(CheckInRules.fires(SLEEPING));

@@ -72,7 +72,7 @@ public class RefreshWorker extends Worker {
         // refresh() no-ops unless pinned and signed in, and swallows background-start restrictions.
         PinnedController.refresh(getApplicationContext());
         try {
-            CheckInEngine.runBackground(getApplicationContext());
+            CheckInEngine.onAlarm(getApplicationContext());
         } catch (RuntimeException e) {
             Log.w("CheckInTiming", "background check-in failed", e); // the next run tries again
         } finally {

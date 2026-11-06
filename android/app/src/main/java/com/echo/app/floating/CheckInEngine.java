@@ -426,12 +426,20 @@ public final class CheckInEngine {
         SessionStore store = SessionStore.get(app);
         if (!store.hasSession()) return;
         ensureProfile(app, store);
-        if (!FloatState.bubbleRunning && bubbleWanted(app)) BubbleBringUp.run(app);
-
         CheckInPrefs cached = CheckInPrefs.fromJson(store.getCachedPrefsJson());
         if (cached == null || !cached.onboarded) return;
+        bringBackIfDue(app, store, cached);
+        if (!FloatState.bubbleRunning && bubbleWanted(app)) BubbleBringUp.run(app);
+
         CheckInRules.State s = liveState(app, store, cached, System.currentTimeMillis(), TimeZone.getDefault());
         if (s.pendingWrite || CheckInRules.fires(CheckInRules.decide(s))) runBackground(app); // no network otherwise
+    }
+
+    /** Like a Messenger chat head: the X dismisses the bubble until the next message, which brings it back. */
+    private static void bringBackIfDue(Context app, SessionStore store, CheckInPrefs p) {
+        if (!store.isBubbleRemoved()) return;
+        CheckInRules.State s = liveState(app, store, p, System.currentTimeMillis(), TimeZone.getDefault());
+        if (CheckInRules.fires(CheckInRules.decide(s))) store.setBubbleRemoved(false);
     }
 
     /** Blocking; call off the main thread. Sends a check-in when the engine can't, and retries an unsaved one. */
@@ -526,7 +534,6 @@ public final class CheckInEngine {
         CheckInRules.State s = baseState(p, now, storedLastFired(store, now), tz);
         s.signedIn = store.hasSession();
         s.bubbleRunning = FloatState.bubbleRunning;
-        s.bubbleRemoved = store.isBubbleRemoved();
         s.screenOn = screenUsable(isInteractive(ctx), isKeyguardLocked(ctx));
         s.inCall = inCall(ctx);
         s.appInForeground = FloatState.appInForeground;
