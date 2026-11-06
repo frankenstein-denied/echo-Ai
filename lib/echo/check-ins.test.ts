@@ -55,6 +55,10 @@ describe('bubbleStatusLine', () => {
     expect(bubbleStatusLine({ bubbleRunning: true, bubbleError: null })).toBe('Bubble: on')
   })
 
+  it('never says on while an error is recorded', () => {
+    expect(bubbleStatusLine({ bubbleRunning: true, bubbleError: 'check-ins failed: X' })).toBe("Bubble isn't running (check-ins failed: X)")
+  })
+
   it('gives the reason when there is one', () => {
     expect(bubbleStatusLine({ bubbleRunning: false, bubbleError: 'start refused: X' })).toBe("Bubble isn't running (start refused: X)")
     expect(bubbleStatusLine({ bubbleRunning: false })).toBe("Bubble isn't running")

@@ -28,6 +28,7 @@ public class CheckInAlarm extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
         Context app = context.getApplicationContext();
         Runnable finish = finishInTime(goAsync());
+        armProvisional(app);
         new Thread(() -> {
             try {
                 CheckInEngine.onAlarm(app);
@@ -38,6 +39,15 @@ public class CheckInAlarm extends BroadcastReceiver {
                 finish.run();
             }
         }, "echo-checkin-alarm").start();
+    }
+
+    /** The chain must outlive this run: if the process dies before schedule() at the end, this one still goes off. */
+    private static void armProvisional(Context app) {
+        try {
+            set(app, REQUEST_NEXT, System.currentTimeMillis() + CheckInRules.KEEP_ALIVE_MS);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not arm the provisional alarm", e);
+        }
     }
 
     /** Run the result when the work is done. It also runs by itself before Android would call the receiver hung. */

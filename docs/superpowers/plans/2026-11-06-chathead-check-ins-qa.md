@@ -58,7 +58,9 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 ## How it reaches you
 
 - [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only.
+- [ ] That holds for a phone call, a WhatsApp call, and while either is ringing.
 - [ ] Panel open: it appears in chat, with no number and no buzz.
+- [ ] Panel left open, phone locked: a notification arrives.
 - [ ] Screen off or locked: a notification with the buzz arrives on time, and the check-in is counted.
 - [ ] Overlay denied: a notification arrives, and tapping it opens the Diary.
 - [ ] Bubble gone (not removed): tapping the notification brings it back with its number.
@@ -123,8 +125,7 @@ Also check: if every open logs `cold`, the warmed panel isn't loading without a 
 ## Known gaps
 
 - If a chat write keeps failing (for example, rules not deployed), new check-ins are blocked until midnight.
-- With the panel left open on a locked phone, check-ins go to the chat with no notification.
-- A bubble that dies while the screen is off can only return through the exact-alarm start: the overlay fallback needs a screen that is on.
+- A bubble that dies while the screen is off can only return through the exact-alarm start: the overlay fallback needs a screen that is on. It is also skipped in calls and sleep time.
 - Denying notification permission leaves the notification path silent. The check-in still reaches the chat.
 - Turning the setting off leaves a bubble on screen; it just stops firing.
 - A new user may only see the bubble on the next app return if they cancel the prompt or already have the permission.

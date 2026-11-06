@@ -41,6 +41,10 @@ final class BubbleBringUp {
             String direct = startDirectly(app);
             if (direct == null) return true;
             Log.w(TAG, "direct start failed: " + direct);
+            if (!CheckInEngine.standInAllowed(app)) {
+                if (!FloatState.bubbleRunning) ChatheadService.recordError(app, direct);
+                return FloatState.bubbleRunning;
+            }
             String overlay = startBehindOverlay(app);
             if (overlay == null) return true;
             Log.w(TAG, "overlay start failed: " + overlay);

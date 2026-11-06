@@ -2,6 +2,7 @@ package com.echo.app.floating;
 
 import static org.junit.Assert.*;
 
+import android.media.AudioManager;
 import com.echo.app.echo.CheckInPrefs;
 import java.util.TimeZone;
 import org.junit.After;
@@ -11,6 +12,13 @@ public class CheckInEngineTest {
     private static final long MIN = 60_000L;
     private static final long LAST = 1_000_000_000L;
     private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
+
+    @Test public void phoneAndAppCallsShowInTheAudioMode() {
+        assertTrue(CheckInEngine.callAudioMode(AudioManager.MODE_IN_CALL));
+        assertTrue(CheckInEngine.callAudioMode(AudioManager.MODE_IN_COMMUNICATION));
+        assertTrue(CheckInEngine.callAudioMode(AudioManager.MODE_RINGTONE));
+        assertFalse(CheckInEngine.callAudioMode(AudioManager.MODE_NORMAL));
+    }
 
     @After public void clearFlags() {
         FloatState.callRunning = false;

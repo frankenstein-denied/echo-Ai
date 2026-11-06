@@ -155,7 +155,7 @@ public class EchoBridgePlugin extends Plugin {
             // report not removed
         }
         boolean overlay = Settings.canDrawOverlays(getContext());
-        boolean running = ChatheadService.isShowing();
+        boolean running = ChatheadService.isShowing() && FloatState.bubbleRunning; // a head with no engine fires nothing
         if (removed) error = "you removed it";
         else if (!overlay) error = "display over other apps is off";
         JSObject ret = new JSObject();
@@ -163,7 +163,7 @@ public class EchoBridgePlugin extends Plugin {
         ret.put("bubbleRemoved", removed);
         ret.put("batteryOptimized", batteryOptimized());
         ret.put("bubbleRunning", running);
-        ret.put("bubbleError", running ? null : error);
+        ret.put("bubbleError", error);
         call.resolve(ret);
     }
 

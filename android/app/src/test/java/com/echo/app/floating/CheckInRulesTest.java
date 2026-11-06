@@ -162,6 +162,19 @@ public class CheckInRulesTest {
         assertEquals(CHAT_ONLY, decide(s));
     }
 
+    @Test public void panelOpenOnALockedPhoneStillNotifies() {
+        CheckInRules.State s = dueAndClear();
+        s.panelOpen = true;
+        s.screenOn = false;
+        assertEquals(NOTIFY, decide(s));
+    }
+
+    @Test public void standInStaysAwayFromCallsAndSleep() {
+        assertTrue(CheckInRules.standInAllowed(false, false));
+        assertFalse(CheckInRules.standInAllowed(true, false));
+        assertFalse(CheckInRules.standInAllowed(false, true));
+    }
+
     @Test public void callStillBeatsAnOpenPanel() {
         CheckInRules.State s = dueAndClear();
         s.panelOpen = true;

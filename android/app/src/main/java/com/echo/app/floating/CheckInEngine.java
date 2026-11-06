@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -469,16 +470,20 @@ public final class CheckInEngine {
         if (dropOldPending(app, store, today)) showUnread(store.getUnreadCount());
         if (isOnline(app) && store.getPendingCheckInId() != null) writeQuietly(app, api, store, false);
 
-        CheckInRules.State s = liveState(app, store, p, now, tz);
-        CheckInRules.Outcome outcome = CheckInRules.decide(s);
-        if (outcome == CheckInRules.Outcome.POPUP || !CheckInRules.fires(outcome)) return;
+        if (!backgroundFires(CheckInRules.decide(liveState(app, store, p, now, tz)))) return;
 
         TodaySnapshot data = api.loadToday(p, tz);
-        if (!FirestoreJson.snapshotIsUsable(data, today, now)) return; // the next run tries again
-        if (engineOwnsFiring(app)) return; // it came up during the fetch
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), now, tz,
+
+        // The fetch can take 30 seconds: sleep may have begun, a call started or the bubble come up. Decide again.
+        long firedAt = System.currentTimeMillis();
+        String day = FirestoreJson.dateKey(firedAt, tz);
+        CheckInRules.State s = liveState(app, store, p, firedAt, tz);
+        CheckInRules.Outcome outcome = CheckInRules.decide(s);
+        if (!backgroundFires(outcome)) return;
+        if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
+        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), firedAt, tz,
             s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
-        if (!claim(store, plan, s.lastFiredMs, now, today)) return;
+        if (!claim(store, plan, s.lastFiredMs, firedAt, day)) return;
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;
             store.setUnreadCount(unread);
@@ -488,7 +493,15 @@ public final class CheckInEngine {
         writeQuietly(app, api, store, true);
     }
 
-    /** A bubble with the screen off or locked runs no timer, so firing then belongs to the background path. */
+    /** A pop-up can only come from the engine. */
+    private static boolean backgroundFires(CheckInRules.Outcome outcome) {
+        return outcome != CheckInRules.Outcome.POPUP && CheckInRules.fires(outcome);
+    }
+
+    /**
+     * The engine's timer stops with the screen off and keeps going on a locked screen, where it can't show a
+     * pop-up. Neither is left to it: the background path sends these too, and claim() lets only one through.
+     */
     private static boolean engineOwnsFiring(Context app) {
         return FloatState.bubbleRunning && screenUsable(isInteractive(app), isKeyguardLocked(app));
     }
@@ -515,7 +528,7 @@ public final class CheckInEngine {
         s.bubbleRunning = FloatState.bubbleRunning;
         s.bubbleRemoved = store.isBubbleRemoved();
         s.screenOn = screenUsable(isInteractive(ctx), isKeyguardLocked(ctx));
-        s.inCall = inCall();
+        s.inCall = inCall(ctx);
         s.appInForeground = FloatState.appInForeground;
         s.online = isOnline(ctx);
         s.panelOpen = FloatState.panelOpen;
@@ -723,6 +736,26 @@ public final class CheckInEngine {
     /** No popup over the lock screen, so locked counts as off. */
     static boolean screenUsable(boolean interactive, boolean keyguardLocked) {
         return interactive && !keyguardLocked;
+    }
+
+    /** Any call: Echo's own, or a phone or app call, which only shows in the audio mode. Ringing counts. */
+    static boolean inCall(Context ctx) {
+        if (inCall()) return true;
+        AudioManager audio = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        return audio != null && callAudioMode(audio.getMode());
+    }
+
+    static boolean callAudioMode(int mode) {
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
+            || mode == AudioManager.MODE_RINGTONE;
+    }
+
+    /** The stand-in bubble is a visible window, so it stays away from calls and sleep. Off the main thread is fine. */
+    static boolean standInAllowed(Context app) {
+        CheckInPrefs p = CheckInPrefs.fromJson(SessionStore.get(app).getCachedPrefsJson());
+        boolean asleep = p != null && CheckInRules.inSleep(
+            CheckInPlanner.minuteOfDay(System.currentTimeMillis(), TimeZone.getDefault()), p.sleepStartMin, p.sleepEndMin);
+        return CheckInRules.standInAllowed(inCall(app), asleep);
     }
 
     static boolean inCall() {

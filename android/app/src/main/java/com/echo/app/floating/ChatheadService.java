@@ -181,6 +181,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private boolean dozing;
     private boolean panelOpen;
     private boolean tornDown;
+    private int latestStartId = -1; // -1 stops whatever came in, for a teardown before any start
     private int screenW;
     private int screenH;
     private int headSize;
@@ -238,6 +239,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        latestStartId = startId;
         boolean sticky = intent == null; // Android brought a killed bubble back; nothing waits on startForeground
         if (sticky && !showing && !stillWanted()) {
             teardown();
@@ -245,7 +247,10 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         }
         // Before anything else: every startForegroundService must be answered within seconds.
         boolean foreground = enterForeground();
-        if (tornDown) return START_NOT_STICKY;
+        if (tornDown) { // a start that landed after teardown: answered above, so it may now stop too
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         if (showing) return START_STICKY; // a second start while the first is alive: its answer replaces the first's
         boolean userAsked = intent != null && intent.getBooleanExtra(EXTRA_USER_ASKED, false);
         if (!foreground) {
@@ -758,7 +763,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         panel = null;
         panelBody = null;
         main.removeCallbacksAndMessages(null);
-        stopSelf();
+        stopSelf(latestStartId); // a newer start in flight keeps the service until it has called startForeground
     }
 
     private void removeWindow(View view) {

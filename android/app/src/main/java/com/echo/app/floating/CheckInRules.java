@@ -59,7 +59,7 @@ public final class CheckInRules {
         if (s.nowMs - s.lastFiredMs < s.everyMinutes * MINUTE_MS) return Outcome.NOT_DUE;
         if (!s.online || s.pendingWrite) return Outcome.WAIT;
         if (s.inCall || s.appInForeground) return Outcome.WAIT;
-        if (s.panelOpen) return Outcome.CHAT_ONLY;
+        if (s.panelOpen && s.screenOn) return Outcome.CHAT_ONLY; // on a locked phone nobody is reading it
         if (s.bubbleRunning && s.screenOn) return Outcome.POPUP;
         return s.bubbleRemoved ? Outcome.QUIET : Outcome.NOTIFY;
     }
@@ -85,6 +85,11 @@ public final class CheckInRules {
         long due = lastFiredMs + everyMinutes * MINUTE_MS;
         long checkIn = afterSleep(due > nowMs ? due : nowMs + RETRY_MS, tz, sleepStartMin, sleepEndMin);
         return keepAlive ? Math.min(checkIn, nowMs + KEEP_ALIVE_MS) : checkIn;
+    }
+
+    /** Whether a failed restart may fall back to putting a visible window on screen. */
+    static boolean standInAllowed(boolean inCall, boolean asleep) {
+        return !inCall && !asleep;
     }
 
     /** A removed bubble stays removed: this is false until the caller clears the removed flag. */
