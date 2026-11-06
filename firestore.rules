@@ -50,7 +50,8 @@ service cloud.firestore {
       function validProfile(d) {
         return d.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
-                'remindersEnabled', 'onboarded', 'caloriesEnabled', 'calorieGoal', 'createdAt', 'updatedAt'])
+                'remindersEnabled', 'onboarded', 'caloriesEnabled', 'calorieGoal', 'checkInsEnabled',
+                'checkInEveryMinutes', 'sleepStart', 'sleepEnd', 'waterGoal', 'createdAt', 'updatedAt'])
           && d.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
                 'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
@@ -68,7 +69,12 @@ service cloud.firestore {
           && d.remindersEnabled is bool
           && d.onboarded is bool
           && (!('caloriesEnabled' in d) || d.caloriesEnabled is bool)
-          && (!('calorieGoal' in d) || (d.calorieGoal is int && d.calorieGoal >= 800 && d.calorieGoal <= 6000));
+          && (!('calorieGoal' in d) || (d.calorieGoal is int && d.calorieGoal >= 800 && d.calorieGoal <= 6000))
+          && (!('checkInsEnabled' in d) || d.checkInsEnabled is bool)
+          && (!('checkInEveryMinutes' in d) || (d.checkInEveryMinutes is int && d.checkInEveryMinutes in [30, 60, 120, 180, 240, 360]))
+          && (!('sleepStart' in d) || (isString(d.sleepStart, 5) && d.sleepStart.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))
+          && (!('sleepEnd' in d) || (isString(d.sleepEnd, 5) && d.sleepEnd.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))
+          && (!('waterGoal' in d) || (d.waterGoal is int && d.waterGoal >= 1 && d.waterGoal <= 30));
       }
 
       allow read, delete: if isOwner(uid);
@@ -235,13 +241,14 @@ service cloud.firestore {
         // create-only + delete; migration copies keep their original createdAt (<= request.time)
         match /messages/{id} {
           function validPageMessage(d) {
-            return d.keys().hasOnly(['role', 'text', 'category', 'sources', 'createdAt'])
+            return d.keys().hasOnly(['role', 'text', 'category', 'sources', 'checkIn', 'createdAt'])
               && d.keys().hasAll(['role', 'text', 'createdAt'])
               && d.role in ['user', 'assistant']
               && isString(d.text, 20000)
               && d.createdAt is timestamp && d.createdAt <= request.time
               && (!('category' in d) || d.category in ['note', 'goal', 'health', 'reminder', 'connector', 'general'])
-              && (!('sources' in d) || validSources(d.sources));
+              && (!('sources' in d) || validSources(d.sources))
+              && (!('checkIn' in d) || d.checkIn is bool);
           }
           allow read, delete: if isOwner(uid);
           allow create: if isOwner(uid) && validPageMessage(request.resource.data);
