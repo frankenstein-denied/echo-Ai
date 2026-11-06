@@ -218,6 +218,29 @@ public class CheckInRulesTest {
         assertEquals(at(6, 14, 0), alarm(at(6, 12, 0), 120, at(6, 12, 0), false));
     }
 
+    @Test public void alarmWithAFiveMinuteGap() {
+        assertEquals(at(6, 12, 5), alarm(at(6, 12, 0), 5, at(6, 12, 0), false));
+        assertEquals(at(6, 12, 5), alarm(at(6, 12, 0), 5, at(6, 12, 0), true)); // sooner than the keep-alive
+    }
+
+    @Test public void alarmWithAFiveMinuteGapWaitsOutSleep() {
+        assertEquals(at(7, 7, 0), alarm(at(6, 21, 58), 5, at(6, 21, 58), false));
+    }
+
+    @Test public void alarmWithATwoDayGap() {
+        assertEquals(at(8, 12, 0), alarm(at(6, 12, 0), 2880, at(6, 12, 0), false));
+        assertEquals(at(8, 12, 0), alarm(at(6, 12, 0), 2880, at(8, 11, 59), false));
+    }
+
+    @Test public void alarmWithATwoDayGapEndingInSleepMovesToThatSleepEnd() {
+        assertEquals(at(9, 7, 0), alarm(at(6, 23, 0), 2880, at(6, 23, 0), false));
+    }
+
+    @Test public void keepAliveStillComesFirstWithATwoDayGap() {
+        long now = at(6, 12, 0);
+        assertEquals(now + 15 * MINUTE_MS, alarm(now, 2880, now, true));
+    }
+
     @Test public void alarmJustAheadIsNotPushedBack() {
         assertEquals(at(6, 14, 0), alarm(at(6, 12, 0), 120, at(6, 13, 59), false));
     }

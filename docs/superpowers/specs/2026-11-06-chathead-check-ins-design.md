@@ -32,7 +32,7 @@ The greeting is `Good morning!` before 12:00, `Good afternoon!` from 12:00 to 17
 
 The question is picked in this order, using only what is still missing today:
 
-1. A reminder due before the next check-in.
+1. A reminder due before the next check-in. One on a different day and 12 or more hours away names its day, since a long gap can reach that far and the time alone could read as already past.
 2. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
 3. Water that is behind pace for the time of day.
 4. Mood not logged today.
@@ -82,7 +82,7 @@ New card in Settings, "Echo check-ins", shown only in the Android app (`isNative
 | Setting | Default | Notes |
 |---|---|---|
 | Check-ins on or off | On | Off removes the bubble's auto-firing. It does not delete messages. |
-| Message me every | 2 hours | Choices: 30 min, 1, 2, 3, 4, 6 hours (my call). |
+| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 5 minutes to 30 days (owner's decision). Saves on blur, Enter or a unit change. Out of range shows `Choose between 5 minutes and 30 days.` and saves nothing. Stored as whole minutes, 5 to 43200; anything else reads as 120. |
 | Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. |
 
 Water target: editable on the Health page beside the water figure, default 8 glasses, whole numbers 1 to 30 (range is my call). It replaces the fixed `WATER_TARGET` in `lib/echo/body-fill.ts`, and it applies on the web too. Past days use the current target.
@@ -101,7 +101,7 @@ The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`
 
 - **Android native does the firing.** The question is chosen on the phone with no AI call and no web page involved. This is what keeps it fast.
 - **An exact alarm drives firing (owner's decision).** `CheckInAlarm` uses `setExactAndAllowWhileIdle` with `USE_EXACT_ALARM`, which is auto-granted; the app is sideloaded, so Play policy does not apply. It falls back to an inexact alarm on a `SecurityException`. It does not depend on the app being open or a bubble already running. It is set again after every fire and every run, from `RefreshWorker.sync`, on boot and package replaced, and on a settings change, and cancelled on sign-out and when check-ins are off.
-- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 5 minutes, so a waiting alarm can't spin. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive.
+- **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 5 minutes, so a waiting alarm can't spin. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
 - **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day, with `stopWithTask="false"`. Its own timer fires while the screen is usable, and a screen-unlock listener catches anything due. With the screen off the timer stops and firing belongs to the alarm. On a locked screen the timer keeps running, so the engine and the alarm can both find a check-in due; only the first to claim it fires.
 - **Coming back after a kill.** On every alarm, if the bubble is wanted and not running, it restarts, without firing unless a check-in is due. A swipe from recents also sets a one-off alarm 2 seconds later (`onTaskRemoved`), in case the bubble died with the task. Removed bubbles, signed-out users and check-ins off never restart.
 - **How it restarts (`BubbleBringUp`).** Exact alarms are exempt from background start limits, so the alarm calls `startForegroundService` directly. If that fails, outside calls and sleep time, a stand-in bubble is added as an overlay window first, because on Android 15 an app with the overlay permission may start a foreground service from the background only while an overlay window is visible. It comes down once the real head is up. With the screen off that fallback can't work, since the window never becomes visible. Every failure is kept in `lastBubbleError`.
@@ -125,7 +125,7 @@ The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`
 
 ### Data and rules
 
-New optional profile fields: `checkInsEnabled` (bool), `checkInEveryMinutes` (int, one of the choices), `sleepStart` and `sleepEnd` (`HH:MM`), `waterGoal` (int, 1 to 30). Page messages get an optional `checkIn` bool, added to `validPageMessage`, and the `Message` type in `lib/firestore.ts`. Both rules use `hasOnly`, so **the rules must be deployed before the web app and the new APK ship**, or these writes fail. Absent fields mean the defaults.
+New optional profile fields: `checkInsEnabled` (bool), `checkInEveryMinutes` (int, 5 to 43200), `sleepStart` and `sleepEnd` (`HH:MM`), `waterGoal` (int, 1 to 30). Page messages get an optional `checkIn` bool, added to `validPageMessage`, and the `Message` type in `lib/firestore.ts`. Both rules use `hasOnly`, so **the rules must be deployed before the web app and the new APK ship**, or these writes fail. Absent fields mean the defaults.
 
 Native needs new `EchoApi` reads: profile, today's health log, today's meals, today's page. Reminders and goals exist already.
 

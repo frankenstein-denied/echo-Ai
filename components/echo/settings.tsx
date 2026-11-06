@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { Download, LogOut, Play } from 'lucide-react'
 import { updateCalorieSettings, updateCheckInSettings, watchCalorieSettings, watchCheckInSettings, type UserProfile } from '@/lib/firestore'
-import { bubbleStatusLine, CHECK_IN_GAPS, resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
+import { bubbleStatusLine, gapParts, parseGap, resolveCheckInSettings, type CheckInSettings, type GapUnit } from '@/lib/echo/check-ins'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
@@ -21,7 +21,63 @@ import {
   setNativePinned,
 } from '@/lib/native/echo-bridge'
 
-const gapLabel = (m: number) => (m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : `${m / 60} hours`)
+function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minutes: number) => void }) {
+  const [text, setText] = useState(() => String(gapParts(minutes).value))
+  const [unit, setUnit] = useState<GapUnit>(() => gapParts(minutes).unit)
+  const [error, setError] = useState('')
+  const [shown, setShown] = useState(minutes)
+
+  // A failed save or another device moved the gap. What the user typed for this same gap stays as typed.
+  if (minutes !== shown) {
+    setShown(minutes)
+    if (parseGap(text, unit) !== minutes) {
+      const parts = gapParts(minutes)
+      setText(String(parts.value))
+      setUnit(parts.unit)
+      setError('')
+    }
+  }
+
+  const plural = Number(text.trim()) === 1 ? '' : 's'
+
+  const commit = (raw: string, u: GapUnit) => {
+    const next = parseGap(raw, u)
+    setError(next === null ? 'Choose between 5 minutes and 30 days.' : '')
+    if (next !== null && next !== minutes) onSave(next)
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 items-end gap-3">
+        <Input
+          label="Message me every"
+          inputMode="numeric"
+          value={text}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => commit(text, unit)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+        />
+        <Select
+          aria-label="Check-in gap unit"
+          value={unit}
+          onChange={(e) => {
+            const u = e.target.value as GapUnit
+            setUnit(u)
+            commit(text, u)
+          }}
+        >
+          <option value="minutes">{`Minute${plural}`}</option>
+          <option value="hours">{`Hour${plural}`}</option>
+          <option value="days">{`Day${plural}`}</option>
+        </Select>
+      </div>
+      {error && <Alert variant="danger">{error}</Alert>}
+    </>
+  )
+}
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const openInstallGuide = useOpenInstallGuide()
@@ -334,9 +390,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             </div>
             {checkIn.enabled && (
               <div className="mt-4 grid gap-3">
-                <Select label="Message me every" value={checkIn.everyMinutes} onChange={(e) => void saveCheckIn({ everyMinutes: Number(e.target.value) })}>
-                  {CHECK_IN_GAPS.map((m) => <option key={m} value={m}>{gapLabel(m)}</option>)}
-                </Select>
+                <CheckInGapField minutes={checkIn.everyMinutes} onSave={(everyMinutes) => void saveCheckIn({ everyMinutes })} />
                 <div className="grid grid-cols-2 gap-3">
                   <Input label="Sleep starts" type="time" value={sleep.start} onChange={(e) => changeSleep(e.target.value, sleep.end)} />
                   <Input label="Sleep ends" type="time" value={sleep.end} onChange={(e) => changeSleep(sleep.start, e.target.value)} />

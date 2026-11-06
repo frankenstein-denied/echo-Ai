@@ -211,9 +211,28 @@ public class FirestoreJsonTest {
         assertEquals(Integer.valueOf(1800), p.calorieGoal);
     }
 
+    private static int gapOf(String value) {
+        return FirestoreJson.parseProfile(profile("\"checkInEveryMinutes\":" + value)).everyMinutes;
+    }
+
+    @Test public void profileTakesAnyWholeGapInRange() {
+        assertEquals(5, gapOf("{\"integerValue\":\"5\"}"));
+        assertEquals(45, gapOf("{\"integerValue\":\"45\"}"));
+        assertEquals(2880, gapOf("{\"integerValue\":\"2880\"}"));
+        assertEquals(43200, gapOf("{\"integerValue\":\"43200\"}"));
+    }
+
+    @Test public void profileGapOutOfRangeOrNotWholeFallsBack() {
+        assertEquals(120, gapOf("{\"integerValue\":\"4\"}"));
+        assertEquals(120, gapOf("{\"integerValue\":\"0\"}"));
+        assertEquals(120, gapOf("{\"integerValue\":\"-30\"}"));
+        assertEquals(120, gapOf("{\"integerValue\":\"43201\"}"));
+        assertEquals(120, gapOf("{\"doubleValue\":45.5}"));
+    }
+
     @Test public void profileBadStoredValuesFallBack() {
         CheckInPrefs p = FirestoreJson.parseProfile(profile(
-            "\"checkInEveryMinutes\":{\"integerValue\":\"45\"},\"sleepStart\":{\"stringValue\":\"24:00\"},"
+            "\"checkInEveryMinutes\":{\"integerValue\":\"4\"},\"sleepStart\":{\"stringValue\":\"24:00\"},"
             + "\"sleepEnd\":{\"stringValue\":\"7:00\"},\"waterGoal\":{\"integerValue\":\"31\"},"
             + "\"calorieGoal\":{\"stringValue\":\"1800\"}"));
         assertEquals(120, p.everyMinutes);

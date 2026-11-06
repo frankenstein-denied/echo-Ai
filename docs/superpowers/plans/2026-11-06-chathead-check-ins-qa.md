@@ -1,10 +1,10 @@
 # Chathead check-ins: QA checklist
 
-1.5 had one phone test, and check-ins did not reach the user. 1.6 fixes that with an exact alarm, and none of it has run on a phone yet. The pure logic has unit tests; the alarm, bubble restart, notification and buzz have only been compiled. Settings shows `Bubble: on` or `Bubble isn't running (<reason>)`: note that line whenever something goes wrong.
+1.5 had one phone test, and check-ins did not reach the user. 1.6 fixes that with an exact alarm, and 1.7 lets the gap be any length from 5 minutes to 30 days. None of it has run on a phone yet. The pure logic has unit tests; the alarm, bubble restart, notification and buzz have only been compiled. Settings shows `Bubble: on` or `Bubble isn't running (<reason>)`: note that line whenever something goes wrong.
 
 ## Before testing
 
-1. Deploy the rules first: `firebase deploy --only firestore:rules`. Without this, settings fail to save and every check-in fails to write.
+1. Deploy the rules first: `firebase deploy --only firestore:rules`. Without this, settings fail to save and every check-in fails to write, and any gap outside the old six choices is refused.
 2. Get the web changes live. The chat panel and Settings load from Vercel, so the APK alone is not enough.
 3. Install the APK on the TECNO CM5. Set Message me every to 30 minutes so tests don't take all day.
 4. Turn off battery optimization for Echo, allow Auto-start in Phone Master, and lock Echo in recent apps.
@@ -101,6 +101,14 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 - [ ] The Echo check-ins card shows only in the Android app.
 - [ ] Changing the gap or sleep time takes effect without a restart.
+- [ ] Message me every shows a number and a Minutes, Hours or Days select, side by side at phone width.
+- [ ] A stored gap opens in its largest whole unit: 120 shows 2 Hours, 1440 shows 1 Day, 90 shows 90 Minutes. The unit names follow the number as it is typed.
+- [ ] The number saves on leaving the field and on Enter. Changing the unit keeps the number and saves.
+- [ ] 4 minutes, 31 days, 0, an empty box and 1.5 each show `Choose between 5 minutes and 30 days.` and save nothing. Fixing the value clears it.
+- [ ] 5 minutes and 30 days both save and survive reopening Settings.
+- [ ] At a 5-minute gap, check-ins arrive about every 5 minutes with the screen on, and none in sleep time.
+- [ ] At a 2-day gap, the next one comes two days later, or at sleep end if that lands in sleep. The bubble still stays up through the keep-alive.
+- [ ] With a 2-day gap, a reminder on another day and 12 or more hours away is named with its day, for example "Dentist on Sat, Nov 7". One due early tomorrow, under 12 hours away, shows the time alone.
 - [ ] The Auto-start advice stays visible while check-ins are on.
 - [ ] Turning check-ins off stops the alarm: a killed bubble doesn't return.
 - [ ] Sleep start equal to sleep end is rejected.
@@ -128,6 +136,9 @@ Also check: if every open logs `cold`, the warmed panel isn't loading without a 
 - A bubble that dies while the screen is off can only return through the exact-alarm start: the overlay fallback needs a screen that is on. It is also skipped in calls and sleep time.
 - Denying notification permission leaves the notification path silent. The check-in still reaches the chat.
 - Turning the setting off leaves a bubble on screen; it just stops firing.
+- With the phone idle and the screen off, Doze may hold the alarm back, so a gap under 15 minutes can run late.
+- On 1.6 or older, a gap outside the old six choices shows in Settings but the phone uses its last valid gap, or 2 hours after a profile read, until the APK is updated.
+- A 5-minute gap reads Firestore on every check-in and buzzes each time. That is what was asked for, but watch battery and read counts.
 - A new user may only see the bubble on the next app return if they cancel the prompt or already have the permission.
 - Older APKs show the Settings card, but it does nothing on the phone.
 - The small message is slightly see-through (alpha 0.8), because Android blocks touches through more solid overlays.
