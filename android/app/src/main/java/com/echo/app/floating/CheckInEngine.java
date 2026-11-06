@@ -65,6 +65,8 @@ public final class CheckInEngine {
             String action = intent == null ? null : intent.getAction();
             if (Intent.ACTION_USER_PRESENT.equals(action)) {
                 onUnlock();
+            } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                onScreenOn();
             } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 main.removeCallbacks(tickRunnable);
             }
@@ -108,6 +110,7 @@ public final class CheckInEngine {
         host.setUnread(store.getUnreadCount());
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         ContextCompat.registerReceiver(ctx, screenReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
         tick(false);
@@ -169,7 +172,7 @@ public final class CheckInEngine {
 
     private void scheduleNextTick() {
         main.removeCallbacks(tickRunnable);
-        if (!running || !isInteractive()) return; // the unlock receiver starts it again
+        if (!running || !isInteractive()) return; // the screen receiver starts it again
         long delay = TICK_MS;
         try {
             CheckInPrefs p = prefs;
@@ -254,6 +257,11 @@ public final class CheckInEngine {
     }
 
     // ---- unlock ----
+
+    /** USER_PRESENT may never come on a phone with no lock screen, so an unlocked screen coming on counts as the unlock. */
+    private void onScreenOn() {
+        if (isKeyguardLocked()) tick(false); else onUnlock();
+    }
 
     private void onUnlock() {
         if (!running) return;
@@ -531,17 +539,17 @@ public final class CheckInEngine {
     /** From a boot receiver, which may start a foreground service. Cached prefs only. */
     public static void startBubbleFromCache(Context ctx) {
         Context app = ctx.getApplicationContext();
-        if (bubbleWanted(app)) ChatheadService.show(app);
+        if (bubbleWanted(app)) ChatheadService.showQuietly(app);
     }
 
     private static void startBubbleWhileVisible(Context app) {
         if (!bubbleWanted(app)) return;
         new Handler(Looper.getMainLooper()).post(() -> {
-            if (FloatState.appInForeground) ChatheadService.show(app); // Android only allows this while visible
+            if (FloatState.appInForeground) ChatheadService.showQuietly(app); // Android only allows this while visible
         });
     }
 
-    private static boolean bubbleWanted(Context app) {
+    static boolean bubbleWanted(Context app) {
         SessionStore store = SessionStore.get(app);
         return shouldAutoStart(CheckInPrefs.fromJson(store.getCachedPrefsJson()), store.hasSession(),
             Settings.canDrawOverlays(app), store.isBubbleRemoved());
@@ -579,7 +587,7 @@ public final class CheckInEngine {
     /** The single place sign-out shuts check-ins down. */
     public static void onSignedOut(Context ctx) {
         onActive(CheckInEngine::stop);
-        // Task 9: ChatheadService.stop(ctx) goes here.
+        ChatheadService.stop(ctx);
     }
 
     private interface EngineAction {

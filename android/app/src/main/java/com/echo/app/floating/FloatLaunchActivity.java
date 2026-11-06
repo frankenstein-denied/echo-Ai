@@ -64,6 +64,7 @@ public class FloatLaunchActivity extends Activity {
                 startCallOnResume = true;
                 return;
             case SHOW_CHATHEAD:
+                clearBubbleRemoved(); // Type is the way back for a bubble the user removed
                 ChatheadService.show(this); // before finish(), while Echo is still in the foreground
                 break;
             case ALREADY_RUNNING:
@@ -78,6 +79,14 @@ public class FloatLaunchActivity extends Activity {
         }
         finish();
         overridePendingTransition(0, 0);
+    }
+
+    private void clearBubbleRemoved() {
+        try {
+            SessionStore.get(this).setBubbleRemoved(false);
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "could not clear the removed flag", e);
+        }
     }
 
     @Override protected void onResume() {

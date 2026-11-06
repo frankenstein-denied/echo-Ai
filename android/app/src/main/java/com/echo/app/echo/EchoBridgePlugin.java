@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationManagerCompat;
+import com.echo.app.floating.ChatheadService;
 import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.getcapacitor.JSObject;
@@ -55,6 +56,7 @@ public class EchoBridgePlugin extends Plugin {
             PinnedController.stop(getContext());
             SessionStore.get(getContext()).clearSession();
             RefreshWorker.cancel(getContext());
+            ChatheadService.stop(getContext()); // again: a start in flight above may have seen the session
             call.resolve();
         } catch (IllegalStateException e) {
             call.reject("Secure storage unavailable");

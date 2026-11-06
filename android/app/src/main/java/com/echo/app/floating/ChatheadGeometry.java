@@ -27,6 +27,19 @@ public final class ChatheadGeometry {
         return Math.max(0, Math.min(y, screenH - headSize));
     }
 
+    /** Left edge x of the small message: beside the bubble, on the side away from the screen edge. */
+    public static int messageX(int headX, int headSize, int messageWidth, int screenW, int gap) {
+        boolean headOnLeft = headX + headSize / 2 < screenW / 2;
+        int x = headOnLeft ? headX + headSize + gap : headX - gap - messageWidth;
+        return Math.max(0, Math.min(x, screenW - messageWidth));
+    }
+
+    /** The red number: empty when there is nothing unread, and it stops growing at 9+. */
+    public static String badgeText(int count) {
+        if (count <= 0) return "";
+        return count > 9 ? "9+" : Integer.toString(count);
+    }
+
     // Keyboard resize (SOFT_INPUT_ADJUST_RESIZE) only works while the window does not have FLAG_LAYOUT_IN_SCREEN: keep it out of these flags.
     /** Flags for the open diary window: focusable (keyboard works); outside touches pass to the dim layer. */
     public static int panelFlags() {
