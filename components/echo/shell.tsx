@@ -17,6 +17,7 @@ import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
 import { Guide, GuideProvider } from './guide'
+import { CheckInsPrompt } from './check-ins-prompt'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
 import { useMobileViewportSync } from './use-mobile'
 
@@ -163,6 +164,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
       <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
       <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
       <Guide open={guideOpen} start={guideStart} onClose={closeGuide} />
+      {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen} />}
     </div>
     </GuideProvider>
   )

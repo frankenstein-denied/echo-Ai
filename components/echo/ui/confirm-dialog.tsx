@@ -1,8 +1,8 @@
 'use client'
 
 /**
- * ConfirmDialog: modal confirmation for destructive actions.
- * Props: title (full heading text), body (ReactNode), confirmLabel, busy?, error?, onCancel, onConfirm.
+ * ConfirmDialog: modal confirmation, for destructive actions by default.
+ * Props: title (full heading text), body (ReactNode), confirmLabel, busy?, error?, safe? (plain primary button, no trash icon), onCancel, onConfirm.
  * Focus moves into the dialog and returns on close, Tab is trapped, Escape cancels (unless busy).
  */
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
@@ -10,7 +10,7 @@ import { Trash2 } from 'lucide-react'
 import { Alert } from './surfaces'
 import { Button } from './button'
 
-export function ConfirmDialog({ title, body, confirmLabel, busy = false, error = null, onCancel, onConfirm }: { title: string; body: ReactNode; confirmLabel: string; busy?: boolean; error?: string | null; onCancel: () => void; onConfirm: () => void }) {
+export function ConfirmDialog({ title, body, confirmLabel, busy = false, error = null, safe = false, onCancel, onConfirm }: { title: string; body: ReactNode; confirmLabel: string; busy?: boolean; error?: string | null; safe?: boolean; onCancel: () => void; onConfirm: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const uid = useId()
   useEffect(() => {
@@ -52,7 +52,7 @@ export function ConfirmDialog({ title, body, confirmLabel, busy = false, error =
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" icon={Trash2} onClick={onConfirm} loading={busy}>
+          <Button variant={safe ? 'primary' : 'danger'} icon={safe ? undefined : Trash2} onClick={onConfirm} loading={busy}>
             {confirmLabel}
           </Button>
         </div>

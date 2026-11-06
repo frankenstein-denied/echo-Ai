@@ -24,6 +24,11 @@ export function parseWaterGoal(raw: string): number | null {
   return isWaterGoal(n) ? n : null
 }
 
+/** The one-time "Display over other apps" explanation: only in the full Android app, after onboarding, and never twice. */
+export function shouldPromptOverlay(s: { isNative: boolean; embed: boolean; onboarded: boolean; enabled: boolean; overlayAllowed: boolean; asked: boolean }): boolean {
+  return s.isNative && !s.embed && s.onboarded && s.enabled && !s.overlayAllowed && !s.asked
+}
+
 // Absent or bad fields read as the defaults. An absent switch reads as on, unless onboarding said no to reminders.
 export function resolveCheckInSettings(
   p: Partial<Pick<UserProfile, 'checkInsEnabled' | 'checkInEveryMinutes' | 'sleepStart' | 'sleepEnd' | 'waterGoal' | 'remindersEnabled'>>,

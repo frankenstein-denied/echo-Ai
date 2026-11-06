@@ -10,6 +10,7 @@ import { embedPageToAdopt, filterPages, isFromToday, isPermissionDenied, normali
 import { pageDeleteBody } from '@/lib/echo/links'
 import { localDateKey } from '@/lib/echo/view-helpers'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
+import { markCheckInsRead } from '@/lib/native/echo-bridge'
 import { Alert, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Skeleton } from './ui'
 import { Home, type HomeView } from './home'
 import { GuideInfoButton } from './guide'
@@ -253,6 +254,20 @@ export function DiaryView({
       setCollapsed(localStorage.getItem(LIST_KEY) === '1')
     } catch {}
   }, [])
+  // The full app showing the Diary clears the unread check-ins, also when the phone comes back to it.
+  useEffect(() => {
+    if (embed) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void markCheckInsRead()
+    }
+    onVisible()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [embed])
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)

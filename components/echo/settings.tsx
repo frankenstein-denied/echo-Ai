@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { Download, LogOut, Play } from 'lucide-react'
-import { updateCalorieSettings, watchCalorieSettings, type UserProfile } from '@/lib/firestore'
+import { updateCalorieSettings, updateCheckInSettings, watchCalorieSettings, watchCheckInSettings, type UserProfile } from '@/lib/firestore'
+import { CHECK_IN_GAPS, resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
@@ -11,11 +12,16 @@ import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { useOpenInstallGuide } from './guide'
 import { Capacitor } from '@capacitor/core'
 import {
+  getCheckInStatus,
   getNativeStatus,
   openNativeBatterySettings,
+  openOverlaySettings,
   requestNativeNotificationPermission,
+  setCheckInSettings,
   setNativePinned,
 } from '@/lib/native/echo-bridge'
+
+const gapLabel = (m: number) => (m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : `${m / 60} hours`)
 
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const openInstallGuide = useOpenInstallGuide()
@@ -36,6 +42,12 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [pinDenied, setPinDenied] = useState(false)
   const [pinError, setPinError] = useState(false)
   const [batteryOptimized, setBatteryOptimized] = useState(false)
+  const [checkIn, setCheckIn] = useState<CheckInSettings>(() => resolveCheckInSettings(profile))
+  // The time inputs can hold a pair that is not saved yet (start equal to end).
+  const [sleep, setSleep] = useState({ start: checkIn.sleepStart, end: checkIn.sleepEnd })
+  const [sleepError, setSleepError] = useState('')
+  const [checkInError, setCheckInError] = useState('')
+  const [overlayAllowed, setOverlayAllowed] = useState(true)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -63,9 +75,19 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
       })
       .catch(() => null)
 
-    // Re-check after returning from the system battery / notification settings.
+    const readCheckInStatus = () => {
+      getCheckInStatus()
+        .then((s) => {
+          if (s && mounted.current) setOverlayAllowed(s.overlayAllowed)
+        })
+        .catch(() => null)
+    }
+    readCheckInStatus()
+
+    // Re-check after returning from the system battery / notification / overlay settings.
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
+      readCheckInStatus()
       getNativeStatus()
         .then((s) => {
           if (!s || !mounted.current) return
@@ -75,7 +97,11 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
         .catch(() => null)
     }
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
   }, [])
 
   const togglePinned = async (on: boolean) => {
@@ -133,6 +159,40 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
       ),
     [user.uid],
   )
+
+  const showCheckIn = (s: CheckInSettings) => {
+    setCheckIn(s)
+    setSleep({ start: s.sleepStart, end: s.sleepEnd })
+    setSleepError('')
+  }
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    return watchCheckInSettings(user.uid, showCheckIn, () => {})
+  }, [user.uid])
+
+  // No busy state: a save offline only resolves once back online, and the watcher in CheckInsPrompt still tells native.
+  const saveCheckIn = async (patch: Partial<CheckInSettings>) => {
+    const prev = checkIn
+    const next = { ...checkIn, ...patch }
+    setCheckInError('')
+    showCheckIn(next)
+    try {
+      await updateCheckInSettings(user.uid, patch)
+      await setCheckInSettings(next)
+    } catch (e) {
+      showCheckIn(prev)
+      setCheckInError(e instanceof Error ? e.message : 'Could not save your check-in settings.')
+    }
+  }
+
+  const changeSleep = (start: string, end: string) => {
+    setSleep({ start, end })
+    if (!start || !end) return setSleepError('Enter both times.')
+    if (start === end) return setSleepError('Sleep start and end must be different.')
+    setSleepError('')
+    void saveCheckIn({ sleepStart: start, sleepEnd: end })
+  }
 
   const saveCalories = async (patch: { caloriesEnabled?: boolean; calorieGoal?: number | null }, onFail?: () => void) => {
     setCalError('')
@@ -211,6 +271,18 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
     </div>
   )
 
+  const batteryAdvice = (
+    <div className="mt-3">
+      <Alert variant="warning">
+        <p>TECNO/HiOS may close Echo in the background otherwise.</p>
+        <p className="mt-1">Also allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
+        <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
+          Turn off battery optimization
+        </Button>
+      </Alert>
+    </div>
+  )
+
   return (
     <div className="animate-in mx-auto max-w-2xl">
       <PageHeader title="Settings" description="Your profile, voice and account." />
@@ -245,17 +317,44 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
                 <Alert variant="danger">Couldn&apos;t turn on the Echo notification. Please try again.</Alert>
               </div>
             )}
-            {pinned && batteryOptimized && (
+            {pinned && batteryOptimized && batteryAdvice}
+          </Card>
+        )}
+
+        {isNative && (
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Echo check-ins</h2>
+            <div className="mt-1 divide-y divide-border">
+              {row('Check-ins', 'The Echo bubble pops up short check-ins through the day.', <Switch checked={checkIn.enabled} onChange={(v) => void saveCheckIn({ enabled: v })} label="Check-ins" />)}
+            </div>
+            {checkIn.enabled && (
+              <div className="mt-4 grid gap-3">
+                <Select label="Message me every" value={checkIn.everyMinutes} onChange={(e) => void saveCheckIn({ everyMinutes: Number(e.target.value) })}>
+                  {CHECK_IN_GAPS.map((m) => <option key={m} value={m}>{gapLabel(m)}</option>)}
+                </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Sleep starts" type="time" value={sleep.start} onChange={(e) => changeSleep(e.target.value, sleep.end)} />
+                  <Input label="Sleep ends" type="time" value={sleep.end} onChange={(e) => changeSleep(sleep.start, e.target.value)} />
+                </div>
+                {sleepError && <Alert variant="danger">{sleepError}</Alert>}
+              </div>
+            )}
+            {checkInError && (
+              <div className="mt-3">
+                <Alert variant="danger">{checkInError}</Alert>
+              </div>
+            )}
+            {!overlayAllowed && (
               <div className="mt-3">
                 <Alert variant="warning">
-                  <p>TECNO/HiOS may close Echo in the background otherwise.</p>
-                  <p className="mt-1">Also allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
-                  <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
-                    Turn off battery optimization
+                  <p>Echo can&apos;t pop up yet, so check-ins go quietly to your chat. Allow &quot;Display over other apps&quot; to see them.</p>
+                  <Button variant="secondary" className="mt-2" onClick={() => void openOverlaySettings()}>
+                    Open Android settings
                   </Button>
                 </Alert>
               </div>
             )}
+            {batteryOptimized && batteryAdvice}
           </Card>
         )}
 
