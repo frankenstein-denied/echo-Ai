@@ -12,6 +12,9 @@ export type CheckInStatus = {
   overlayAllowed: boolean
   bubbleRemoved: boolean
   batteryOptimized: boolean
+  /** Absent on APKs before 1.6. */
+  bubbleRunning?: boolean
+  bubbleError?: string | null
 }
 
 export type EchoSession = { uid: string; refreshToken: string; apiKey: string; projectId: string }

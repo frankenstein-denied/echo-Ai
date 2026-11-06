@@ -29,6 +29,13 @@ export function shouldPromptOverlay(s: { isNative: boolean; embed: boolean; onbo
   return s.isNative && !s.embed && s.onboarded && s.enabled && !s.overlayAllowed && !s.asked
 }
 
+/** The muted Settings line about the bubble, or null on an older APK that doesn't report it. */
+export function bubbleStatusLine(s: { bubbleRunning?: boolean; bubbleError?: string | null }): string | null {
+  if (s.bubbleRunning === undefined) return null
+  if (s.bubbleRunning) return 'Bubble: on'
+  return s.bubbleError ? `Bubble isn't running (${s.bubbleError})` : "Bubble isn't running"
+}
+
 // Absent or bad fields read as the defaults. An absent switch reads as on, unless onboarding said no to reminders.
 export function resolveCheckInSettings(
   p: Partial<Pick<UserProfile, 'checkInsEnabled' | 'checkInEveryMinutes' | 'sleepStart' | 'sleepEnd' | 'waterGoal' | 'remindersEnabled'>>,

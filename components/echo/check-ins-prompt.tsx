@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { watchCheckInSettings } from '@/lib/firestore'
 import { shouldPromptOverlay } from '@/lib/echo/check-ins'
-import { getCheckInStatus, openOverlaySettings, setCheckInSettings } from '@/lib/native/echo-bridge'
+import { getCheckInStatus, openOverlaySettings, requestNativeNotificationPermission, setCheckInSettings } from '@/lib/native/echo-bridge'
 import { ConfirmDialog } from './ui'
 
 const ASKED_KEY = 'echo.checkIns.overlayAsked'
@@ -44,6 +44,8 @@ export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboar
         if (key === last) return
         last = key
         void setCheckInSettings(s)
+        // Check-ins fall back to a notification, and Android 13+ posts nothing without this. Android asks at most twice.
+        if (onboarded && s.enabled) void requestNativeNotificationPermission().catch(() => null)
         getCheckInStatus()
           .then((status) => {
             if (!live || !status) return // no status: an older APK, which has no check-ins to allow

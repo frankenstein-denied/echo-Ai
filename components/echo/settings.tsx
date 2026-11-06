@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { Download, LogOut, Play } from 'lucide-react'
 import { updateCalorieSettings, updateCheckInSettings, watchCalorieSettings, watchCheckInSettings, type UserProfile } from '@/lib/firestore'
-import { CHECK_IN_GAPS, resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
+import { bubbleStatusLine, CHECK_IN_GAPS, resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
@@ -48,6 +48,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [sleepError, setSleepError] = useState('')
   const [checkInError, setCheckInError] = useState('')
   const [overlayAllowed, setOverlayAllowed] = useState(true)
+  const [bubbleLine, setBubbleLine] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -78,7 +79,9 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
     const readCheckInStatus = () => {
       getCheckInStatus()
         .then((s) => {
-          if (s && mounted.current) setOverlayAllowed(s.overlayAllowed)
+          if (!s || !mounted.current) return
+          setOverlayAllowed(s.overlayAllowed)
+          setBubbleLine(bubbleStatusLine(s))
         })
         .catch(() => null)
     }
@@ -274,11 +277,13 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const batteryAdvice = (
     <div className="mt-3">
       <Alert variant="warning">
-        <p>TECNO/HiOS may close Echo in the background otherwise.</p>
-        <p className="mt-1">Also allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
-        <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
-          Turn off battery optimization
-        </Button>
+        <p>TECNO/HiOS may close Echo in the background.</p>
+        <p className="mt-1">Allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
+        {batteryOptimized && (
+          <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
+            Turn off battery optimization
+          </Button>
+        )}
       </Alert>
     </div>
   )
@@ -347,14 +352,15 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
             {!overlayAllowed && (
               <div className="mt-3">
                 <Alert variant="warning">
-                  <p>Echo can&apos;t pop up yet, so check-ins go quietly to your chat. Allow &quot;Display over other apps&quot; to see them.</p>
+                  <p>Echo can&apos;t pop up yet, so check-ins arrive as notifications. Allow &quot;Display over other apps&quot; to see the bubble.</p>
                   <Button variant="secondary" className="mt-2" onClick={() => void openOverlaySettings()}>
                     Open Android settings
                   </Button>
                 </Alert>
               </div>
             )}
-            {batteryOptimized && batteryAdvice}
+            {checkIn.enabled && bubbleLine && <p className="mt-3 text-xs text-muted-foreground">{bubbleLine}</p>}
+            {checkIn.enabled && batteryAdvice}
           </Card>
         )}
 
