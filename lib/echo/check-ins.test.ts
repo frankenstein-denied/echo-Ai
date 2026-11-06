@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleStatusLine, CHECK_IN_GAPS, DEFAULT_WATER_GOAL, MAX_WATER_GOAL, MIN_WATER_GOAL, parseWaterGoal, resolveCheckInSettings } from './check-ins'
+import { bubbleStatusLine, DEFAULT_WATER_GOAL, gapMinutes, gapParts, MAX_GAP_MINUTES, MAX_WATER_GOAL, MIN_GAP_MINUTES, MIN_WATER_GOAL, parseGap, parseWaterGoal, resolveCheckInSettings } from './check-ins'
 
 describe('resolveCheckInSettings', () => {
   it('uses the defaults for an empty profile', () => {
@@ -14,7 +14,7 @@ describe('resolveCheckInSettings', () => {
     expect(resolveCheckInSettings({ remindersEnabled: true, checkInsEnabled: false }).enabled).toBe(false)
   })
   it('falls back on bad stored values', () => {
-    const s = resolveCheckInSettings({ checkInEveryMinutes: 7, sleepStart: '25:00', waterGoal: 99 })
+    const s = resolveCheckInSettings({ checkInEveryMinutes: 4, sleepStart: '25:00', waterGoal: 99 })
     expect([s.everyMinutes, s.sleepStart, s.waterGoal]).toEqual([120, '22:00', 8])
   })
   it('falls back on a bad sleep end and on water targets outside whole 1 to 30', () => {
@@ -26,9 +26,62 @@ describe('resolveCheckInSettings', () => {
       .toEqual({ enabled: true, everyMinutes: 360, sleepStart: '23:30', sleepEnd: '06:15', waterGoal: 30 })
     expect(resolveCheckInSettings({ waterGoal: 1 }).waterGoal).toBe(1)
   })
-  it('accepts every offered gap', () => {
-    expect(CHECK_IN_GAPS).toEqual([30, 60, 120, 180, 240, 360])
-    for (const checkInEveryMinutes of CHECK_IN_GAPS) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(checkInEveryMinutes)
+  it('accepts any whole gap in range, the old fixed choices included', () => {
+    for (const checkInEveryMinutes of [5, 7, 30, 45, 360, 1440, 43200]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(checkInEveryMinutes)
+  })
+  it('falls back on gaps out of range or not whole', () => {
+    for (const checkInEveryMinutes of [-30, 0, 4, 43201, 45.5, Number.NaN]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(120)
+  })
+})
+
+describe('gapParts', () => {
+  it('uses days, then hours, then minutes', () => {
+    expect(gapParts(2880)).toEqual({ value: 2, unit: 'days' })
+    expect(gapParts(1440)).toEqual({ value: 1, unit: 'days' })
+    expect(gapParts(120)).toEqual({ value: 2, unit: 'hours' })
+    expect(gapParts(1500)).toEqual({ value: 25, unit: 'hours' })
+    expect(gapParts(90)).toEqual({ value: 90, unit: 'minutes' })
+    expect(gapParts(5)).toEqual({ value: 5, unit: 'minutes' })
+  })
+  it('reads the limits', () => {
+    expect(gapParts(MAX_GAP_MINUTES)).toEqual({ value: 30, unit: 'days' })
+    expect(gapParts(MIN_GAP_MINUTES)).toEqual({ value: 5, unit: 'minutes' })
+  })
+})
+
+describe('gapMinutes', () => {
+  it('converts each unit', () => {
+    expect(gapMinutes(45, 'minutes')).toBe(45)
+    expect(gapMinutes(3, 'hours')).toBe(180)
+    expect(gapMinutes(2, 'days')).toBe(2880)
+  })
+  it('undoes gapParts', () => {
+    for (const m of [5, 90, 120, 1440, 1500, 43200]) {
+      const { value, unit } = gapParts(m)
+      expect(gapMinutes(value, unit)).toBe(m)
+    }
+  })
+})
+
+describe('parseGap', () => {
+  it('takes whole numbers in range, in any unit', () => {
+    expect(parseGap('5', 'minutes')).toBe(5)
+    expect(parseGap(' 45 ', 'minutes')).toBe(45)
+    expect(parseGap('43200', 'minutes')).toBe(43200)
+    expect(parseGap('1', 'hours')).toBe(60)
+    expect(parseGap('720', 'hours')).toBe(43200)
+    expect(parseGap('1', 'days')).toBe(1440)
+    expect(parseGap('30', 'days')).toBe(43200)
+  })
+  it('rejects anything past the limits', () => {
+    expect(parseGap('4', 'minutes')).toBeNull()
+    expect(parseGap('43201', 'minutes')).toBeNull()
+    expect(parseGap('721', 'hours')).toBeNull()
+    expect(parseGap('31', 'days')).toBeNull()
+    expect(parseGap('99999999999999999999', 'days')).toBeNull()
+  })
+  it('rejects zero and anything that is not a whole positive number', () => {
+    for (const raw of ['0', '', '   ', '-5', '1.5', '1e3', '2h', 'abc']) expect(parseGap(raw, 'hours')).toBeNull()
   })
 })
 

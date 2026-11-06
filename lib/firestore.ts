@@ -52,7 +52,7 @@ export type UserProfile = {
   caloriesEnabled?: boolean // absent means on
   calorieGoal?: number // 800-6000
   checkInsEnabled?: boolean // absent means on, unless remindersEnabled is false
-  checkInEveryMinutes?: number // one of CHECK_IN_GAPS
+  checkInEveryMinutes?: number // whole minutes, MIN_GAP_MINUTES to MAX_GAP_MINUTES
   sleepStart?: string // HH:MM
   sleepEnd?: string // HH:MM, can cross midnight
   waterGoal?: number // 1-30
