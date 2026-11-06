@@ -56,7 +56,7 @@ public class CheckInPlannerTest {
     }
 
     private static Plan plan(TodaySnapshot s, Topic last, long nowMs, int everyMinutes) {
-        return CheckInPlanner.plan(s, last, nowMs, TZ, everyMinutes, SLEEP_START, SLEEP_END, 0);
+        return CheckInPlanner.plan(s, last, nowMs, TZ, everyMinutes, SLEEP_START, SLEEP_END, 0, true, true);
     }
 
     private static Plan plan(TodaySnapshot s, long nowMs) {
@@ -253,7 +253,7 @@ public class CheckInPlannerTest {
     @Test public void noDinnerQuestionAfterMidnightWithALateSleep() {
         TodaySnapshot s = allLogged();
         s.mealTypes.remove("dinner");
-        assertNotEquals(Topic.MEAL, CheckInPlanner.plan(s, null, at(0, 30), TZ, 120, 2 * 60, 7 * 60, 0).topic);
+        assertNotEquals(Topic.MEAL, CheckInPlanner.plan(s, null, at(0, 30), TZ, 120, 2 * 60, 7 * 60, 0, true, true).topic);
     }
 
     @Test public void neverAsksMealsWithCaloriesOff() {
@@ -282,10 +282,10 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.waterGlasses = 3;
         // Awake 09:00 to 01:00 is 960 minutes. At 17:00 the pace is floor(8 * 480 / 960) = 4.
-        Plan p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0);
+        Plan p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0, true, true);
         assertEquals(Topic.WATER, p.topic);
         s.waterGlasses = 4;
-        p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0);
+        p = CheckInPlanner.plan(s, null, at(17, 0), TZ, 120, 60, 9 * 60, 0, true, true);
         assertNotEquals(Topic.WATER, p.topic);
     }
 
@@ -293,11 +293,11 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.waterGlasses = 3;
         // Equal times mean never asleep, so the pace runs midnight to midnight.
-        assertNotEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(11, 59), TZ, 120, 420, 420, 0).topic); // pace 3
-        assertEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(12, 0), TZ, 120, 420, 420, 0).topic); // pace 4
+        assertNotEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(11, 59), TZ, 120, 420, 420, 0, true, true).topic); // pace 3
+        assertEquals(Topic.WATER, CheckInPlanner.plan(s, null, at(12, 0), TZ, 120, 420, 420, 0, true, true).topic); // pace 4
     }
 
-    @Test public void moodComesBeforeEnergy() {
+    @Test public void unloggedEnergyIsNotAskedAtMidday() {
         TodaySnapshot s = allLogged();
         s.moodLogged = false;
         s.moodTag = null;
@@ -306,15 +306,6 @@ public class CheckInPlannerTest {
         Plan p = plan(s, at(14, 30));
         assertEquals(Topic.MOOD, p.topic);
         assertEquals("How's your day going so far?", p.shortText);
-    }
-
-    @Test public void energyIsItsOwnTopic() {
-        TodaySnapshot s = allLogged();
-        s.energyLogged = false;
-        s.energy = null;
-        Plan p = plan(s, at(14, 30));
-        assertEquals(Topic.ENERGY, p.topic);
-        assertEquals("How's your energy holding up?", p.shortText);
     }
 
     @Test public void priorityOrderIsFixed() {
@@ -334,8 +325,6 @@ public class CheckInPlannerTest {
         s.waterGlasses = 8;
         assertEquals(Topic.MOOD, plan(s, now).topic);
         s.moodLogged = true;
-        assertEquals(Topic.ENERGY, plan(s, now).topic);
-        s.energyLogged = true;
         assertEquals(Topic.CALORIES, plan(s, now).topic);
         s.calorieGoal = null;
         assertEquals(Topic.OVERVIEW, plan(s, now).topic);
@@ -356,9 +345,9 @@ public class CheckInPlannerTest {
     @Test public void doesNotRepeatTopic() {
         TodaySnapshot s = allLogged();
         s.moodLogged = false;
-        s.energyLogged = false;
-        Plan p = plan(s, Topic.MOOD, at(14, 30), 120);
-        assertEquals(Topic.ENERGY, p.topic);
+        s.waterGlasses = 0;
+        Plan p = plan(s, Topic.WATER, at(14, 30), 120);
+        assertEquals(Topic.MOOD, p.topic);
     }
 
     @Test public void repeatsWhenOnlyOneTopicLeft() {
@@ -394,7 +383,7 @@ public class CheckInPlannerTest {
         long now = at(14, 30);
         s.openReminders.add(reminder("Dentist", at(15, 0)));
         TimeZone tokyo = TimeZone.getTimeZone("Asia/Tokyo"); // one hour ahead of Manila
-        Plan p = CheckInPlanner.plan(s, null, now, tokyo, 120, SLEEP_START, SLEEP_END, 0);
+        Plan p = CheckInPlanner.plan(s, null, now, tokyo, 120, SLEEP_START, SLEEP_END, 0, true, true);
         assertEquals("Dentist at 4 PM", p.shortText);
     }
 
@@ -414,7 +403,7 @@ public class CheckInPlannerTest {
         s.mealTypes.remove("lunch");
         // In July a fixed offset would read this as 13:00, before lunch is overdue.
         long now = at(ny, 2026, Calendar.JULY, 1, 14, 0);
-        Plan p = CheckInPlanner.plan(s, null, now, ny, 120, SLEEP_START, SLEEP_END, 0);
+        Plan p = CheckInPlanner.plan(s, null, now, ny, 120, SLEEP_START, SLEEP_END, 0, true, true);
         assertEquals(Topic.MEAL, p.topic);
     }
 
@@ -448,7 +437,7 @@ public class CheckInPlannerTest {
     private static final int GAP = 120;
 
     private static Plan voiced(TodaySnapshot s, long nowMs, int step) {
-        return CheckInPlanner.plan(s, null, nowMs, TZ, GAP, SLEEP_START, SLEEP_END, step * GAP);
+        return CheckInPlanner.plan(s, null, nowMs, TZ, GAP, SLEEP_START, SLEEP_END, step * GAP, true, true);
     }
 
     /** One snapshot and time for every list of lines. */
@@ -467,8 +456,6 @@ public class CheckInPlannerTest {
         halfWater.waterGlasses = 5;
         TodaySnapshot mood = allLogged();
         mood.moodLogged = false;
-        TodaySnapshot energy = allLogged();
-        energy.energyLogged = false;
         TodaySnapshot foodNear = allLogged();
         foodNear.calorieGoal = 2000;
         foodNear.kcalToday = 1900;
@@ -480,7 +467,7 @@ public class CheckInPlannerTest {
         return new Object[][] {
             {breakfast, at(8, 0), Topic.MEAL}, {lunch, at(13, 0), Topic.MEAL}, {dinner, at(19, 0), Topic.MEAL},
             {noWater, at(15, 0), Topic.WATER}, {someWater, at(15, 0), Topic.WATER}, {halfWater, at(20, 0), Topic.WATER},
-            {mood, at(15, 0), Topic.MOOD}, {energy, at(15, 0), Topic.ENERGY},
+            {mood, at(15, 0), Topic.MOOD},
             {foodNear, at(15, 0), Topic.CALORIES}, {foodReached, at(15, 0), Topic.CALORIES},
             {reminderToday, at(14, 30), Topic.REMINDER},
             {allLogged(), at(9, 0), Topic.OVERVIEW}, {allLogged(), at(15, 0), Topic.OVERVIEW}, {allLogged(), at(20, 0), Topic.OVERVIEW},
@@ -528,8 +515,8 @@ public class CheckInPlannerTest {
         TodaySnapshot s = allLogged();
         s.moodLogged = false;
         int base = 29_000_040; // a multiple of the gap, as a real minute count would be on the grid
-        String first = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + 2).fullText;
-        String next = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + GAP + 3).fullText;
+        String first = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + 2, true, true).fullText;
+        String next = CheckInPlanner.plan(s, null, at(15, 0), TZ, GAP, SLEEP_START, SLEEP_END, base + GAP + 3, true, true).fullText;
         assertNotEquals(first, next);
     }
 

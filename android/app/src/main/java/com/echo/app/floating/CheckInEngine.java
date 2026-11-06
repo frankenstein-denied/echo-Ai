@@ -242,9 +242,8 @@ public final class CheckInEngine {
     /** Once claimed, message first: everything else on this path comes after the user can see it. */
     private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, CheckInRules.Outcome outcome,
                       String today, TimeZone tz) {
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(usable, parseTopic(store.getLastTopic()), s.nowMs, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin, (int) (s.nowMs / MINUTE_MS));
-        if (!claim(store, plan, s.lastFiredMs, s.everyMinutes, s.nowMs, today)) return;
+        CheckInPlanner.Plan plan = planFor(store, usable, s, tz);
+        if (!claim(store, plan, s, tz, today)) return;
         if (outcome == CheckInRules.Outcome.POPUP) {
             host.showMessage(plan.shortText);
             Log.i(TAG, "due_to_visible_ms="
@@ -509,9 +508,8 @@ public final class CheckInEngine {
         CheckInRules.Outcome outcome = CheckInRules.decide(s);
         if (!backgroundFires(outcome)) return;
         if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
-        CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), firedAt, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin, (int) (firedAt / MINUTE_MS));
-        if (!claim(store, plan, s.lastFiredMs, s.everyMinutes, firedAt, day)) return;
+        CheckInPlanner.Plan plan = planFor(store, data, s, tz);
+        if (!claim(store, plan, s, tz, day)) return;
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;
             store.setUnreadCount(unread);
@@ -563,16 +561,28 @@ public final class CheckInEngine {
         return s;
     }
 
+    private static CheckInPlanner.Plan planFor(SessionStore store, TodaySnapshot data, CheckInRules.State s, TimeZone tz) {
+        String day = chatDay(s, tz);
+        return CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), s.nowMs, tz, s.everyMinutes, s.sleepStartMin,
+            s.sleepEndMin, (int) (s.nowMs / MINUTE_MS), day.equals(store.getMorningChatDay()), day.equals(store.getNightChatDay()));
+    }
+
+    private static String chatDay(CheckInRules.State s, TimeZone tz) {
+        return CheckInPlanner.wakingDay(s.nowMs, tz, s.sleepEndMin);
+    }
+
     /**
      * Fills the pending slot before any network, so a check-in the user was told about survives a kill.
      * False if another path fired this one first.
      */
-    private static boolean claim(SessionStore store, CheckInPlanner.Plan plan, long expectedLastFiredMs,
-                                 int everyMinutes, long nowMs, String today) {
+    private static boolean claim(SessionStore store, CheckInPlanner.Plan plan, CheckInRules.State s, TimeZone tz,
+                                 String today) {
         synchronized (FIRE_LOCK) {
-            if (store.getLastFiredMs() != expectedLastFiredMs) return false;
-            store.setLastFiredMs(CheckInRules.anchoredFireMs(expectedLastFiredMs, everyMinutes, nowMs));
+            if (store.getLastFiredMs() != s.lastFiredMs) return false;
+            store.setLastFiredMs(CheckInRules.anchoredFireMs(s.lastFiredMs, s.everyMinutes, s.nowMs));
             store.setLastTopic(plan.topic.name());
+            if (plan.topic == CheckInPlanner.Topic.MORNING) store.setMorningChatDay(chatDay(s, tz));
+            if (plan.topic == CheckInPlanner.Topic.NIGHT) store.setNightChatDay(chatDay(s, tz));
             store.setPendingCheckInText(plan.fullText);
             store.setPendingCheckInId(newMessageId(today));
             return true;

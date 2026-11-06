@@ -37,7 +37,7 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 ## The moment it fires
 
-- [ ] The small message shows for 1 second and is readable.
+- [ ] The small message shows for 2.5 seconds and is readable.
 - [ ] It sits on the correct side with the bubble on either edge.
 - [ ] Touches pass through it to the app underneath.
 - [ ] It fires on time at a 30-minute gap, with no app open.
@@ -57,6 +57,11 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] Greetings match the time of day. The same line doesn't come twice in a row.
 - [ ] Your preferred name appears in about one message in three, and never in the small message. With no name set, the lines still read naturally.
 - [ ] Water wording changes with none, some and over halfway.
+- [ ] Good morning chat: the first check-in within 2 hours after sleep end asks about sleep and energy, once that day.
+- [ ] Good night chat: the first check-in within the last 90 minutes before sleep start asks about energy and winds down, once that day.
+- [ ] With energy already logged, neither chat asks about it. Energy is never asked at any other time.
+- [ ] Mood is asked only between the two chat windows. Water is never asked in the last hour before sleep.
+- [ ] With a bedtime past midnight, the good night chat doesn't come twice. With equal sleep times, neither chat comes.
 - [ ] It doesn't repeat the same topic twice in a row, unless nothing else is missing.
 - [ ] With calorie tracking off, no meal or food goal mentions.
 - [ ] `Over halfway` follows the water target set on the Health page.
@@ -75,6 +80,16 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] Opening the panel or the Diary clears the notification.
 - [ ] Check-ins keep coming while earlier ones are unread.
 - [ ] Airplane mode: nothing fires until the network returns.
+
+## Keyboard
+
+- [ ] Full app, Diary: tap the type box. It sits right above the keyboard with no gap, and the tab bar hides.
+- [ ] Close the keyboard: the layout returns to normal, with the tab bar back and no gap at the bottom.
+- [ ] Other text fields in the full app, such as Settings, stay visible while typing.
+- [ ] Chathead panel: tap the type box. The panel ends above the keyboard and the type box is visible.
+- [ ] The bubble stays above the panel and can be tapped. If it sat low, it moves up, then returns when the keyboard closes.
+- [ ] Close the keyboard: the panel returns to full height. Close the panel with the keyboard open: it reopens at full height.
+- [ ] Rotate with the keyboard open in both places, and try the emoji or a taller keyboard.
 
 ## Sleep
 

@@ -45,4 +45,14 @@ public final class ChatheadGeometry {
     public static int panelFlags() {
         return FLAG_NOT_TOUCH_MODAL;
     }
+
+    /**
+     * The panel's height with the keyboard in this state. overlap is how far the keyboard covers the panel as
+     * it is now laid out, so it reads 0 once the panel ends above it: only the keyboard hiding restores the height.
+     */
+    public static int panelHeight(int laidOutHeight, int fullHeight, int minHeight, boolean keyboardVisible, int overlap) {
+        if (!keyboardVisible) return fullHeight;
+        if (overlap <= 0) return laidOutHeight;
+        return Math.max(Math.min(minHeight, fullHeight), laidOutHeight - overlap);
+    }
 }

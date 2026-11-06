@@ -13,7 +13,7 @@ Success: during waking hours, with no action from the user, a short message appe
 ### The moment it fires
 
 1. A small message slides out beside the bubble, on the side away from the screen edge. It shows Echo's name and a short question, cut to fit.
-2. It vanishes after 1 second (owner's decision). It never blocks touches on the app underneath.
+2. It vanishes after 2.5 seconds (owner's decision). It never blocks touches on the app underneath.
 3. The red number on the bubble goes up by one, like a Messenger chathead.
 4. Tapping the bubble opens the chat panel. All of the messages are there in full, and the number clears. The user answers there like any Echo chat.
 
@@ -28,19 +28,26 @@ Echo talks like a friend, not a logging app (owner's decision). Each check-in as
 - Small message: `Have you had lunch yet?`, at most 40 characters and never with the name.
 - Chat message: `Hey, Sam, have you had lunch yet? What did you get?`
 
-Each topic has at least three lines, by part of day where that matters. Greetings are part of the wording. The line moves on once per gap, so check-ins in a row read differently. `preferredName` appears in about one message in three, and only when it is set.
+Echo goes by the user's own sleep hours, so morning means after their wake time, not a fixed clock. Each topic has at least three lines, by part of day where that matters. Greetings are part of the wording. The line moves on once per gap, so check-ins in a row read differently. `preferredName` appears in about one message in three, and only when it is set.
 
-The question is picked in this order, using only what is still missing today:
+The topic is picked in this order, using only what is still missing today:
 
 1. A reminder due before the next check-in. One on a different day and 12 or more hours away names its day, since a long gap can reach that far and the time alone could read as already past.
-2. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
-3. Water that is behind pace for the time of day.
-4. Mood not logged today.
-5. Energy not logged today.
-6. Calories close to or past the goal, when a goal is set.
-7. Nothing missing: a friendly line about the day.
+2. The good morning chat: the first check-in within 2 hours after sleep end, once per day. It asks about sleep and energy: `Good morning, Sam! How did you sleep? How's your energy today?`
+3. The good night chat: the first check-in within the last 90 minutes before sleep start, once per day. It asks about energy and winds down: `Getting close to bedtime. How's your energy after today? Sleep well, Sam.`
+4. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
+5. Water that is behind pace for the time of day, at any waking time except the last hour before sleep.
+6. Mood not logged today, only between those two chat windows.
+7. Calories close to or past the goal, when a goal is set.
+8. Nothing missing: a friendly line for the part of the day.
+
+Energy is asked only in the two chats. If it is already logged today, the chat drops that question and stays warm. A day for these chats turns over at the wake time, so a bedtime past midnight still counts as the day before. With equal sleep times (never asleep) there are no chats, and mood can come at any time.
 
 The same topic should not be asked twice in a row unless nothing else applies. Wording comes from a small set of fixed templates. No AI writes these messages.
+
+### Typing with the keyboard up
+
+The keyboard must never cover Echo's type box. In the full app, `MainActivity` uses `adjustResize`, and Capacitor's `SystemBars` pads the decor view by the keyboard. A listener on the WebView's holder adds only what that leaves, so the keyboard is never counted twice. In the chathead panel, a fixed-height overlay window, the panel's height is cut to end above the keyboard and restored when it hides or the panel closes, on Android 11 and later. The bubble moves up with it if the keyboard would cover it, and goes back afterwards.
 
 ### Sleep time
 
