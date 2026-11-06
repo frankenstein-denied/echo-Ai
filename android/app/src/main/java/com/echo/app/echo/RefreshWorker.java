@@ -10,12 +10,13 @@ import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Periodic safety net: refreshes the pinned notification, or revives the service if it was killed. It also
- * carries check-ins to the chat while the bubble is not running.
+ * sends any check-in the exact alarm missed, and sets that alarm again if it was lost.
  */
 public class RefreshWorker extends Worker {
     static final String UNIQUE_NAME = "echo-pinned-refresh";
@@ -54,6 +55,7 @@ public class RefreshWorker extends Worker {
         } else {
             cancel(ctx);
         }
+        CheckInAlarm.schedule(ctx);
     }
 
     public static void cancel(Context ctx) {
@@ -70,9 +72,11 @@ public class RefreshWorker extends Worker {
         // refresh() no-ops unless pinned and signed in, and swallows background-start restrictions.
         PinnedController.refresh(getApplicationContext());
         try {
-            CheckInEngine.runQuietPath(getApplicationContext());
+            CheckInEngine.runBackground(getApplicationContext());
         } catch (RuntimeException e) {
-            Log.w("CheckInTiming", "quiet path failed", e); // the next run tries again
+            Log.w("CheckInTiming", "background check-in failed", e); // the next run tries again
+        } finally {
+            CheckInAlarm.schedule(getApplicationContext());
         }
         return Result.success();
     }

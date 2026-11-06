@@ -1,0 +1,118 @@
+package com.echo.app.floating;
+
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import com.echo.app.echo.CheckInPrefs;
+import com.echo.app.echo.SessionStore;
+import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * The exact alarm behind check-ins. It fires them on time from the background, and looks in on the bubble
+ * at least every 15 minutes so one that died comes back. It always schedules its own next run.
+ */
+public class CheckInAlarm extends BroadcastReceiver {
+    private static final String TAG = "CheckInTiming";
+    private static final int REQUEST_NEXT = 4301;
+    private static final int REQUEST_RESTART = 4302;
+    private static final long RESTART_DELAY_MS = 2_000L;
+    /** Android calls a receiver hung after 60 seconds. Network timeouts can add up to more than that. */
+    private static final long FINISH_BY_MS = 45_000L;
+
+    @Override public void onReceive(Context context, Intent intent) {
+        Context app = context.getApplicationContext();
+        Runnable finish = finishInTime(goAsync());
+        new Thread(() -> {
+            try {
+                CheckInEngine.onAlarm(app);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "alarm failed", e);
+            } finally {
+                schedule(app);
+                finish.run();
+            }
+        }, "echo-checkin-alarm").start();
+    }
+
+    /** Run the result when the work is done. It also runs by itself before Android would call the receiver hung. */
+    public static Runnable finishInTime(PendingResult pending) {
+        AtomicBoolean finished = new AtomicBoolean(false);
+        Handler main = new Handler(Looper.getMainLooper());
+        Runnable finish = () -> {
+            if (finished.compareAndSet(false, true)) pending.finish();
+        };
+        main.postDelayed(finish, FINISH_BY_MS);
+        return () -> {
+            main.removeCallbacks(finish);
+            finish.run();
+        };
+    }
+
+    /** Sets the next alarm to match the stored state, or cancels it when nothing should run. Any thread. */
+    public static void schedule(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        try {
+            SessionStore store = SessionStore.get(app);
+            if (!store.hasSession()) {
+                cancel(app);
+                return;
+            }
+            long now = System.currentTimeMillis();
+            CheckInPrefs p = CheckInPrefs.fromJson(store.getCachedPrefsJson());
+            if (p == null || !p.onboarded) { // the alarm reads the profile; it may have failed at boot
+                set(app, REQUEST_NEXT, now + CheckInRules.KEEP_ALIVE_MS);
+                return;
+            }
+            if (!p.enabled) {
+                cancel(app);
+                return;
+            }
+            set(app, REQUEST_NEXT, CheckInRules.nextAlarmMs(CheckInEngine.storedLastFired(store, now),
+                CheckInEngine.allowedGap(p.everyMinutes), now, p.sleepStartMin, p.sleepEndMin,
+                TimeZone.getDefault(), CheckInEngine.bubbleWanted(app)));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not schedule the alarm", e);
+        }
+    }
+
+    /** One run shortly after the task is swiped away, in case the bubble died with it. Its own slot, so the next check-in stays set. */
+    static void scheduleRestart(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        try {
+            set(app, REQUEST_RESTART, System.currentTimeMillis() + RESTART_DELAY_MS);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not schedule the restart", e);
+        }
+    }
+
+    public static void cancel(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        AlarmManager alarms = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) return;
+        alarms.cancel(pendingIntent(app, REQUEST_NEXT));
+        alarms.cancel(pendingIntent(app, REQUEST_RESTART));
+    }
+
+    private static void set(Context app, int requestCode, long atMs) {
+        AlarmManager alarms = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) return;
+        PendingIntent pi = pendingIntent(app, requestCode);
+        try {
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi);
+        } catch (SecurityException e) {
+            Log.w(TAG, "exact alarm refused, using an inexact one", e);
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi);
+        }
+    }
+
+    private static PendingIntent pendingIntent(Context app, int requestCode) {
+        return PendingIntent.getBroadcast(app, requestCode, new Intent(app, CheckInAlarm.class),
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+}

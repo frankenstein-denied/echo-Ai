@@ -59,13 +59,13 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final String EXTRA_USER_ASKED = "echo_chathead_user_asked";
     private static final String CHANNEL_ID = "echo_chathead";
     private static final int NOTIFICATION_ID = 4203;
-    private static final float HEAD_DP = 56f;
+    static final float HEAD_DP = 56f;
     private static final float TARGET_DP = 64f;
     private static final float TARGET_BOTTOM_DP = 48f;
     private static final float PANEL_MARGIN_DP = 12f;
     private static final float PANEL_TOP_DP = 48f;
     private static final float PANEL_HEIGHT_FRACTION = 0.8f;
-    private static final float DIM_WINDOW_ALPHA = 0.8f; // Android 12+ blocks touches through anything more opaque
+    static final float DIM_WINDOW_ALPHA = 0.8f; // Android 12+ blocks touches through anything more opaque
     private static final float MESSAGE_MAX_WIDTH_DP = 240f;
     private static final float MESSAGE_GAP_DP = 4f;
     private static final float MESSAGE_SLIDE_DP = 24f;
@@ -156,6 +156,8 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     };
 
     private static volatile boolean showing;
+    /** The newest start failure in this process, so BubbleBringUp needn't wait out its timeout. */
+    static volatile String lastFailure;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable hideMessage = this::removeMessage;
@@ -194,6 +196,16 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         start(ctx, false);
     }
 
+    /** A background start. Throws what Android refuses with, so BubbleBringUp can try another way. */
+    static void launch(Context ctx) {
+        ContextCompat.startForegroundService(ctx,
+            new Intent(ctx, ChatheadService.class).putExtra(EXTRA_USER_ASKED, false));
+    }
+
+    public static boolean isShowing() {
+        return showing;
+    }
+
     private static void start(Context ctx, boolean userAsked) {
         if (showing) return;
         try {
@@ -201,7 +213,18 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
                 new Intent(ctx, ChatheadService.class).putExtra(EXTRA_USER_ASKED, userAsked));
         } catch (RuntimeException e) {
             Log.w(TAG, "could not start the chathead service", e);
+            recordError(ctx, "start refused: " + e.getClass().getSimpleName());
             if (userAsked) Toast.makeText(ctx, R.string.float_chathead_start_failed, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Settings shows this, because the owner has no adb. Null clears it. */
+    static void recordError(Context ctx, String reason) {
+        lastFailure = reason;
+        try {
+            SessionStore.get(ctx.getApplicationContext()).setLastBubbleError(reason);
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "could not save the failure");
         }
     }
 
@@ -226,7 +249,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         if (showing) return START_STICKY; // a second start while the first is alive: its answer replaces the first's
         boolean userAsked = intent != null && intent.getBooleanExtra(EXTRA_USER_ASKED, false);
         if (!foreground) {
-            failToStart(userAsked);
+            failToStart(userAsked); // enterForeground recorded why
             return START_NOT_STICKY;
         }
         if (!sticky && !signedIn()) { // signed out while this start was in flight
@@ -238,13 +261,16 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             addHead();
         } catch (WindowManager.BadTokenException | SecurityException e) {
             Log.w(TAG, "overlay refused", e);
+            recordError(this, "overlay refused: " + e.getClass().getSimpleName());
             failToStart(userAsked);
             return START_NOT_STICKY;
         } catch (RuntimeException e) {
             Log.w(TAG, "could not show the chathead", e);
+            recordError(this, "head failed: " + e.getClass().getSimpleName());
             failToStart(userAsked);
             return START_NOT_STICKY;
         }
+        recordError(this, null);
         startEngine();
         return START_STICKY;
     }
@@ -273,6 +299,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             engine.start();
         } catch (RuntimeException e) {
             Log.w(TAG, "check-ins could not start", e);
+            recordError(this, "check-ins failed: " + e.getClass().getSimpleName());
             stopEngine();
         }
     }
@@ -280,7 +307,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private void stopEngine() {
         if (engine == null) return;
         try {
-            engine.stop(); // also clears FloatState.bubbleRunning, which hands firing to the quiet path
+            engine.stop(); // also clears FloatState.bubbleRunning, which hands firing to the background path
         } catch (RuntimeException e) {
             Log.w(TAG, "check-ins did not stop cleanly", e);
         }
@@ -290,6 +317,12 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     @Override public void onDestroy() {
         teardown();
         super.onDestroy();
+    }
+
+    /** The manifest keeps this service alive past a swipe from recents, but a phone maker may not. */
+    @Override public void onTaskRemoved(Intent rootIntent) {
+        CheckInAlarm.scheduleRestart(this);
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override public IBinder onBind(Intent intent) {
@@ -303,6 +336,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             return true;
         } catch (RuntimeException e) {
             Log.w(TAG, "startForeground refused", e);
+            recordError(this, "foreground refused: " + e.getClass().getSimpleName());
             return false;
         }
     }
@@ -528,6 +562,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             panelParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
             windows.addView(panel, panelParams);
             panelOpen = true;
+            FloatState.panelOpen = true;
 
             // Keep the bubble above the panel so tapping it again shrinks the panel.
             windows.removeViewImmediate(head);
@@ -558,6 +593,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
 
     private void removePanelWindows() {
         panelOpen = false;
+        FloatState.panelOpen = false;
         tapAtMs = 0; // closed before the page was ready: nothing to time
         removeWindow(panel); // the panel view (and its WebView) is kept for the next open
         removeWindow(dim);
@@ -579,7 +615,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     }
 
     @SuppressWarnings("deprecation") // TYPE_PHONE: TYPE_APPLICATION_OVERLAY needs Android 8
-    private static WindowManager.LayoutParams overlayParams(int width, int height, int flags) {
+    static WindowManager.LayoutParams overlayParams(int width, int height, int flags) {
         int type = Build.VERSION.SDK_INT >= 26
             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             : WindowManager.LayoutParams.TYPE_PHONE;
