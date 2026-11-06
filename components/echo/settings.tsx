@@ -42,7 +42,7 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
 
   const commit = (raw: string, u: GapUnit) => {
     const next = parseGap(raw, u)
-    setError(next === null ? 'Choose between 5 minutes and 30 days.' : '')
+    setError(next === null ? 'Choose between 1 minute and 30 days.' : '')
     if (next !== null && next !== minutes) onSave(next)
   }
 

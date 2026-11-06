@@ -223,7 +223,7 @@ public class FirestoreJsonTest {
     }
 
     @Test public void profileGapOutOfRangeOrNotWholeFallsBack() {
-        assertEquals(120, gapOf("{\"integerValue\":\"4\"}"));
+        assertEquals(120, gapOf("{\"integerValue\":\"0\"}"));
         assertEquals(120, gapOf("{\"integerValue\":\"0\"}"));
         assertEquals(120, gapOf("{\"integerValue\":\"-30\"}"));
         assertEquals(120, gapOf("{\"integerValue\":\"43201\"}"));
@@ -232,7 +232,7 @@ public class FirestoreJsonTest {
 
     @Test public void profileBadStoredValuesFallBack() {
         CheckInPrefs p = FirestoreJson.parseProfile(profile(
-            "\"checkInEveryMinutes\":{\"integerValue\":\"4\"},\"sleepStart\":{\"stringValue\":\"24:00\"},"
+            "\"checkInEveryMinutes\":{\"integerValue\":\"0\"},\"sleepStart\":{\"stringValue\":\"24:00\"},"
             + "\"sleepEnd\":{\"stringValue\":\"7:00\"},\"waterGoal\":{\"integerValue\":\"31\"},"
             + "\"calorieGoal\":{\"stringValue\":\"1800\"}"));
         assertEquals(120, p.everyMinutes);

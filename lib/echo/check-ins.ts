@@ -1,7 +1,8 @@
 import type { UserProfile } from '@/lib/firestore'
 
 // Type-only import of lib/firestore: that file imports this one, and this one must run in pure tests.
-export const MIN_GAP_MINUTES = 5
+// 1 is for testing before the public release; raise it (and firestore.rules, FirestoreJson.isCheckInGap) before launch.
+export const MIN_GAP_MINUTES = 1
 export const MAX_GAP_MINUTES = 43200 // 30 days, same limits as firestore.rules and the native FirestoreJson
 export const DEFAULT_WATER_GOAL = 8
 export const MIN_WATER_GOAL = 1

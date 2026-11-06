@@ -82,7 +82,7 @@ New card in Settings, "Echo check-ins", shown only in the Android app (`isNative
 | Setting | Default | Notes |
 |---|---|---|
 | Check-ins on or off | On | Off removes the bubble's auto-firing. It does not delete messages. |
-| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 5 minutes to 30 days (owner's decision). Saves on blur, Enter or a unit change. Out of range shows `Choose between 5 minutes and 30 days.` and saves nothing. Stored as whole minutes, 5 to 43200; anything else reads as 120. |
+| Message me every | 2 hours | A whole number plus Minutes, Hours or Days, from 1 minute to 30 days (1 minute is for testing; raise it before the public release) (owner's decision). Saves on blur, Enter or a unit change. Out of range shows `Choose between 5 minutes and 30 days.` and saves nothing. Stored as whole minutes, 5 to 43200; anything else reads as 120. |
 | Sleep time | 10:00 PM to 7:00 AM | Can cross midnight. |
 
 Water target: editable on the Health page beside the water figure, default 8 glasses, whole numbers 1 to 30 (range is my call). It replaces the fixed `WATER_TARGET` in `lib/echo/body-fill.ts`, and it applies on the web too. Past days use the current target.

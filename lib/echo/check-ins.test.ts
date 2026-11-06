@@ -14,7 +14,7 @@ describe('resolveCheckInSettings', () => {
     expect(resolveCheckInSettings({ remindersEnabled: true, checkInsEnabled: false }).enabled).toBe(false)
   })
   it('falls back on bad stored values', () => {
-    const s = resolveCheckInSettings({ checkInEveryMinutes: 4, sleepStart: '25:00', waterGoal: 99 })
+    const s = resolveCheckInSettings({ checkInEveryMinutes: 0, sleepStart: '25:00', waterGoal: 99 })
     expect([s.everyMinutes, s.sleepStart, s.waterGoal]).toEqual([120, '22:00', 8])
   })
   it('falls back on a bad sleep end and on water targets outside whole 1 to 30', () => {
@@ -27,10 +27,10 @@ describe('resolveCheckInSettings', () => {
     expect(resolveCheckInSettings({ waterGoal: 1 }).waterGoal).toBe(1)
   })
   it('accepts any whole gap in range, the old fixed choices included', () => {
-    for (const checkInEveryMinutes of [5, 7, 30, 45, 360, 1440, 43200]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(checkInEveryMinutes)
+    for (const checkInEveryMinutes of [1, 5, 7, 30, 45, 360, 1440, 43200]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(checkInEveryMinutes)
   })
   it('falls back on gaps out of range or not whole', () => {
-    for (const checkInEveryMinutes of [-30, 0, 4, 43201, 45.5, Number.NaN]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(120)
+    for (const checkInEveryMinutes of [-30, 0, 43201, 45.5, Number.NaN]) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(120)
   })
 })
 
@@ -45,7 +45,7 @@ describe('gapParts', () => {
   })
   it('reads the limits', () => {
     expect(gapParts(MAX_GAP_MINUTES)).toEqual({ value: 30, unit: 'days' })
-    expect(gapParts(MIN_GAP_MINUTES)).toEqual({ value: 5, unit: 'minutes' })
+    expect(gapParts(MIN_GAP_MINUTES)).toEqual({ value: 1, unit: 'minutes' })
   })
 })
 
@@ -74,7 +74,7 @@ describe('parseGap', () => {
     expect(parseGap('30', 'days')).toBe(43200)
   })
   it('rejects anything past the limits', () => {
-    expect(parseGap('4', 'minutes')).toBeNull()
+    expect(parseGap('0', 'minutes')).toBeNull()
     expect(parseGap('43201', 'minutes')).toBeNull()
     expect(parseGap('721', 'hours')).toBeNull()
     expect(parseGap('31', 'days')).toBeNull()

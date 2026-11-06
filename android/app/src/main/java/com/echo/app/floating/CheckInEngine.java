@@ -234,7 +234,7 @@ public final class CheckInEngine {
 
     private void prefetchIfNear(CheckInRules.State s, long now) {
         if (!s.online || msUntilPrefetch(s.lastFiredMs, s.everyMinutes, now) > 0) return;
-        if (now - lastFetchAttemptMs >= PREFETCH_MS) refreshSnapshot(true);
+        if (now - lastFetchAttemptMs >= Math.min(PREFETCH_MS, s.everyMinutes * MINUTE_MS)) refreshSnapshot(true);
     }
 
     /** Once claimed, message first: everything else on this path comes after the user can see it. */
