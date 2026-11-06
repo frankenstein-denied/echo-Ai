@@ -243,7 +243,7 @@ public final class CheckInEngine {
     private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, CheckInRules.Outcome outcome,
                       String today, TimeZone tz) {
         CheckInPlanner.Plan plan = CheckInPlanner.plan(usable, parseTopic(store.getLastTopic()), s.nowMs, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
+            s.everyMinutes, s.sleepStartMin, s.sleepEndMin, (int) (s.nowMs / MINUTE_MS));
         if (!claim(store, plan, s.lastFiredMs, s.everyMinutes, s.nowMs, today)) return;
         if (outcome == CheckInRules.Outcome.POPUP) {
             host.showMessage(plan.shortText);
@@ -510,7 +510,7 @@ public final class CheckInEngine {
         if (!backgroundFires(outcome)) return;
         if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
         CheckInPlanner.Plan plan = CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), firedAt, tz,
-            s.everyMinutes, s.sleepStartMin, s.sleepEndMin);
+            s.everyMinutes, s.sleepStartMin, s.sleepEndMin, (int) (firedAt / MINUTE_MS));
         if (!claim(store, plan, s.lastFiredMs, s.everyMinutes, firedAt, day)) return;
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;

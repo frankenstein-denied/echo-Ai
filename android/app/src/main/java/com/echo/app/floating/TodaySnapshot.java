@@ -21,4 +21,5 @@ public final class TodaySnapshot {
     public Set<String> mealTypes = new HashSet<>();
     public List<Reminder> openReminders = new ArrayList<>();
     public int waterGoal = 8;
+    public String preferredName;
 }

@@ -53,10 +53,13 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] A reminder due before the next check-in comes first.
 - [ ] It doesn't ask for something already logged today.
 - [ ] Meals: breakfast only 07:00 to 10:59, lunch only 12:00 to 16:59, dinner only from 18:00. At 3 PM it never asks about breakfast.
-- [ ] The chat message opens with the right greeting: morning before 12:00, afternoon to 17:59, then evening.
+- [ ] Messages read like a friend: one or two sentences, with no stats, no `0 of`, no `not logged`, no `kcal`.
+- [ ] Greetings match the time of day. The same line doesn't come twice in a row.
+- [ ] Your preferred name appears in about one message in three, and never in the small message. With no name set, the lines still read naturally.
+- [ ] Water wording changes with none, some and over halfway.
 - [ ] It doesn't repeat the same topic twice in a row, unless nothing else is missing.
-- [ ] With calorie tracking off, no meal or kcal mentions.
-- [ ] The overview uses the water target set on the Health page.
+- [ ] With calorie tracking off, no meal or food goal mentions.
+- [ ] `Over halfway` follows the water target set on the Health page.
 
 ## How it reaches you
 
@@ -154,4 +157,3 @@ Also check: if every open logs `cold`, the warmed panel isn't loading without a 
 - The small message is slightly see-through (alpha 0.8), because Android blocks touches through more solid overlays.
 - Overdue reminders are never mentioned at a check-in. A reminder that falls between two check-ins can be skipped.
 - A reminder early tomorrow can be asked the night before, with no day named.
-- Reminder check-ins repeat in the full text: `Your Dentist reminder is at 3:30 PM. ... Next up: Dentist at 3:30 PM.`

@@ -460,4 +460,10 @@ public class FirestoreJsonTest {
     @Test public void missingSnapshotIsNotUsable() {
         assertFalse(FirestoreJson.snapshotIsUsable(null, "2026-11-06", NOV_6_10AM_MANILA));
     }
+
+    @Test public void profileNameIsTrimmedAndBlankMeansNone() {
+        assertEquals("Sam", FirestoreJson.parseProfile("{\"fields\":{\"preferredName\":{\"stringValue\":\" Sam \"}}}").preferredName);
+        assertNull(FirestoreJson.parseProfile("{\"fields\":{\"preferredName\":{\"stringValue\":\"  \"}}}").preferredName);
+        assertNull(FirestoreJson.parseProfile("{\"fields\":{}}").preferredName);
+    }
 }

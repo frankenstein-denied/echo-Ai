@@ -13,6 +13,7 @@ public final class CheckInPrefs {
     public boolean caloriesEnabled = true;
     public Integer calorieGoal;
     public boolean onboarded;
+    public String preferredName;
 
     public static CheckInPrefs defaults() {
         return new CheckInPrefs();
@@ -33,6 +34,7 @@ public final class CheckInPrefs {
         p.caloriesEnabled = cached.caloriesEnabled;
         p.calorieGoal = cached.calorieGoal;
         p.onboarded = cached.onboarded;
+        p.preferredName = cached.preferredName;
         return p;
     }
 
@@ -48,6 +50,7 @@ public final class CheckInPrefs {
                 .put("caloriesEnabled", caloriesEnabled)
                 .put("onboarded", onboarded);
             if (calorieGoal != null) o.put("calorieGoal", calorieGoal.intValue());
+            if (preferredName != null) o.put("preferredName", preferredName);
             return o.toString();
         } catch (JSONException e) {
             throw new IllegalStateException(e);
@@ -68,6 +71,7 @@ public final class CheckInPrefs {
             p.caloriesEnabled = o.getBoolean("caloriesEnabled");
             p.onboarded = o.getBoolean("onboarded");
             if (o.has("calorieGoal")) p.calorieGoal = o.getInt("calorieGoal");
+            if (o.has("preferredName")) p.preferredName = o.getString("preferredName");
             return p;
         } catch (JSONException e) {
             return null;

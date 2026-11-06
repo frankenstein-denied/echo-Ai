@@ -23,12 +23,12 @@ Every message that reaches the user buzzes (owner's decision): a short double bu
 
 ### What it says
 
-Each check-in asks about one thing. The full chat message is a greeting, that question, and a one-line overview of today. "Daily goals" means this overview, not the Goals page and not a new kind of goal.
+Echo talks like a friend, not a logging app (owner's decision). Each check-in asks about one thing, in one or two warm sentences. There are no stats: no counts of zero, no field lists, and no mention of logging or tracking. A number only appears as a friend would say it, as in `You're over halfway to your water goal`.
 
-- Small message: `Had lunch yet?`
-- Chat message: `Good afternoon! Had lunch yet? What did you eat? So far today: 3 of 8 glasses, 540 kcal, energy not logged. Next up: Dentist at 5 PM.`
+- Small message: `Have you had lunch yet?`, at most 40 characters and never with the name.
+- Chat message: `Hey, Sam, have you had lunch yet? What did you get?`
 
-The greeting is `Good morning!` before 12:00, `Good afternoon!` from 12:00 to 17:59, and `Good evening!` from 18:00 on. The small message has no greeting, except the overview: `Good afternoon! Here's your day so far`, when that fits in 40 characters.
+Each topic has at least three lines, by part of day where that matters. Greetings are part of the wording. The line moves on once per gap, so check-ins in a row read differently. `preferredName` appears in about one message in three, and only when it is set.
 
 The question is picked in this order, using only what is still missing today:
 
@@ -37,12 +37,10 @@ The question is picked in this order, using only what is still missing today:
 3. Water that is behind pace for the time of day.
 4. Mood not logged today.
 5. Energy not logged today.
-6. Calories compared with the goal, when a goal is set and it is worth mentioning.
-7. Nothing missing: a friendly overview of the day.
+6. Calories close to or past the goal, when a goal is set.
+7. Nothing missing: a friendly line about the day.
 
 The same topic should not be asked twice in a row unless nothing else applies. Wording comes from a small set of fixed templates. No AI writes these messages.
-
-The overview line includes water against the water target, calories (only if tracking is on), mood and energy if logged, reminders left today with the next one, and a mention of a long-term goal only if the builder finds it useful. It leaves out anything turned off.
 
 ### Sleep time
 
