@@ -1,6 +1,7 @@
 /** Fill levels and captions for the Health body silhouettes. */
 
-export const WATER_TARGET = 8
+import { DEFAULT_WATER_GOAL } from './check-ins'
+
 /** Without a calorie goal, the calories body is lit against a neutral 2,000 kcal day. */
 export const NO_GOAL_KCAL_SCALE = 2000
 
@@ -10,14 +11,15 @@ const safe = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0)
 const glasses = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 1 })
 const kcalNum = (n: number) => Math.round(n).toLocaleString('en-US')
 
-export function waterFill(glassCount: number): { level: number; full: boolean; text: string; sub: string } {
+export function waterFill(glassCount: number, target: number = DEFAULT_WATER_GOAL): { level: number; full: boolean; text: string; sub: string } {
   const g = safe(glassCount)
-  const full = g >= WATER_TARGET
+  const t = Number.isFinite(target) && target >= 1 ? target : DEFAULT_WATER_GOAL
+  const full = g >= t
   return {
-    level: clamp01(g / WATER_TARGET),
+    level: clamp01(g / t),
     full,
-    text: `${glasses(g)} / ${WATER_TARGET} glasses`,
-    sub: full ? 'goal reached' : `${glasses(WATER_TARGET - g)} to go`,
+    text: `${glasses(g)} / ${t} glasses`,
+    sub: full ? 'goal reached' : `${glasses(t - g)} to go`,
   }
 }
 

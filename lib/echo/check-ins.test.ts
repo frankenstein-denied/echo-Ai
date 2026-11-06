@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHECK_IN_GAPS, DEFAULT_WATER_GOAL, resolveCheckInSettings } from './check-ins'
+import { CHECK_IN_GAPS, DEFAULT_WATER_GOAL, MAX_WATER_GOAL, MIN_WATER_GOAL, parseWaterGoal, resolveCheckInSettings } from './check-ins'
 
 describe('resolveCheckInSettings', () => {
   it('uses the defaults for an empty profile', () => {
@@ -29,5 +29,19 @@ describe('resolveCheckInSettings', () => {
   it('accepts every offered gap', () => {
     expect(CHECK_IN_GAPS).toEqual([30, 60, 120, 180, 240, 360])
     for (const checkInEveryMinutes of CHECK_IN_GAPS) expect(resolveCheckInSettings({ checkInEveryMinutes }).everyMinutes).toBe(checkInEveryMinutes)
+  })
+})
+
+describe('parseWaterGoal', () => {
+  it('sets the bounds at 1 and 30', () => {
+    expect([MIN_WATER_GOAL, MAX_WATER_GOAL]).toEqual([1, 30])
+  })
+  it('accepts whole numbers in range', () => {
+    expect(parseWaterGoal('1')).toBe(1)
+    expect(parseWaterGoal(' 12 ')).toBe(12)
+    expect(parseWaterGoal('30')).toBe(30)
+  })
+  it('rejects anything else', () => {
+    for (const t of ['', ' ', '0', '31', '2.5', '-3', '1e1', 'abc']) expect(parseWaterGoal(t)).toBeNull()
   })
 })
