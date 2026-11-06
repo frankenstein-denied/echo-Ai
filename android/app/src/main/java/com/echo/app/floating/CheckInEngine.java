@@ -614,6 +614,7 @@ public final class CheckInEngine {
                 if (!store.hasSession()) return;
                 ensureProfile(app, store);
                 RefreshWorker.sync(app);
+                if (FloatState.appInForeground) store.setBubbleRemoved(false); // the X lasts until Echo is next opened
                 startBubbleWhileVisible(app);
             } catch (RuntimeException e) {
                 Log.w(TAG, "app-open sync failed", e);

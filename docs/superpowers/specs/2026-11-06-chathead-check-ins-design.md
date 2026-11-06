@@ -50,10 +50,10 @@ Between the sleep start and end times nothing fires and nothing sounds. A bubble
 
 ### Removing the bubble
 
-Dragging the bubble to the X dismisses it until the next check-in, like a Messenger chat head (owner's decision, replacing "stays gone").
+Dragging the bubble to the X dismisses it until the next check-in or the next time Echo is opened, like a Messenger chat head (owner's decision, replacing "stays gone").
 
 - Messages already sent stay in the chat inside the app.
-- The next due check-in brings it back, never during sleep time. Keep-alive, reboots and app opens do not bring it back on their own.
+- The next due check-in brings it back, never during sleep time. Opening Echo brings it back at once. Keep-alive and reboots do not bring it back on their own.
 - Unread check-ins do not stop new ones (owner's decision).
 - When it returns, the number shows what is still unread.
 
