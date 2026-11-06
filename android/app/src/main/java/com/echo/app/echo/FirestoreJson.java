@@ -17,7 +17,8 @@ import org.json.JSONObject;
 
 /** Pure helpers for Firestore REST JSON. No Android dependencies. */
 public final class FirestoreJson {
-    private static final int[] CHECK_IN_GAPS = {30, 60, 120, 180, 240, 360};
+    private static final int MIN_CHECK_IN_GAP = 5;
+    private static final int MAX_CHECK_IN_GAP = 43200; // 30 days, same limits as firestore.rules
     private static final int MIN_WATER_GOAL = 1;
     private static final int MAX_WATER_GOAL = 30;
     private static final String CLOCK_TIME = "([01][0-9]|2[0-3]):[0-5][0-9]"; // same pattern as firestore.rules
@@ -178,10 +179,7 @@ public final class FirestoreJson {
     }
 
     public static boolean isCheckInGap(double minutes) {
-        for (int gap : CHECK_IN_GAPS) {
-            if (gap == minutes) return true;
-        }
-        return false;
+        return minutes == Math.rint(minutes) && minutes >= MIN_CHECK_IN_GAP && minutes <= MAX_CHECK_IN_GAP;
     }
 
     static boolean isWaterGoal(double glasses) {

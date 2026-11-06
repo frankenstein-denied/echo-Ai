@@ -81,6 +81,38 @@ public class CheckInPlannerTest {
         assertNotEquals(Topic.REMINDER, p.topic);
     }
 
+    private static final int TWO_DAYS = 2880;
+    private static final long DAY_MS = 1440 * MINUTE_MS;
+
+    @Test public void reminderDaysAheadInsideALongGapNamesItsDay() {
+        long now = at(14, 30);
+        TodaySnapshot s = allLogged();
+        s.openReminders.add(reminder("Dentist", at(16, 0) + DAY_MS));
+        Plan p = plan(s, null, now, TWO_DAYS);
+        assertEquals(Topic.REMINDER, p.topic);
+        assertEquals("Dentist on Sat, Nov 7", p.shortText);
+        assertTrue(p.fullText.contains("Your Dentist reminder is on Sat, Nov 7 at 4 PM."));
+    }
+
+    @Test public void reminderLessThanADayAwayKeepsTheTimeAlone() {
+        TodaySnapshot s = allLogged();
+        s.openReminders.add(reminder("Dentist", at(14, 0) + DAY_MS));
+        assertEquals("Dentist at 2 PM", plan(s, null, at(14, 30), TWO_DAYS).shortText);
+    }
+
+    @Test public void reminderBeyondALongGapDoesNotCount() {
+        long now = at(14, 30);
+        TodaySnapshot s = allLogged();
+        s.openReminders.add(reminder("Dentist", now + TWO_DAYS * MINUTE_MS + MINUTE_MS));
+        assertNotEquals(Topic.REMINDER, plan(s, null, now, TWO_DAYS).topic);
+    }
+
+    @Test public void reminderTextFitsTheSmallMessageWithALongTitleOnAnotherDay() {
+        TodaySnapshot s = allLogged();
+        s.openReminders.add(reminder("A very long reminder title indeed", at(16, 0) + DAY_MS));
+        assertTrue(plan(s, null, at(14, 30), TWO_DAYS).shortText.length() <= 40);
+    }
+
     @Test public void reminderExactlyAtNextCheckInCounts() {
         TodaySnapshot s = allLogged();
         long now = at(14, 30);

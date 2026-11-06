@@ -62,8 +62,16 @@ public class CheckInEngineTest {
     }
 
     @Test public void onlyAllowedGapsAreUsed() {
-        for (int gap : new int[] {30, 60, 120, 180, 240, 360}) assertEquals(gap, CheckInEngine.allowedGap(gap));
-        for (int gap : new int[] {0, -30, 45, 361}) assertEquals(120, CheckInEngine.allowedGap(gap));
+        for (int gap : new int[] {5, 30, 45, 361, 2880, 43200}) assertEquals(gap, CheckInEngine.allowedGap(gap));
+        for (int gap : new int[] {0, -30, 4, 43201}) assertEquals(120, CheckInEngine.allowedGap(gap));
+    }
+
+    @Test public void aFiveMinuteGapIsInsideThePrefetchWindowFromTheStart() {
+        assertEquals(0, CheckInEngine.msUntilPrefetch(LAST, 5, LAST));
+    }
+
+    @Test public void theLongestGapDoesNotOverflow() {
+        assertEquals(43195 * MIN, CheckInEngine.msUntilPrefetch(LAST, 43200, LAST));
     }
 
     @Test public void lastFiredSeedsWhenUnsetAndClampsWhenInTheFuture() {
@@ -74,7 +82,7 @@ public class CheckInEngineTest {
 
     @Test public void baseStateCopiesPrefsAndUsesLocalMinute() {
         CheckInPrefs p = prefs(true, true);
-        p.everyMinutes = 45;
+        p.everyMinutes = 4;
         p.sleepStartMin = 100;
         p.sleepEndMin = 200;
         long now = 90 * MIN; // 01:30 on 1 Jan 1970, UTC

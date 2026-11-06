@@ -57,13 +57,22 @@ public class CheckInPrefsTest {
         assertTrue(cached.enabled);
     }
 
+    @Test public void settingsMergeTakesAnyGapInRange() {
+        for (int gap : new int[] {5, 45, 2880, 43200}) {
+            assertEquals(gap, CheckInPrefs.merged(CheckInPrefs.defaults(), true, gap, "22:00", "07:00", 8).everyMinutes);
+        }
+        CheckInPrefs cached = CheckInPrefs.defaults();
+        cached.everyMinutes = 60;
+        assertEquals(60, CheckInPrefs.merged(cached, true, 43201, "22:00", "07:00", 8).everyMinutes);
+    }
+
     @Test public void settingsMergeIgnoresBadValues() {
         CheckInPrefs cached = CheckInPrefs.defaults();
         cached.everyMinutes = 60;
         cached.sleepStartMin = 100;
         cached.sleepEndMin = 200;
         cached.waterGoal = 5;
-        CheckInPrefs m = CheckInPrefs.merged(cached, true, 45, "25:00", "7:00", 31);
+        CheckInPrefs m = CheckInPrefs.merged(cached, true, 4, "25:00", "7:00", 31);
         assertEquals(60, m.everyMinutes);
         assertEquals(100, m.sleepStartMin);
         assertEquals(200, m.sleepEndMin);

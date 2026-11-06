@@ -1,5 +1,6 @@
 package com.echo.app.floating;
 
+import com.echo.app.echo.FirestoreJson;
 import com.echo.app.echo.Reminder;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -24,6 +25,7 @@ public final class CheckInPlanner {
 
     private static final long MINUTE_MS = 60_000L;
     private static final int DAY_MINUTES = 24 * 60;
+    private static final long DAY_MS = DAY_MINUTES * MINUTE_MS;
     private static final int TITLE_MAX = 24;
     private static final int SHORT_MAX = 40;
     private static final int BREAKFAST_FROM = 7 * 60;
@@ -58,6 +60,11 @@ public final class CheckInPlanner {
         switch (topic) {
             case REMINDER: {
                 String time = formatTime(soonest.dueAtMs, tz);
+                if (soonest.dueAtMs - nowMs >= DAY_MS) { // a long gap reaches days ahead, where the time alone would mislead
+                    String day = FirestoreJson.pageTitle(soonest.dueAtMs, tz);
+                    return new Plan(topic, shortTitle(soonest.title) + " on " + day,
+                        hello + " Your " + soonest.title + " reminder is on " + day + " at " + time + ". " + overview);
+                }
                 return new Plan(topic, shortTitle(soonest.title) + " at " + time,
                     hello + " Your " + soonest.title + " reminder is at " + time + ". " + overview);
             }
