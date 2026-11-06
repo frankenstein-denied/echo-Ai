@@ -48,7 +48,7 @@ public final class TokenProvider {
             os.close();
             int code = c.getResponseCode();
             if (code == 400) {
-                s.clearSession();
+                s.clearAuth();
                 return null;
             }
             if (code != 200) return null;

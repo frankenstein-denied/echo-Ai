@@ -14,7 +14,7 @@ public final class SessionStore {
     private static SessionStore instance;
     private final SharedPreferences prefs;
 
-    private SessionStore(SharedPreferences prefs) {
+    SessionStore(SharedPreferences prefs) {
         this.prefs = prefs;
     }
 
@@ -46,19 +46,40 @@ public final class SessionStore {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);
     }
 
+    /** Saves the session. A different user than the last one starts with no check-in state, removed bubble included. */
     public synchronized void saveSession(String uid, String refreshToken, String apiKey, String projectId) {
-        prefs.edit().putString("uid", uid).putString("refreshToken", refreshToken)
+        SharedPreferences.Editor e = prefs.edit();
+        // A session saved by an older APK has a uid but no lastUid.
+        String lastUid = prefs.getString("lastUid", getUid());
+        if (lastUid != null && !lastUid.equals(uid)) removeCheckInState(e).remove("bubbleRemoved");
+        e.putString("uid", uid).putString("lastUid", uid).putString("refreshToken", refreshToken)
             .putString("apiKey", apiKey).putString("projectId", projectId)
             .remove("idToken").remove("idTokenExpiresAtMs").apply();
     }
 
-    /** Clears the session, token cache and check-in state; keeps UI prefs (pinned, tab, batteryPrompted). */
+    /**
+     * Real sign-out: clears the session, token cache and check-in state. Keeps UI prefs (pinned, tab,
+     * batteryPrompted) and bubbleRemoved, so a removed bubble stays gone if the same user signs back in.
+     */
     public synchronized void clearSession() {
-        prefs.edit().remove("uid").remove("refreshToken").remove("apiKey").remove("projectId")
-            .remove("idToken").remove("idTokenExpiresAtMs")
-            .remove("lastFiredMs").remove("lastTopic").remove("unreadCount").remove("quietUnread")
-            .remove("bubbleRemoved").remove("pendingCheckInId").remove("pendingCheckInText")
-            .remove("cachedPrefsJson").apply();
+        removeCheckInState(removeAuth(prefs.edit())).apply();
+    }
+
+    /** The token was rejected, not a sign-out: the next app open restores the session, so check-in state stays. */
+    public synchronized void clearAuth() {
+        removeAuth(prefs.edit()).apply();
+    }
+
+    private SharedPreferences.Editor removeAuth(SharedPreferences.Editor e) {
+        String uid = getUid();
+        if (uid != null) e.putString("lastUid", uid); // survives, so saveSession can spot a different user
+        return e.remove("uid").remove("refreshToken").remove("apiKey").remove("projectId")
+            .remove("idToken").remove("idTokenExpiresAtMs");
+    }
+
+    private static SharedPreferences.Editor removeCheckInState(SharedPreferences.Editor e) {
+        return e.remove("lastFiredMs").remove("lastTopic").remove("unreadCount").remove("quietUnread")
+            .remove("pendingCheckInId").remove("pendingCheckInText").remove("cachedPrefsJson");
     }
 
     public synchronized boolean hasSession() {

@@ -61,28 +61,33 @@ public final class EchoApi {
 
     /** Everything a check-in needs to know about today, or null on a real failure. No health log yet is not one. */
     public TodaySnapshot loadToday(CheckInPrefs p, TimeZone tz) {
-        long now = System.currentTimeMillis();
-        TodaySnapshot snapshot = new TodaySnapshot();
-        snapshot.dateKey = FirestoreJson.dateKey(now, tz);
-        snapshot.fetchedAtMs = now;
-        snapshot.waterGoal = p.waterGoal;
-        snapshot.caloriesEnabled = p.caloriesEnabled;
-        snapshot.calorieGoal = p.calorieGoal;
+        try {
+            if (p == null || tz == null) return null;
+            long now = System.currentTimeMillis();
+            TodaySnapshot snapshot = new TodaySnapshot();
+            snapshot.dateKey = FirestoreJson.dateKey(now, tz);
+            snapshot.fetchedAtMs = now;
+            snapshot.waterGoal = p.waterGoal;
+            snapshot.caloriesEnabled = p.caloriesEnabled;
+            snapshot.calorieGoal = p.calorieGoal;
 
-        String log = getDoc("/healthLogs/" + snapshot.dateKey);
-        if (log == null) return null;
-        FirestoreJson.applyHealthLog(log.equals(NOT_FOUND) ? null : log, snapshot);
+            String log = getDoc("/healthLogs/" + snapshot.dateKey);
+            if (log == null) return null;
+            FirestoreJson.applyHealthLog(log.equals(NOT_FOUND) ? null : log, snapshot);
 
-        if (p.caloriesEnabled) {
-            String meals = runQuery(FirestoreJson.mealsQuery(snapshot.dateKey));
-            if (meals == null) return null;
-            FirestoreJson.applyMeals(meals, snapshot);
+            if (p.caloriesEnabled) {
+                String meals = runQuery(FirestoreJson.mealsQuery(snapshot.dateKey));
+                if (meals == null) return null;
+                FirestoreJson.applyMeals(meals, snapshot);
+            }
+
+            List<Reminder> reminders = listReminders();
+            if (reminders == null) return null;
+            snapshot.openReminders = reminders;
+            return snapshot;
+        } catch (Exception e) {
+            return null;
         }
-
-        List<Reminder> reminders = listReminders();
-        if (reminders == null) return null;
-        snapshot.openReminders = reminders;
-        return snapshot;
     }
 
     /**
@@ -92,6 +97,7 @@ public final class EchoApi {
     public boolean writeCheckIn(String messageId, String text, TimeZone tz) {
         try {
             if (messageId == null || messageId.isEmpty() || messageId.indexOf('/') >= 0) return false;
+            if (text == null || text.isEmpty() || tz == null) return false;
             long now = System.currentTimeMillis();
             String pages = runQuery(FirestoreJson.todaysPageQuery());
             if (pages == null) return false;
