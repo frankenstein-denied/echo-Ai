@@ -77,9 +77,9 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 
 ## Removing the bubble
 
-- [ ] Drag to the X, then reboot and open the app: it stays gone.
-- [ ] Check-ins keep landing in chat, with no notification or sound, and none during sleep.
-- [ ] A removed bubble does not come back at the 15-minute keep-alive, or after a reboot.
+- [ ] Drag to the X, then wait for the next check-in: the bubble comes back with the message, buzz and number.
+- [ ] During sleep time, a dismissed bubble stays gone until the first check-in after sleep.
+- [ ] Between check-ins it stays gone, including across a reboot or an app open.
 - [ ] Tap Type on the notification: the bubble returns with its number.
 - [ ] Turning the setting off and on also brings it back.
 
