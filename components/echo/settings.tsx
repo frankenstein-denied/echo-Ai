@@ -38,6 +38,8 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
     }
   }
 
+  const plural = Number(text.trim()) === 1 ? '' : 's'
+
   const commit = (raw: string, u: GapUnit) => {
     const next = parseGap(raw, u)
     setError(next === null ? 'Choose between 5 minutes and 30 days.' : '')
@@ -67,9 +69,9 @@ function CheckInGapField({ minutes, onSave }: { minutes: number; onSave: (minute
             commit(text, u)
           }}
         >
-          <option value="minutes">Minutes</option>
-          <option value="hours">Hours</option>
-          <option value="days">Days</option>
+          <option value="minutes">{`Minute${plural}`}</option>
+          <option value="hours">{`Hour${plural}`}</option>
+          <option value="days">{`Day${plural}`}</option>
         </Select>
       </div>
       {error && <Alert variant="danger">{error}</Alert>}

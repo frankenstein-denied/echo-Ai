@@ -25,7 +25,8 @@ public final class CheckInPlanner {
 
     private static final long MINUTE_MS = 60_000L;
     private static final int DAY_MINUTES = 24 * 60;
-    private static final long DAY_MS = DAY_MINUTES * MINUTE_MS;
+    /** Closer than this, a reminder on the next day is plainly tonight or the coming morning. */
+    private static final long NAME_THE_DAY_FROM_MS = 12 * 60 * MINUTE_MS;
     private static final int TITLE_MAX = 24;
     private static final int SHORT_MAX = 40;
     private static final int BREAKFAST_FROM = 7 * 60;
@@ -60,7 +61,7 @@ public final class CheckInPlanner {
         switch (topic) {
             case REMINDER: {
                 String time = formatTime(soonest.dueAtMs, tz);
-                if (soonest.dueAtMs - nowMs >= DAY_MS) { // a long gap reaches days ahead, where the time alone would mislead
+                if (!sameDay(soonest.dueAtMs, nowMs, tz) && soonest.dueAtMs - nowMs >= NAME_THE_DAY_FROM_MS) { // the time alone could read as past
                     String day = FirestoreJson.pageTitle(soonest.dueAtMs, tz);
                     return new Plan(topic, shortTitle(soonest.title) + " on " + day,
                         hello + " Your " + soonest.title + " reminder is on " + day + " at " + time + ". " + overview);

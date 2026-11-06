@@ -102,13 +102,13 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] The Echo check-ins card shows only in the Android app.
 - [ ] Changing the gap or sleep time takes effect without a restart.
 - [ ] Message me every shows a number and a Minutes, Hours or Days select, side by side at phone width.
-- [ ] A stored gap opens in its largest whole unit: 120 shows 2 Hours, 1440 shows 1 Days, 90 shows 90 Minutes.
+- [ ] A stored gap opens in its largest whole unit: 120 shows 2 Hours, 1440 shows 1 Day, 90 shows 90 Minutes. The unit names follow the number as it is typed.
 - [ ] The number saves on leaving the field and on Enter. Changing the unit keeps the number and saves.
 - [ ] 4 minutes, 31 days, 0, an empty box and 1.5 each show `Choose between 5 minutes and 30 days.` and save nothing. Fixing the value clears it.
 - [ ] 5 minutes and 30 days both save and survive reopening Settings.
 - [ ] At a 5-minute gap, check-ins arrive about every 5 minutes with the screen on, and none in sleep time.
 - [ ] At a 2-day gap, the next one comes two days later, or at sleep end if that lands in sleep. The bubble still stays up through the keep-alive.
-- [ ] With a 2-day gap, a reminder due tomorrow afternoon is named with its day, for example "Dentist on Sat, Nov 7".
+- [ ] With a 2-day gap, a reminder on another day and 12 or more hours away is named with its day, for example "Dentist on Sat, Nov 7". One due early tomorrow, under 12 hours away, shows the time alone.
 - [ ] The Auto-start advice stays visible while check-ins are on.
 - [ ] Turning check-ins off stops the alarm: a killed bubble doesn't return.
 - [ ] Sleep start equal to sleep end is rejected.

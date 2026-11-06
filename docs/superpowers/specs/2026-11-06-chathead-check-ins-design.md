@@ -32,7 +32,7 @@ The greeting is `Good morning!` before 12:00, `Good afternoon!` from 12:00 to 17
 
 The question is picked in this order, using only what is still missing today:
 
-1. A reminder due before the next check-in. One a day or more away names its day, since a long gap can reach that far.
+1. A reminder due before the next check-in. One on a different day and 12 or more hours away names its day, since a long gap can reach that far and the time alone could read as already past.
 2. The meal for this part of the day, if it is not logged (only when calorie tracking is on). Breakfast 07:00 to 10:59, lunch 12:00 to 16:59, dinner 18:00 until sleep. Outside these windows there is no meal question, and an earlier meal is never asked about: at 3 PM with breakfast missing it asks about lunch if that is missing, otherwise it moves on.
 3. Water that is behind pace for the time of day.
 4. Mood not logged today.
