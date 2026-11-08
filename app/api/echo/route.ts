@@ -90,7 +90,8 @@ export async function POST(req: Request) {
     const mealCount = searched.actions.filter((a) => a.type === 'meal_log').length
     const estimate = withSpeculative((description, mealType) => estimateNutrition(ai, { description, mealType }, { lookup }), speculative, mealCount)
     const out = await resolveMeals(searched, caloriesEnabled, estimate)
-    if (!out.reply) out.reply = 'Got it.'
+    // The prompt forbids an empty reply; this only covers a model that ignores it.
+    if (!out.reply) out.reply = out.actions.some((a) => a.type !== 'general') ? 'Nice, I saved that.' : 'Tell me a little more?'
     if (process.env.NODE_ENV !== 'production') console.info(`[echo] answered by ${model} in ${t1 - t0} ms${out !== sanitized ? `, then +${Date.now() - t1} ms` : ''}`)
     return NextResponse.json(out)
   } catch (err) {
