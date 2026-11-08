@@ -36,7 +36,8 @@ export async function POST(req: Request) {
 
   const user = await verifyUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (sizeError || !bodyP) return sizeError
+  if (sizeError) return sizeError
+  if (!bodyP) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) // unreachable: no body promise only with a size error
   const read = await bodyP
   if (!read.ok) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   const parsed = parseLiveSessionRequest(read.body)
