@@ -29,6 +29,11 @@ const TICK_MS = 80
 // No server activity for this long while a reply is expected (e.g. after a tool response or cancellation):
 // close the turn and go back to listening.
 const WATCHDOG_MS = 10000
+// A snapshot prefetched before the tap is used only this fresh (older ones are reloaded at the tap);
+// prepare() itself skips reloading one younger than PREP_REUSE_MS.
+const PREP_FRESH_MS = 60e3
+const PREP_REUSE_MS = 30e3
+const tzNow = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 export const LIMIT_MESSAGE = 'Call time limit reached (a call lasts about 10 minutes). Start a new call to keep talking.'
 
 // Dev-only timeline of server event types (never content) for debugging call timing: window.__echoCallTrace.
@@ -122,6 +127,7 @@ export function useEchoCall({
   onLateResult,
   onDeleted,
   getPageId,
+  prepareContext,
 }: {
   user: User
   voice: string
@@ -138,6 +144,8 @@ export function useEchoCall({
   onDeleted?: (e: UndoInput) => void
   /** The diary page the call writes to (created if needed); memories saved in the call record it. */
   getPageId?: () => Promise<string | undefined>
+  /** Warms what getContext needs (e.g. the weather) before a call; called by prepare(). */
+  prepareContext?: () => unknown
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -150,9 +158,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -160,6 +168,8 @@ export function useEchoCall({
   const lastLive = useRef('')
   // What Echo said last (a delete must follow Echo's confirmation question).
   const lastEcho = useRef('')
+  // [call-timing] marks for the call being connected (logcat shows them through the WebView on Android).
+  const timing = useRef<{ id: number; mark: (step: string) => void; firstAudio: boolean } | null>(null)
 
   const now = () => res.current.ctx?.currentTime ?? 0
 
@@ -368,6 +378,11 @@ export function useEchoCall({
       res.current.sources.add(src)
       src.onended = () => res.current.sources.delete(src)
       t.sync.audio(start)
+      const tm = timing.current
+      if (tm && tm.id === id && !tm.firstAudio) {
+        tm.firstAudio = true
+        tm.mark('first audio ready')
+      }
       t.modelStarted = true
       t.complete = false
     }
@@ -395,9 +410,51 @@ export function useEchoCall({
     }
   }
 
+  // Snapshot prefetched by prepare(); used once, and only while fresh, so the instruction never carries old items.
+  const prep = useRef<{ at: number; snapshot: Promise<string> } | null>(null)
+  const loadSnapshotNow = (tz: string): Promise<string> => {
+    const uid = cb.current.user.uid
+    const snapshot = import('@/lib/echo/live-data').then((m) => m.loadSnapshot(uid, tz)).catch(() => '')
+    prep.current = { at: Date.now(), snapshot }
+    return snapshot
+  }
+  const takeSnapshot = (tz: string): Promise<string> => {
+    const p = prep.current
+    if (p && Date.now() - p.at < PREP_FRESH_MS) {
+      prep.current = null
+      return p.snapshot
+    }
+    const fresh = loadSnapshotNow(tz)
+    prep.current = null
+    return fresh
+  }
+
+  /**
+   * Warms what a call needs before the tap: the Live SDK and tools chunks, the ID token, the caller's context
+   * inputs (weather) and the goals/reminders/health snapshot. Cheap and safe to call repeatedly.
+   */
+  const prepare = useCallback(() => {
+    if (res.current.session || res.current.ctx) return
+    void import('@google/genai').catch(() => undefined)
+    void import('@/lib/echo/live-tools').catch(() => undefined)
+    void cb.current.user.getIdToken().catch(() => undefined)
+    void Promise.resolve()
+      .then(() => cb.current.prepareContext?.())
+      .catch(() => undefined)
+    const p = prep.current
+    if (!p || Date.now() - p.at > PREP_REUSE_MS) loadSnapshotNow(tzNow())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const start = useCallback(async () => {
     if (res.current.session || res.current.ctx) return
     const id = ++callId.current
+    const tap = performance.now()
+    const mark = (step: string) => {
+      if (id === callId.current) console.info(`[call-timing] ${step} +${Math.round(performance.now() - tap)}ms`)
+    }
+    timing.current = { id, mark, firstAudio: false }
+    mark('tap')
     userEnded.current = false
     limitReached.current = false
     lastActivity.current = Date.now()
@@ -416,35 +473,62 @@ export function useEchoCall({
       fail({ kind: 'failed', message: 'This browser cannot play audio for calls.' })
       return
     }
-    const context = await cb.current.getContext()
-    lastEcho.current = ''
-    toolCtx.current = {
-      checkInTime: extractCheckInTime(context.profile),
-      memoryLabels: context.memoryLabels.map((m) => ({ label: m.label, type: m.type })),
-      refs: cb.current.getRefs?.(),
-      caloriesEnabled: context.items?.caloriesEnabled !== false,
-      useNutritionDb: !context.connectors || context.connectors.some((c) => c.id === 'nutrition' && c.status === 'connected'),
-    }
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    const tz = tzNow()
+    // Everything independent starts now and runs side by side: the snapshot (prefetched when fresh), the context,
+    // the mic, the capture worklet and the SDK chunks. The session request waits only on the context and snapshot.
+    const snapshotP = takeSnapshot(tz)
+    const workletP = loadWorklet(r)
+    const contextP = Promise.resolve()
+      .then(() => cb.current.getContext())
+      .then((context) => {
+        if (id === callId.current) {
+          lastEcho.current = ''
+          toolCtx.current = {
+            checkInTime: extractCheckInTime(context.profile),
+            memoryLabels: context.memoryLabels.map((m) => ({ label: m.label, type: m.type })),
+            refs: cb.current.getRefs?.(),
+            caloriesEnabled: context.items?.caloriesEnabled !== false,
+            useNutritionDb: !context.connectors || context.connectors.some((c) => c.id === 'nutrition' && c.status === 'connected'),
+          }
+        }
+        return context
+      })
+    const micP = navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+      .catch((e) => {
+        throw Object.assign(new Error('mic'), { mic: e })
+      })
+      .then((stream) => {
+        // Ended or failed meanwhile: this stream belongs to no call.
+        if (id !== callId.current) {
+          stream.getTracks().forEach((t) => t.stop())
+          throw new Error('cancelled')
+        }
+        r.stream = stream
+        mark('mic ready')
+        return stream
+      })
+    const sessionP = Promise.all([contextP, snapshotP]).then(([context, snapshot]) =>
+      requestLiveSession(cb.current.user, { clientTime: localIsoWithOffset(), timeZone: tz, voice: cb.current.voice, context, snapshot }).then((s) => {
+        mark('session token')
+        return s
+      }),
+    )
+    // A branch that fails after another already failed the call must not surface as an unhandled rejection.
+    micP.catch(() => undefined)
+    sessionP.catch(() => undefined)
     try {
-      const [stream, sess, genai] = await Promise.all([
-        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }).catch((e) => {
-          throw Object.assign(new Error('mic'), { mic: e })
-        }),
-        // Snapshot of goals/reminders/health for the instruction (best effort, capped wait), then the token.
-        import('@/lib/echo/live-data')
-          .then((m) => m.loadSnapshot(cb.current.user.uid, tz))
-          .catch(() => '')
-          .then((snapshot) => requestLiveSession(cb.current.user, { clientTime: localIsoWithOffset(), timeZone: tz, voice: cb.current.voice, context, snapshot })),
+      const [, sess, genai] = await Promise.all([
+        micP,
+        sessionP,
         import('@google/genai'),
         import('@/lib/echo/live-tools'), // warm the tools chunk for the first tool call
       ])
-      if (id !== callId.current) {
-        stream.getTracks().forEach((t) => t.stop())
-        return
-      }
-      r.stream = stream
+      if (id !== callId.current) return
       const ai = new genai.GoogleGenAI({ apiKey: sess.token, httpOptions: { apiVersion: 'v1alpha' } })
+      // The capture graph is wired while the socket opens; audio is only sent once the session exists.
+      const captureP = startCapture(id, workletP)
+      captureP.catch(() => undefined)
       const session = await ai.live.connect({
         model: sess.model,
         callbacks: {
@@ -464,12 +548,14 @@ export function useEchoCall({
         session.close()
         return
       }
+      mark('websocket open')
       r.session = session
-      await startCapture(id)
+      await captureP
       if (id !== callId.current) return
       r.tick = setInterval(tick, TICK_MS)
       setStartedAt(Date.now())
       setPhase('listening')
+      mark('listening')
       // Echo speaks first: a hidden text kickoff (no input transcription, so no user bubble); the greeting
       // arrives as a normal model turn and is saved as an assistant message.
       try {
@@ -486,11 +572,28 @@ export function useEchoCall({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const startCapture = async (id: number) => {
+  // Loads the capture worklet into the call's AudioContext (true when usable); runs alongside the mic and session.
+  const loadWorklet = async (r: Resources): Promise<boolean> => {
+    const ctx = r.ctx
+    if (!ctx?.audioWorklet) return false
+    try {
+      r.workletUrl = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
+      await ctx.audioWorklet.addModule(r.workletUrl)
+      return true
+    } catch {
+      if (r.workletUrl) URL.revokeObjectURL(r.workletUrl)
+      r.workletUrl = null
+      return false
+    }
+  }
+
+  const startCapture = async (id: number, workletP: Promise<boolean>) => {
     const r = res.current
     const ctx = r.ctx
     const stream = r.stream
     if (!ctx || !stream) throw new Error('no audio')
+    const worklet = await workletP
+    if (id !== callId.current) return
     const source = ctx.createMediaStreamSource(stream)
     r.source = source
     const enc = new CaptureEncoder(ctx.sampleRate)
@@ -498,10 +601,8 @@ export function useEchoCall({
       if (id !== callId.current || mutedRef.current || !r.session) return
       for (const data of enc.push(block)) r.session.sendRealtimeInput({ audio: { data, mimeType: INPUT_MIME } })
     }
-    if (ctx.audioWorklet) {
+    if (worklet) {
       try {
-        r.workletUrl = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
-        await ctx.audioWorklet.addModule(r.workletUrl)
         const node = new AudioWorkletNode(ctx, 'echo-call-capture')
         node.port.onmessage = (e: MessageEvent<Float32Array>) => onBlock(e.data)
         source.connect(node)
@@ -513,10 +614,7 @@ export function useEchoCall({
         r.node = node
         r.sink = mute
         return
-      } catch {
-        if (r.workletUrl) URL.revokeObjectURL(r.workletUrl)
-        r.workletUrl = null
-      }
+      } catch {}
     }
     // Fallback: ScriptProcessor (deprecated but universal). Its output stays silent.
     const node = ctx.createScriptProcessor(2048, 1, 1)
@@ -557,7 +655,7 @@ export function useEchoCall({
   // Always release the mic, audio and socket on unmount (page switch, sign-out, navigation).
   useEffect(() => end, [end])
 
-  return { phase, active, muted, startedAt, live, error, start, end, toggleMute, clearError: () => setError(null) }
+  return { phase, active, muted, startedAt, live, error, start, prepare, end, toggleMute, clearError: () => setError(null) }
 }
 
 const PHASE_LABEL: Record<CallPhase, string> = {

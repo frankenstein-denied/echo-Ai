@@ -643,7 +643,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid],
   )
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo })
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather })
   useCallFlag(call.active)
   useEffect(() => {
     onCallActiveChange?.(call.active)
@@ -672,6 +672,20 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   // have loaded (or failed to: a load error still starts, and native's connect timeout covers a load that never answers).
   // With voice off nothing starts; native shows why. Tell native what happens.
   const messagesLoaded = messagesFor === pageId
+  // Prepare the call ahead while it can be started (Call button shown, or the floating call page loading):
+  // warm the weather, the ID token, the Live chunks and the snapshot. Again when the app comes back to the
+  // front and after a call ends; the call itself refreshes anything older than about a minute.
+  const prepareCall = call.prepare
+  const callPossible = embed === 'call' || (embed !== 'chat' && !!prefs?.enabled && !disabled)
+  useEffect(() => {
+    if (!callPossible || call.active) return
+    prepareCall()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') prepareCall()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [callPossible, call.active, prepareCall, messagesLoaded, memoriesLoaded])
   const autoStarted = useRef(false)
   useEffect(() => {
     if (embed !== 'call' || autoStarted.current) return
