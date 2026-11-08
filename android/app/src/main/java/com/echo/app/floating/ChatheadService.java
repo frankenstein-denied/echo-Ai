@@ -68,6 +68,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final float PANEL_TOP_DP = 48f;
     private static final float PANEL_MIN_DP = 200f;
     private static final int NO_SAVED_Y = -1;
+    private static final long KEYBOARD_SETTLE_MS = 120L;
     private static final float PANEL_HEIGHT_FRACTION = 0.8f;
     static final float DIM_WINDOW_ALPHA = 0.8f; // Android 12+ blocks touches through anything more opaque
     private static final float MESSAGE_MAX_WIDTH_DP = 240f;
@@ -179,6 +180,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private WindowManager.LayoutParams panelParams;
     private int panelFullHeight;
     private int headYBeforeKeyboard = NO_SAVED_Y;
+    private Runnable pendingFit = () -> {};
     private FrameLayout panelBody;
     private WebView web;
     private String webDay; // the local day the page was loaded
@@ -526,8 +528,6 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             panel.addView(LayoutInflater.from(this).inflate(R.layout.float_panel, panel, false));
             panelBody = panel.findViewById(R.id.float_panel_body);
             panel.findViewById(R.id.float_panel_open).setOnClickListener(v -> pageListener.onOpenInApp());
-            // Before Android 11 a window can't tell the keyboard is up unless it overlaps, so the panel would bounce.
-            if (Build.VERSION.SDK_INT >= 30) ViewCompat.setOnApplyWindowInsetsListener(panel, this::onPanelInsets);
         }
         String today = FirestoreJson.dateKey(System.currentTimeMillis(), TimeZone.getDefault());
         if (web == null) {
@@ -566,6 +566,9 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
                 ChatheadGeometry.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                     | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
             dimParams.alpha = DIM_WINDOW_ALPHA;
+            // The keyboard is measured on the full-screen dim, never on the panel: the panel's own overlap changes
+            // as it resizes, which made it bounce. Before Android 11 a window can't see the keyboard this way.
+            if (Build.VERSION.SDK_INT >= 30) ViewCompat.setOnApplyWindowInsetsListener(dim, this::onScreenInsets);
             windows.addView(dim, dimParams);
 
             panelFullHeight = Math.round(screenH * PANEL_HEIGHT_FRACTION);
@@ -600,22 +603,32 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         }
     }
 
-    /** An overlay window has a fixed height, so SOFT_INPUT_ADJUST_RESIZE can't shrink it for the keyboard. */
-    private WindowInsetsCompat onPanelInsets(View view, WindowInsetsCompat insets) {
+    /**
+     * An overlay window has a fixed height, so SOFT_INPUT_ADJUST_RESIZE can't shrink it for the keyboard. The dim
+     * covers the whole screen, so its keyboard inset is the keyboard's real height whatever the panel does.
+     */
+    private WindowInsetsCompat onScreenInsets(View view, WindowInsetsCompat insets) {
         int ime = WindowInsetsCompat.Type.ime();
         boolean keyboardVisible = insets.isVisible(ime);
-        int overlap = insets.getInsets(ime).bottom;
-        int laidOutHeight = view.getHeight();
-        main.post(() -> fitPanelToKeyboard(laidOutHeight, keyboardVisible, overlap)); // not in the middle of an insets pass
+        int keyboardHeight = insets.getInsets(ime).bottom;
+        int[] at = new int[2];
+        view.getLocationOnScreen(at);
+        int keyboardTop = at[1] + view.getHeight() - keyboardHeight;
+        // The keyboard slides in over many frames: resize once, after it settles, so the page lays out once.
+        main.removeCallbacks(pendingFit);
+        pendingFit = () -> fitPanelToKeyboard(keyboardVisible && keyboardHeight > 0, keyboardTop);
+        main.postDelayed(pendingFit, KEYBOARD_SETTLE_MS);
         return insets;
     }
 
-    private void fitPanelToKeyboard(int laidOutHeight, boolean keyboardVisible, int overlap) {
-        if (!panelOpen || tornDown || panelParams == null) return;
-        int minHeight = Math.round(PANEL_MIN_DP * getResources().getDisplayMetrics().density);
-        int height = ChatheadGeometry.panelHeight(laidOutHeight > 0 ? laidOutHeight : panelParams.height,
-            panelFullHeight, minHeight, keyboardVisible, overlap);
-        if (height != panelParams.height) {
+    private void fitPanelToKeyboard(boolean keyboardVisible, int keyboardTop) {
+        if (!panelOpen || tornDown || panelParams == null || panel == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        int[] at = new int[2];
+        panel.getLocationOnScreen(at);
+        int height = ChatheadGeometry.panelHeightAboveKeyboard(keyboardVisible, keyboardTop, at[1], panelFullHeight,
+            Math.round(PANEL_MIN_DP * density), Math.round(PANEL_MARGIN_DP * density));
+        if (Math.abs(height - panelParams.height) > 1) {
             panelParams.height = height;
             try {
                 windows.updateViewLayout(panel, panelParams);
@@ -651,6 +664,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     }
 
     private void removePanelWindows() {
+        main.removeCallbacks(pendingFit);
         panelOpen = false;
         FloatState.panelOpen = false;
         tapAtMs = 0; // closed before the page was ready: nothing to time

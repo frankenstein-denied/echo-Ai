@@ -47,12 +47,13 @@ public final class ChatheadGeometry {
     }
 
     /**
-     * The panel's height with the keyboard in this state. overlap is how far the keyboard covers the panel as
-     * it is now laid out, so it reads 0 once the panel ends above it: only the keyboard hiding restores the height.
+     * The panel's height so it ends a gap above the keyboard. Both tops are screen positions, and keyboardTop
+     * comes from a full-screen window, so it does not move when the panel resizes. Never taller than full.
      */
-    public static int panelHeight(int laidOutHeight, int fullHeight, int minHeight, boolean keyboardVisible, int overlap) {
+    public static int panelHeightAboveKeyboard(boolean keyboardVisible, int keyboardTop, int panelTop,
+                                               int fullHeight, int minHeight, int gap) {
         if (!keyboardVisible) return fullHeight;
-        if (overlap <= 0) return laidOutHeight;
-        return Math.max(Math.min(minHeight, fullHeight), laidOutHeight - overlap);
+        int fit = keyboardTop - gap - panelTop;
+        return Math.min(fullHeight, Math.max(Math.min(minHeight, fullHeight), fit));
     }
 }

@@ -32,4 +32,13 @@ public class ChatheadGeometryTest {
         // focusable so the keyboard works
         assertEquals(0, ChatheadGeometry.panelFlags() & ChatheadGeometry.FLAG_NOT_FOCUSABLE);
     }
+    @Test public void panelEndsAboveTheKeyboardAndSettles() {
+        // Screen 2400 tall, panel at 120, full 1920, keyboard top at 1500, gap 30.
+        assertEquals(1350, ChatheadGeometry.panelHeightAboveKeyboard(true, 1500, 120, 1920, 500, 30));
+        // Same keyboard after the panel shrank: same answer, so it can't bounce.
+        assertEquals(1350, ChatheadGeometry.panelHeightAboveKeyboard(true, 1500, 120, 1920, 500, 30));
+        assertEquals(1920, ChatheadGeometry.panelHeightAboveKeyboard(false, 1500, 120, 1920, 500, 30));
+        assertEquals(500, ChatheadGeometry.panelHeightAboveKeyboard(true, 400, 120, 1920, 500, 30));
+        assertEquals(1920, ChatheadGeometry.panelHeightAboveKeyboard(true, 2400, 120, 1920, 500, 30));
+    }
 }
