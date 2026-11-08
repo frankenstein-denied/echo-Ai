@@ -401,8 +401,8 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const batteryAdvice = (
     <div className="mt-3">
       <Alert variant="warning">
-        <p>TECNO/HiOS may close Echo in the background.</p>
-        <p className="mt-1">Allow Auto-start for Echo in Phone Master, and lock Echo in your recent apps.</p>
+        <p>Some phones stop apps running in the background to save battery, which can stop Echo's check-ins.</p>
+        <p className="mt-1">If check-ins stop arriving, allow Echo to auto-start or run in the background in your phone&apos;s settings, set its battery use to unrestricted, and lock Echo in your recent apps if your phone offers it.</p>
         {batteryOptimized && (
           <Button variant="secondary" className="mt-2" onClick={() => void openNativeBatterySettings().catch(() => null)}>
             Turn off battery optimization

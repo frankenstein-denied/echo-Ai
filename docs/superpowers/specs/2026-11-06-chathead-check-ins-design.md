@@ -108,7 +108,7 @@ Water target: editable on the Health page beside the water figure, default 8 gla
 
 Android does not let an app grant itself this. After sign-in and onboarding, the full app shows a one-time explanation with a button that opens the Android setting. If the user declines, check-ins arrive as notifications, and the Settings card shows that the permission is needed, with a button. Echo does not keep nagging.
 
-The same card keeps the TECNO auto-start and recents-lock advice visible whenever check-ins are on, because a force-stop cancels Echo's alarms and nothing in the app can undo that. The battery optimization button shows while Echo is still optimized. Android 13+ also needs notification permission for the notification path, so it is requested once check-ins are on.
+The same card keeps general advice visible (some phones stop background apps; allow auto-start or background running, unrestricted battery, lock in recents) whenever check-ins are on, because a force-stop cancels Echo's alarms and nothing in the app can undo that. The battery optimization button shows while Echo is still optimized. Android 13+ also needs notification permission for the notification path, so it is requested once check-ins are on.
 
 The card shows one muted line, `Bubble: on` or `Bubble isn't running (<reason>)`, so a failed start can be seen without adb. APKs before 1.6 report neither field and the line is left out.
 
