@@ -5,17 +5,20 @@ import com.echo.app.floating.TodaySnapshot;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
+import org.json.JSONObject;
 
 /** Blocking Firestore REST client for reminders, goals, notes and check-ins. Call off the main thread. Never throws. */
 public final class EchoApi {
     private static final long SNOOZE_MS = 15 * 60 * 1000L;
     /** What {@link #getDoc} returns for a 404, as against null for a failed read. */
     private static final String NOT_FOUND = "";
+    private static final String CHECK_IN_PATH = "/api/check-in";
 
     private final Context ctx;
 
@@ -91,6 +94,67 @@ public final class EchoApi {
         }
     }
 
+    /** Today's page, oldest message first, up to max messages: empty with no page yet, null on failure. */
+    public List<ChatLine> todaysChat(TimeZone tz, int max) {
+        try {
+            if (tz == null) return null;
+            String pages = runQuery(FirestoreJson.todaysPageQuery());
+            if (pages == null) return null;
+            String pageId = FirestoreJson.pickTodayPageId(pages, System.currentTimeMillis(), tz);
+            if (pageId == null) return new ArrayList<>();
+            String json = runQuery("/diaryPages/" + pageId, FirestoreJson.pageMessagesQuery(max));
+            return json == null ? null : FirestoreJson.parsePageMessages(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** A check-in written by Echo's AI from the user's day. */
+    public static final class AiText {
+        public final String shortText;
+        public final String fullText;
+
+        public AiText(String shortText, String fullText) {
+            this.shortText = shortText;
+            this.fullText = fullText;
+        }
+    }
+
+    /**
+     * Asks the server to write a check-in from the request JSON. Null on any failure (quota, network, no session),
+     * and the caller falls back to its templates. Never sends anything but the request.
+     */
+    public AiText writeCheckInText(String requestJson) {
+        HttpURLConnection c = null;
+        try {
+            if (requestJson == null) return null;
+            String token = TokenProvider.getIdToken(ctx);
+            if (token == null) return null;
+            byte[] body = requestJson.getBytes("UTF-8");
+            c = (HttpURLConnection) new URL(DeepLinks.LIVE_SITE + CHECK_IN_PATH).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(20000);
+            c.setRequestMethod("POST");
+            c.setRequestProperty("Authorization", "Bearer " + token);
+            c.setRequestProperty("Content-Type", "application/json");
+            c.setDoOutput(true);
+            c.setFixedLengthStreamingMode(body.length);
+            OutputStream os = c.getOutputStream();
+            os.write(body);
+            os.close();
+            if (c.getResponseCode() != 200) return null;
+            JSONObject o = new JSONObject(TokenProvider.read(c.getInputStream()));
+            String shortText = o.optString("shortText", "").trim();
+            String fullText = o.optString("fullText", "").trim();
+            if (shortText.isEmpty() || fullText.isEmpty()) return null;
+            return new AiText(shortText, fullText);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
     /**
      * Adds a check-in to today's page, creating the page if there is none. Safe to retry with the same id:
      * if an earlier try landed but its reply was lost, the commit is refused and this still returns true.
@@ -162,12 +226,17 @@ public final class EchoApi {
 
     /** Runs a query over the user's subcollections: the raw response, or null on failure. */
     private String runQuery(String body) {
+        return runQuery("", body);
+    }
+
+    /** Runs a query under a document below the user's own (or the user's doc itself for ""). */
+    private String runQuery(String parentPath, String body) {
         HttpURLConnection c = null;
         try {
             SessionStore s = SessionStore.get(ctx);
             String token = TokenProvider.getIdToken(ctx);
             if (token == null) return null;
-            URL url = new URL("https://firestore.googleapis.com/v1/" + base(s) + "/users/" + s.getUid() + ":runQuery");
+            URL url = new URL("https://firestore.googleapis.com/v1/" + base(s) + "/users/" + s.getUid() + parentPath + ":runQuery");
             c = open(url, "POST", token);
             sendJson(c, body);
             if (c.getResponseCode() != 200) return null;

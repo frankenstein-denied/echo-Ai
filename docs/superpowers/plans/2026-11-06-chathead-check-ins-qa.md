@@ -66,6 +66,24 @@ A force-stop cancels every alarm, and HiOS may treat a swipe from recents as one
 - [ ] With calorie tracking off, no meal or food goal mentions.
 - [ ] `Over halfway` follows the water target set on the Health page.
 
+## AI-written check-ins (1.12)
+
+Needs the web change (`/api/check-in`) live on Vercel first, with `GEMINI_API_KEY` set. Use a gap of 10 minutes or more: shorter gaps always use the templates.
+
+- [ ] Check-ins mention something real from today: a goal's progress or next step, a reminder coming up, something you said in chat, a meal, your water, your mood or sleep.
+- [ ] No generic `How's your day going?` or `How was your day?` unless tied to something specific.
+- [ ] No two check-ins in a day say the same thing or nearly the same thing.
+- [ ] Still no stats, no `0 of`, no `not logged`, no mention of logging or tracking, no diagnosing.
+- [ ] Greetings match the time of day. The name shows up only now and then, never in the small message.
+- [ ] Set a tone in the profile (Gentle coach, Direct, Cheerful) and the wording follows it.
+- [ ] The small message is at most 40 characters and makes sense on its own.
+- [ ] The pop-up is still instant at the due time: logcat shows `ai_used=true ai_ms=0` for most check-ins (the text was fetched 5 minutes ahead).
+- [ ] Airplane mode on the server side (or a bad network): the pop-up comes within about 3 seconds with a template line, `ai_used=false`.
+- [ ] With the screen off, the notification text is AI-written too (`ai_used=true`, `ai_ms` up to 8000).
+- [ ] With a 1 to 9 minute gap, every check-in is a template (`ai_used=false`) and no `ai_request_ms` lines appear.
+- [ ] Reminder, meal and morning or night topics still come in the same order as before; the AI only changes the words.
+- [ ] Replying to an AI check-in in chat works as before (for example, `Yes, adobo` logs a meal).
+
 ## How it reaches you
 
 - [ ] Nothing fires in a call or with Echo open, and it fires after that clears, once only: within about a minute, or about 5 seconds after leaving Echo.
@@ -155,6 +173,8 @@ Run `adb logcat -d -s CheckInTiming` after at least 10 check-ins and 5 panel ope
 | `tap_to_ready_ms` (warm) | tap to panel showing messages | under 1 second |
 | `tap_to_ready_ms` (cold) | same, cold | measure and report |
 | `fetch_ms`, `write_ms` | data fetch and chat write | for finding slow steps |
+| `ai_used`, `ai_ms` | whether the AI's words were used, and how long the pop-up waited for them | `ai_ms` 0 when prefetched, at most 3000 for a pop-up |
+| `ai_request_ms` | one AI request: Firestore reads plus the server call | for finding slow steps |
 
 Also check: if every open logs `cold`, the warmed panel isn't loading without a window. And compare Echo's overnight battery use in Android's battery screen: the keep-alive now wakes the phone every 15 minutes, day and night.
 
@@ -172,3 +192,6 @@ Also check: if every open logs `cold`, the warmed panel isn't loading without a 
 - The small message is slightly see-through (alpha 0.8), because Android blocks touches through more solid overlays.
 - Overdue reminders are never mentioned at a check-in. A reminder that falls between two check-ins can be skipped.
 - A reminder early tomorrow can be asked the night before, with no day named.
+- AI check-ins: the text is kept in memory only, so if Android kills the app between the prefetch and the due time, that check-in asks again at fire time (up to 3 seconds for a pop-up, 8 for a notification) or falls back to the templates.
+- AI check-ins: if the planner's topic changes in the 5 minutes between the prefetch and the due time (for example a meal window opens), that check-in uses the templates rather than asking again.
+- AI check-ins: the cap is 48 a day per device, counted when a request is sent, failures included.

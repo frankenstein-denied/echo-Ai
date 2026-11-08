@@ -23,14 +23,25 @@ Every message that reaches the user buzzes (owner's decision): a short double bu
 
 ### What it says
 
-Echo talks like a friend, not a logging app (owner's decision). Each check-in asks about one thing, in one or two warm sentences. There are no stats: no counts of zero, no field lists, and no mention of logging or tracking. A number only appears as a friend would say it, as in `You're over halfway to your water goal`.
+Echo talks like a close friend checking in casually, not a logging app (owner's decision). Since 1.12 Echo's AI writes each check-in from the user's day (owner's decision, replacing "no AI writes these messages"). It looks at health, goals, reminders and today's chat first, and refers to one or two real specifics: a goal's progress or next milestone, a reminder coming up, something the user said earlier, a meal or their water, a good or rough mood. Generic filler such as `How's your day going?` or `How was your day?` is never used unless it is tied to something specific. It never repeats or closely paraphrases the check-ins already sent today. There are no stats: no counts of zero, no field lists, and no mention of logging or tracking. A number only appears as a friend would say it, as in `You're over halfway to your water goal`. It is not a doctor and never diagnoses. It uses the name occasionally and follows the profile's tone (Gentle coach, Direct, Cheerful) when one is set.
+
+- Small message: `Lunch yet? Adobo again?`, at most 40 characters, makes sense alone, never with the name.
+- Chat message: `Hey Sam, you said you'd try the new adobo place. Lunch there yet?` One or two short sentences, ending in an easy question or a light nudge.
+
+**How the AI text is made.** The phone sends a compact snapshot to `POST /api/check-in` (Firebase ID token, Gemini through the usual model fallback chain, temperature 0.9, a JSON schema for `{ shortText, fullText }`). The snapshot has no document ids: local time, part of day, minutes since wake and until sleep, preferred name and tone, the planner's topic as a hint, today's health (mood, sleep, water against the goal, energy), meals today (types and rough kcal, only with calorie tracking on), open reminders due in the next 24 hours (title and time), up to 3 unfinished goals with progress and the next open milestone, the last 8 messages of today's diary page (check-ins left out, trimmed), and the last 5 check-ins sent today. The prompt is `lib/echo/check-in-prompt.ts`. The user data is treated as data, not instructions.
+
+**Keeping the pop-up instant.** The text is fetched ahead of time: in the 5 minutes before a check-in is due (at once for a shorter gap), from a fresh snapshot, written for the moment it falls due. It is kept in memory with its day, its creation time and the check-in it is for. When the check-in fires, the text is used if it was made for this check-in, today, within the last 30 minutes, and the planner still picks the same topic. Otherwise the pop-up waits for a request already running, or a fresh one, for up to 3 seconds, and then the templates below speak. A notification (the background path) may wait up to 8 seconds. Each check-in makes at most one request, and a failed one is not retried for 30 minutes. `CheckInTiming` logs `ai_used=true|false ai_ms=<wait>` per check-in and `ai_request_ms` per request.
+
+**Quota.** At most 48 AI check-ins per device per local day, and none at all when the gap is under 10 minutes, so 1-minute testing doesn't burn the free quota. Beyond that, and whenever the server answers with an error (429 on quota, 502 otherwise) or the phone is offline from the server, the templates speak.
+
+**The fixed templates, the fallback.** These are unchanged from 1.11:
 
 - Small message: `Have you had lunch yet?`, at most 40 characters and never with the name.
 - Chat message: `Hey, Sam, have you had lunch yet? What did you get?`
 
 Echo goes by the user's own sleep hours, so morning means after their wake time, not a fixed clock. Each topic has at least three lines, by part of day where that matters. Greetings are part of the wording. The line moves on once per gap, so check-ins in a row read differently. `preferredName` appears in about one message in three, and only when it is set.
 
-The topic is picked in this order, using only what is still missing today:
+The topic is picked in this order, using only what is still missing today. The AI follows it as a hint unless the data gives a clearly better, more timely thing to say, and the templates follow it exactly:
 
 1. A reminder due before the next check-in. One on a different day and 12 or more hours away names its day, since a long gap can reach that far and the time alone could read as already past.
 2. The good morning chat: the first check-in within 2 hours after sleep end, once per day. It asks about sleep and energy: `Good morning, Sam! How did you sleep? How's your energy today?`
@@ -43,7 +54,7 @@ The topic is picked in this order, using only what is still missing today:
 
 Energy is asked only in the two chats. If it is already logged today, the chat drops that question and stays warm. A day for these chats turns over at the wake time, so a bedtime past midnight still counts as the day before. With equal sleep times (never asleep) there are no chats, and mood can come at any time.
 
-The same topic should not be asked twice in a row unless nothing else applies. Wording comes from a small set of fixed templates. No AI writes these messages.
+The same topic should not be asked twice in a row unless nothing else applies. The templates are a small fixed set; the AI's wording replaces them when it is ready in time.
 
 ### Typing with the keyboard up
 
@@ -111,7 +122,7 @@ If notifications are blocked for Echo, the card warns that check-ins can't reach
 
 ## How it works (decided)
 
-- **Android native does the firing.** The question is chosen on the phone with no AI call and no web page involved. This is what keeps it fast.
+- **Android native does the firing.** The topic is chosen on the phone, and the AI's words are fetched minutes ahead, so firing only reads memory. No web page is involved. A pop-up waits at most 3 seconds for words that aren't ready, then uses the templates.
 - **An exact alarm drives firing (owner's decision).** `CheckInAlarm` uses `setExactAndAllowWhileIdle` with `USE_EXACT_ALARM`, which is auto-granted; the app is sideloaded, so Play policy does not apply. It falls back to an inexact alarm on a `SecurityException`. It does not depend on the app being open or a bubble already running. It is set again after every fire and every run, from `RefreshWorker.sync`, on boot and package replaced, and on a settings change, and cancelled on sign-out and when check-ins are off.
 - **The next alarm** is the last check-in plus the gap, or sleep end if that falls in sleep. A check-in already due but waiting retries in 1 minute, so a waiting alarm can't spin. When the full app leaves the screen with a check-in due, the alarm is set about 5 seconds out. While the bubble is wanted, the alarm also comes no later than 15 minutes from now, day or night, as a keep-alive. In Doze, Android may hold exact alarms back by up to about 15 minutes, so a very short gap can run late with the phone idle and the screen off.
 - **The bubble stays resident.** `ChatheadService` keeps running with its window on screen all day, with `stopWithTask="false"`. Its own timer fires while the screen is usable, and a screen-unlock listener catches anything due. With the screen off the timer stops and firing belongs to the alarm. On a locked screen the timer keeps running, so the engine and the alarm can both find a check-in due; only the first to claim it fires.
@@ -175,13 +186,13 @@ How:
 - Notifications stacking up after a period away. Chat messages do keep arriving while unread (owner's decision), but the notification replaces itself.
 - Asking something already logged today, when the data was available.
 - Slowing the phone down, or a crash in the bubble taking down the app.
-- Spending AI quota just to fire a check-in.
+- Spending AI quota beyond one request per check-in, more than 48 a day, or on gaps under 10 minutes.
 
 ## Order of work and risks
 
 1. **Phone test first.** Nothing about the floating features has a long track record on the TECNO. Before building it all, prove on the phone that the bubble survives a day with the screen on and off, and find out what happens after HiOS kills it, including whether "show the overlay, then start the service" works from `RefreshWorker`. If it cannot come back reliably, the fallback is that check-ins arrive as notifications and the bubble returns the next time the app or notification is opened.
 2. Rules, then web, then native. Deploy rules before web. Web must work with older APKs that know nothing of the new bridge call.
-3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 12 / 1.11, then `scripts/release-android.sh`).
+3. Release as a new APK version using the normal process (bump `versionCode` in `android/app/build.gradle`, currently 13 / 1.12, then `scripts/release-android.sh`).
 
 Android 12+ blocks touches through opaque overlays, so check on the phone that the small message and bubble don't interfere with the app below.
 
