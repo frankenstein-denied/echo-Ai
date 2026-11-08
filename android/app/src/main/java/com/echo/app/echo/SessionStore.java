@@ -166,6 +166,17 @@ public final class SessionStore {
     public long getNextWakeMs() { return prefs.getLong("nextWakeMs", 0L); }
     public void setNextWakeMs(long v) { prefs.edit().putLong("nextWakeMs", v).apply(); }
 
+    /**
+     * AI-written check-ins asked for on this device today. Kept across sign-outs: the cap is per device.
+     * Takes one if fewer than max were used on dayKey, and says whether it did.
+     */
+    public synchronized boolean takeAiCheckIn(String dayKey, int max) {
+        int used = dayKey.equals(prefs.getString("aiCheckInDay", null)) ? prefs.getInt("aiCheckInCount", 0) : 0;
+        if (used >= max) return false;
+        prefs.edit().putString("aiCheckInDay", dayKey).putInt("aiCheckInCount", used + 1).apply();
+        return true;
+    }
+
     public String getCachedPrefsJson() { return prefs.getString("cachedPrefsJson", null); }
     public void setCachedPrefsJson(String v) { prefs.edit().putString("cachedPrefsJson", v).apply(); }
 }

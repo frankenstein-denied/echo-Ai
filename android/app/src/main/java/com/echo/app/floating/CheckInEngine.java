@@ -52,6 +52,10 @@ public final class CheckInEngine {
     private static final String WAKE_SIGNED_OUT = "signed out";
     private static final String WAKE_NO_PROFILE = "no profile";
     private static final int DAY_KEY_LENGTH = 10;
+    /** How long a due pop-up may wait for the AI's words before the templates speak. */
+    private static final long FIRE_AI_WAIT_MS = 3_000L;
+    /** A notification is not watched as it lands, so it may wait longer. */
+    private static final long BACKGROUND_AI_WAIT_MS = 8_000L;
 
     /** One write at a time across the engine and the background path: two could each create a page for the same message. */
     private static final AtomicBoolean WRITING = new AtomicBoolean(false);
@@ -90,6 +94,10 @@ public final class CheckInEngine {
     private boolean fireWhenFetched;
     private long lastFetchAttemptMs;
     private long unlockAtMs;
+    private boolean aiWaiting;
+    /** The check-in (by its slot, the last-fired time) that already waited for the AI and now uses the templates. */
+    private long aiGaveUpSlot = Long.MIN_VALUE;
+    private long aiWaitMs;
 
     public CheckInEngine(Context ctx, Host host) {
         this.ctx = ctx.getApplicationContext();
@@ -134,6 +142,7 @@ public final class CheckInEngine {
         fireWhenFetched = false;
         fetching = false;
         loadingProfile = false;
+        aiWaiting = false;
         snapshot = null;
         workers.shutdown(); // a write in progress still finishes
         try {
@@ -224,7 +233,7 @@ public final class CheckInEngine {
             refreshSnapshot(false);
             return;
         }
-        fire(store, usable, s, outcome, today, tz);
+        fire(store, usable, s, outcome, today, tz, allowTodaysCopy);
     }
 
     private CheckInRules.State currentState(SessionStore store, CheckInPrefs p, long now, TimeZone tz) {
@@ -237,13 +246,53 @@ public final class CheckInEngine {
     private void prefetchIfNear(CheckInRules.State s, long now) {
         if (!s.online || msUntilPrefetch(s.lastFiredMs, s.everyMinutes, now) > 0) return;
         if (now - lastFetchAttemptMs >= Math.min(PREFETCH_MS, s.everyMinutes * MINUTE_MS)) refreshSnapshot(true);
+        else prefetchAi();
     }
 
-    /** Once claimed, message first: everything else on this path comes after the user can see it. */
+    /**
+     * Inside the prefetch window, asks the AI for the next check-in's words, written for the moment it falls due.
+     * At most one request per check-in; nothing when it would land in sleep time.
+     */
+    private void prefetchAi() {
+        CheckInPrefs p = prefs;
+        if (!running || p == null || aiWaiting) return;
+        try {
+            SessionStore store = SessionStore.get(ctx);
+            long now = System.currentTimeMillis();
+            TimeZone tz = TimeZone.getDefault();
+            CheckInRules.State s = currentState(store, p, now, tz);
+            if (!s.enabled || !s.signedIn || !s.online || !SmartCheckIns.allowedForGap(s.everyMinutes)) return;
+            if (msUntilPrefetch(s.lastFiredMs, s.everyMinutes, now) > 0) return;
+            long dueMs = Math.max(now, s.lastFiredMs + s.everyMinutes * MINUTE_MS);
+            if (CheckInRules.inSleep(CheckInPlanner.minuteOfDay(dueMs, tz), s.sleepStartMin, s.sleepEndMin)) return;
+            TodaySnapshot usable = pickSnapshot(snapshot, FirestoreJson.dateKey(dueMs, tz), now, false);
+            if (usable == null) return;
+            CheckInRules.State at = baseState(p, dueMs, s.lastFiredMs, tz);
+            CheckInPlanner.Plan plan = planFor(store, usable, at, tz);
+            SmartCheckIns.ensure(ask(ctx, store, p, usable, at, plan.topic));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "ai prefetch failed", e);
+        }
+    }
+
+    /**
+     * Once claimed, message first: everything else on this path comes after the user can see it. Uses the AI's
+     * words when they are ready; otherwise waits up to 3 seconds for them, then the templates speak.
+     */
     private void fire(SessionStore store, TodaySnapshot usable, CheckInRules.State s, CheckInRules.Outcome outcome,
-                      String today, TimeZone tz) {
+                      String today, TimeZone tz, boolean allowTodaysCopy) {
         CheckInPlanner.Plan plan = planFor(store, usable, s, tz);
+        SmartCheckIns.Text ai = SmartCheckIns.readyFor(s.lastFiredMs, today, plan.topic, s.nowMs);
+        if (ai == null && aiGaveUpSlot != s.lastFiredMs) {
+            if (aiWaiting) return; // counts as WAIT: the wait ends with a tick
+            if (SmartCheckIns.ensure(ask(ctx, store, prefs, usable, s, plan.topic))) {
+                waitForAi(s.lastFiredMs, allowTodaysCopy);
+                return;
+            }
+        }
+        plan = SmartCheckIns.apply(plan, ai);
         if (!claim(store, plan, s, tz, today)) return;
+        Log.i(TAG, "ai_used=" + (ai != null) + " ai_ms=" + (aiGaveUpSlot == s.lastFiredMs ? aiWaitMs : 0));
         if (outcome == CheckInRules.Outcome.POPUP) {
             host.showMessage(plan.shortText);
             Log.i(TAG, "due_to_visible_ms="
@@ -259,6 +308,22 @@ public final class CheckInEngine {
         unlockAtMs = 0;
         writeInBackground(true);
         CheckInAlarm.schedule(ctx);
+    }
+
+    /** Off the main thread; the next tick fires with the AI's words if they came, or the templates if not. */
+    private void waitForAi(long slot, boolean allowTodaysCopy) {
+        aiWaiting = true;
+        long started = SystemClock.elapsedRealtime();
+        workers.execute(() -> {
+            SmartCheckIns.await(slot, FIRE_AI_WAIT_MS);
+            main.post(() -> {
+                if (!running) return;
+                aiWaiting = false;
+                aiGaveUpSlot = slot;
+                aiWaitMs = SystemClock.elapsedRealtime() - started;
+                tick(allowTodaysCopy);
+            });
+        });
     }
 
     // ---- unlock ----
@@ -327,6 +392,7 @@ public final class CheckInEngine {
         fetching = false;
         if (fresh != null) cacheProfile(fresh);
         if (got != null) snapshot = got;
+        if (got != null && !unlockWaiting && !fireWhenFetched) prefetchAi();
         if (unlockWaiting) {
             finishUnlock();
         } else if (fireWhenFetched) {
@@ -509,7 +575,21 @@ public final class CheckInEngine {
         if (!backgroundFires(outcome)) return;
         if (!FirestoreJson.snapshotIsUsable(data, day, firedAt)) return; // the next run tries again
         CheckInPlanner.Plan plan = planFor(store, data, s, tz);
+
+        long aiStarted = SystemClock.elapsedRealtime();
+        SmartCheckIns.Text ai = SmartCheckIns.obtain(ask(app, store, p, data, s, plan.topic), BACKGROUND_AI_WAIT_MS);
+        long aiMs = SystemClock.elapsedRealtime() - aiStarted;
+        // The wait can be seconds: decide again, as after the fetch.
+        firedAt = System.currentTimeMillis();
+        day = FirestoreJson.dateKey(firedAt, tz);
+        s = liveState(app, store, p, firedAt, tz);
+        outcome = CheckInRules.decide(s);
+        if (!backgroundFires(outcome) || !FirestoreJson.snapshotIsUsable(data, day, firedAt)) return;
+        plan = planFor(store, data, s, tz);
+        if (!SmartCheckIns.fits(ai, s.lastFiredMs, day, plan.topic, firedAt)) ai = null;
+        plan = SmartCheckIns.apply(plan, ai);
         if (!claim(store, plan, s, tz, day)) return;
+        Log.i(TAG, "ai_used=" + (ai != null) + " ai_ms=" + aiMs);
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
             int unread = store.getUnreadCount() + 1;
             store.setUnreadCount(unread);
@@ -565,6 +645,13 @@ public final class CheckInEngine {
         String day = chatDay(s, tz);
         return CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), s.nowMs, tz, s.everyMinutes, s.sleepStartMin,
             s.sleepEndMin, (int) (s.nowMs / MINUTE_MS), day.equals(store.getMorningChatDay()), day.equals(store.getNightChatDay()));
+    }
+
+    /** One AI request's inputs, for the check-in in this state. */
+    private static SmartCheckIns.Ask ask(Context app, SessionStore store, CheckInPrefs p, TodaySnapshot data,
+                                         CheckInRules.State s, CheckInPlanner.Topic topic) {
+        return new SmartCheckIns.Ask(app, p, data, s.lastFiredMs, s.everyMinutes, s.nowMs, topic, TimeZone.getDefault(),
+            store.getPendingCheckInText());
     }
 
     private static String chatDay(CheckInRules.State s, TimeZone tz) {

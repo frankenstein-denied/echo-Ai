@@ -82,13 +82,32 @@ public final class FirestoreJson {
             JSONObject d = docs.optJSONObject(i);
             if (d == null) continue;
             JSONObject f = d.optJSONObject("fields");
-            out.add(new Goal(
+            Goal g = new Goal(
                 idOf(d),
                 pickString(f, "title", ""),
                 pickNumber(f, "progress", 0),
-                pickTimestampMs(f, "updatedAt", 0L)));
+                pickTimestampMs(f, "updatedAt", 0L));
+            g.nextMilestone = nextMilestone(f);
+            out.add(g);
         }
         return out;
+    }
+
+    /** The text of the first milestone not marked done, or null. Milestones are {text, done} maps in an array. */
+    static String nextMilestone(JSONObject fields) {
+        JSONObject v = value(fields, "milestones");
+        JSONObject arr = v == null ? null : v.optJSONObject("arrayValue");
+        JSONArray values = arr == null ? null : arr.optJSONArray("values");
+        if (values == null) return null;
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject item = values.optJSONObject(i);
+            JSONObject map = item == null ? null : item.optJSONObject("mapValue");
+            JSONObject f = map == null ? null : map.optJSONObject("fields");
+            if (f == null || pickBool(f, "done", false)) continue;
+            String text = pickString(f, "text", "").trim();
+            if (!text.isEmpty()) return text;
+        }
+        return null;
     }
 
     /** Notes in the order the server returned them (see {@link #latestNotesQuery}). */
@@ -177,6 +196,8 @@ public final class FirestoreJson {
         p.onboarded = pickBool(f, "onboarded", false);
         String name = pickString(f, "preferredName", "").trim();
         if (!name.isEmpty()) p.preferredName = name;
+        String tone = pickString(f, "tone", "").trim();
+        if (!tone.isEmpty()) p.tone = tone;
         return p;
     }
 
@@ -199,7 +220,11 @@ public final class FirestoreJson {
         JSONObject f = fieldsOf(docJson);
         s.waterGlasses = (int) pickNumber(f, "waterGlasses", 0);
         s.moodTag = pickString(f, "moodTag", null);
-        s.moodLogged = !Double.isNaN(pickNumber(f, "mood", Double.NaN)) || (s.moodTag != null && !s.moodTag.isEmpty());
+        double mood = pickNumber(f, "mood", Double.NaN);
+        s.mood = Double.isNaN(mood) ? null : Integer.valueOf((int) Math.round(mood));
+        double sleep = pickNumber(f, "sleepMinutes", Double.NaN);
+        s.sleepMinutes = Double.isNaN(sleep) ? null : Integer.valueOf((int) Math.round(sleep));
+        s.moodLogged = !Double.isNaN(mood) || (s.moodTag != null && !s.moodTag.isEmpty());
         s.energy = pickString(f, "energy", null);
         s.energyLogged = s.energy != null && !s.energy.isEmpty();
     }
@@ -247,6 +272,35 @@ public final class FirestoreJson {
         } catch (JSONException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Request body for :runQuery under one page: its newest messages, newest first. */
+    public static String pageMessagesQuery(int max) {
+        try {
+            JSONObject order = new JSONObject()
+                .put("field", new JSONObject().put("fieldPath", "createdAt"))
+                .put("direction", "DESCENDING");
+            JSONObject q = new JSONObject()
+                .put("from", new JSONArray().put(new JSONObject().put("collectionId", "messages")))
+                .put("orderBy", new JSONArray().put(order))
+                .put("limit", max);
+            return new JSONObject().put("structuredQuery", q).toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** A {@link #pageMessagesQuery} response as chat lines, oldest first. Empty texts are skipped. */
+    public static List<ChatLine> parsePageMessages(String runQueryJson) {
+        List<ChatLine> out = new ArrayList<>();
+        for (JSONObject d : runQueryDocs(runQueryJson)) {
+            JSONObject f = d.optJSONObject("fields");
+            String text = pickString(f, "text", "").trim();
+            if (text.isEmpty()) continue;
+            out.add(new ChatLine("user".equals(pickString(f, "role", "")), text, pickBool(f, "checkIn", false)));
+        }
+        Collections.reverse(out);
+        return out;
     }
 
     /** Same choice as the web's pickTodayPage: the first page, newest update first, created on today's local date. */

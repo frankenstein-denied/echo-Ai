@@ -16,6 +16,10 @@ public final class TodaySnapshot {
     public boolean caloriesEnabled;
     public String energy;
     public String moodTag;
+    /** The older 1-10 mood score, or null. */
+    public Integer mood;
+    /** Last night's sleep, or null when not logged. */
+    public Integer sleepMinutes;
     public int kcalToday;
     public Integer calorieGoal;
     public Set<String> mealTypes = new HashSet<>();

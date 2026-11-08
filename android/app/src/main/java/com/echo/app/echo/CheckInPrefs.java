@@ -14,6 +14,8 @@ public final class CheckInPrefs {
     public Integer calorieGoal;
     public boolean onboarded;
     public String preferredName;
+    /** Echo's tone from onboarding (Gentle coach, Direct, Cheerful), or null. */
+    public String tone;
 
     public static CheckInPrefs defaults() {
         return new CheckInPrefs();
@@ -35,6 +37,7 @@ public final class CheckInPrefs {
         p.calorieGoal = cached.calorieGoal;
         p.onboarded = cached.onboarded;
         p.preferredName = cached.preferredName;
+        p.tone = cached.tone;
         return p;
     }
 
@@ -51,6 +54,7 @@ public final class CheckInPrefs {
                 .put("onboarded", onboarded);
             if (calorieGoal != null) o.put("calorieGoal", calorieGoal.intValue());
             if (preferredName != null) o.put("preferredName", preferredName);
+            if (tone != null) o.put("tone", tone);
             return o.toString();
         } catch (JSONException e) {
             throw new IllegalStateException(e);
@@ -72,6 +76,7 @@ public final class CheckInPrefs {
             p.onboarded = o.getBoolean("onboarded");
             if (o.has("calorieGoal")) p.calorieGoal = o.getInt("calorieGoal");
             if (o.has("preferredName")) p.preferredName = o.getString("preferredName");
+            if (o.has("tone")) p.tone = o.getString("tone");
             return p;
         } catch (JSONException e) {
             return null;
