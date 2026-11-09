@@ -118,3 +118,10 @@ describe('weather in the typed prompt', () => {
     expect(SYSTEM_INSTRUCTION).toContain('CONNECTORS, WEATHER and APP GUIDE are facts about the app')
       })
 })
+
+describe('SYSTEM_INSTRUCTION language', () => {
+  it('replies in the profile language', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('always reply in that language')
+    expect(SYSTEM_INSTRUCTION).toContain('Saved item fields (reminder titles, notes) stay in the user\'s own words.')
+  })
+})

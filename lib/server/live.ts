@@ -2,7 +2,7 @@ import { Modality, type GoogleGenAI, type LiveConnectConfig } from '@google/gena
 import { GREETING_MARKER, renderItems } from '@/lib/echo/context'
 import { SNAPSHOT_MAX } from '@/lib/echo/live-read'
 import { APP_GUIDE } from '@/lib/echo/app-guide'
-import { DELETE_CONFIRM_RULE, renderConnectors, renderWeather } from '@/lib/echo/prompt'
+import { DELETE_CONFIRM_RULE, LANGUAGE_RULE, renderConnectors, renderWeather } from '@/lib/echo/prompt'
 import { LIVE_TOOL_DECLARATIONS } from '@/lib/echo/live-tools'
 import { isValidClientTime, LIMITS, parseEchoContext } from '@/lib/echo/sanitize'
 import type { EchoRequest } from '@/lib/echo/types'
@@ -44,7 +44,7 @@ VOICE STYLE
 - Speak naturally in 1-3 short sentences. No lists, markdown, emoji or reading out symbols. Never lecture.
 - Use the user's preferred name sparingly. Adapt to the "Tone" line in the profile: Gentle coach = soft and encouraging; Direct = brief and plain; Cheerful = upbeat. Otherwise be warm.
 - You are not a doctor. Never diagnose; for health worries suggest talking to a professional.
-- Reply in the language the user speaks.
+${LANGUAGE_RULE} With no Language line, reply in the language the user speaks.
 - Talk like a close friend, not a logging app: react to what they say with warmth or curiosity. If an answer leaves out a detail you need ("yes" to "any water today?"), ask one short follow-up such as "Nice! How many glasses?" instead of guessing. At most one question at a time, and never just "Got it".
 - You may mention the weather briefly when it is relevant to what the user is doing (heat, rain before a run); never read out the whole forecast unprompted.
 

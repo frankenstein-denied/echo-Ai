@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
@@ -425,6 +425,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     memoriesRef.current = memories
   }, [messages, memories])
 
+  // The shell's profile is read once at sign-in; follow the language live so a change in Settings applies at once.
+  const languageRef = useRef(profile.language)
+  useEffect(() => watchLanguage(uid, (code) => (languageRef.current = code), () => undefined), [uid])
+
   // Short-ref lists of the user's items (open reminders, goals, notes, today's health/meals) so Echo can edit them.
   const refSource = useRef<RefSource | null>(null)
   useEffect(() => watchRefSource(uid, day, (src) => (refSource.current = src)), [uid, day])
@@ -497,7 +501,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
         const built = buildItems()
         const weather = await getWeather()
-        const echoP = sendToEcho(user, msg, buildContext(profile, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather), webSearchKey())
+        const echoP = sendToEcho(user, msg, buildContext({ ...profile, language: languageRef.current }, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather), webSearchKey())
         echoP.catch(() => undefined)
         try {
           await userP
@@ -634,7 +638,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     const weather = await getWeather()
     const built = buildItems()
     callRefs.current = built?.refs
-    return buildContext(profile, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather)
+    return buildContext({ ...profile, language: languageRef.current }, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather)
   }, [profile, buildItems, getWeather])
   const getCallRefs = useCallback(() => callRefs.current, [])
   const saveWebSearchSecret = useCallback(
