@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom'
 import { Capacitor } from '@capacitor/core'
 import { Check } from 'lucide-react'
 import { updateCheckInSettings, watchCheckInSettings } from '@/lib/firestore'
+import { saveLastAutoSync, syncWeatherLocation } from '@/lib/echo/weather-location'
 import {
+  finalLine,
   nextStep,
   OPEN_PERMISSION_SETUP_EVENT,
   readPermissionSetupDone,
@@ -67,11 +69,14 @@ export function PermissionSetup({
   const [failed, setFailed] = useState<AskStep[]>([])
   const [busy, setBusy] = useState(false)
   const [checkInsOn, setCheckInsOn] = useState<boolean | null>(null)
+  // Only the first-run pass turns check-ins on; a rerun from Settings leaves the person's choice alone.
+  const [firstRun, setFirstRun] = useState(false)
   const live = useRef(true)
 
   const refresh = useCallback(async () => {
     const p = await getNativePermissions().catch(() => null)
-    if (live.current) setPerms(p)
+    // Keep the last answer: a passing bridge error must not hide the sheet mid-way.
+    if (live.current && p) setPerms(p)
     return p
   }, [])
 
@@ -91,7 +96,10 @@ export function PermissionSetup({
     }
     void refresh().then((p) => {
       if (!live.current) return
-      if (shouldShowSetup({ isNative, embed, onboarded, done: readPermissionSetupDone(), perms: p })) setOpen(true)
+      if (shouldShowSetup({ isNative, embed, onboarded, done: readPermissionSetupDone(), perms: p })) {
+        setFirstRun(true)
+        setOpen(true)
+      }
       setChecked(true)
     })
   }, [embed, onboarded, refresh])
@@ -103,6 +111,7 @@ export function PermissionSetup({
         if (!live.current || !p) return // web or an older APK: nothing to set up
         setSkipped([])
         setFailed([])
+        setFirstRun(false)
         setOpen(true)
       })
     }
@@ -111,14 +120,19 @@ export function PermissionSetup({
   }, [refresh])
 
   // Coming back from Android's settings pages: read the permissions again. (@capacitor/app is not installed, so the
-  // WebView's own visibilitychange stands in for the App resume event.)
+  // WebView's own visibilitychange and focus stand in for the App resume event.)
   useEffect(() => {
     if (!open) return
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
+    const onFocus = () => void refresh()
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [open, refresh])
 
   // Done turns check-ins on if they are off, so it needs their current state.
@@ -131,8 +145,11 @@ export function PermissionSetup({
     onHoldChange(open || !checked)
   }, [open, checked, onHoldChange])
 
-  // Task 7 hooks the weather sync in here.
-  const onLocationGranted = useCallback(() => {}, [])
+  // Weather follows the phone as soon as location is allowed, whatever the 6-hour wait of the automatic sync.
+  const onLocationGranted = useCallback(() => {
+    saveLastAutoSync(Date.now())
+    void syncWeatherLocation(uid)
+  }, [uid])
 
   const allow = async (step: AskStep) => {
     setBusy(true)
@@ -147,7 +164,7 @@ export function PermissionSetup({
   const finish = () => {
     savePermissionSetupDone()
     setOpen(false)
-    if (checkInsOn === false) void updateCheckInSettings(uid, { enabled: true }).catch(() => null)
+    if (firstRun && checkInsOn !== true) void updateCheckInSettings(uid, { enabled: true }).catch(() => null)
   }
 
   if (!open || paused || !perms || typeof document === 'undefined') return null
@@ -166,7 +183,7 @@ export function PermissionSetup({
               <span className="grid size-16 place-items-center rounded-full bg-primary-soft text-primary">
                 <Check size={32} aria-hidden="true" />
               </span>
-              <h2 className="text-2xl font-semibold text-foreground">You&apos;re all set. Echo&apos;s chathead is on.</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{finalLine(perms.overlay === true)}</h2>
             </div>
           ) : (
             <div>

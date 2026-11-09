@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NativePermissions } from '@/lib/native/echo-bridge'
-import { nextStep, shouldShowSetup, STEP_COPY, stepStatus } from './permission-setup'
+import { finalLine, nextStep, shouldShowSetup, STEP_COPY, stepStatus } from './permission-setup'
 
 const denied: NativePermissions = {
   notifications: false,
@@ -107,5 +107,12 @@ describe('STEP_COPY', () => {
       title: 'Show Echo over other apps',
       why: "So Echo's chathead can pop up with a quick check-in. Android opens a settings page: turn on Echo, then come back.",
     })
+  })
+})
+
+describe('finalLine', () => {
+  it('says the chathead is on only when the overlay is allowed', () => {
+    expect(finalLine(true)).toBe("You're all set. Echo's chathead is on.")
+    expect(finalLine(false)).toBe("You're all set. You can turn on the chathead in Settings any time.")
   })
 })

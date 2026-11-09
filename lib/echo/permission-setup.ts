@@ -38,6 +38,11 @@ export function nextStep(perms: NativePermissions, skipped: readonly SetupStep[]
   return SETUP_STEPS.find((s) => !isGranted(s, perms) && !skipped.includes(s)) ?? 'done'
 }
 
+/** The last screen only says the chathead is on when it really is. */
+export function finalLine(overlayGranted: boolean): string {
+  return overlayGranted ? "You're all set. Echo's chathead is on." : "You're all set. You can turn on the chathead in Settings any time."
+}
+
 /** perms is null on the web or an APK older than 1.14; neither can run the steps. */
 export function shouldShowSetup(s: { isNative: boolean; embed: boolean; onboarded: boolean; done: boolean; perms: NativePermissions | null }): boolean {
   if (!s.isNative || s.embed || !s.onboarded || s.done || !s.perms) return false
