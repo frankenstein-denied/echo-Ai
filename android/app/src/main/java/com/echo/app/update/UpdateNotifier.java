@@ -12,14 +12,16 @@ import com.echo.app.MainActivity;
 import com.echo.app.R;
 
 /**
- * Tells the user about a new version while the app is closed. The background worker calls this; a tap opens
+ * Tells the user about a new version while the app is closed. UpdateCheckWorker calls this; a tap opens
  * Echo, which starts the download, because Android blocks starting the installer from the background.
  */
 public final class UpdateNotifier {
     private static final String TAG = "EchoUpdates";
     public static final String EXTRA_UPDATE = "echo_update";
     static final String CHANNEL_ID = "echo_updates";
-    static final int NOTIFICATION_ID = 4201;
+    /** Not 4201: that is the pinned notification (NotificationRenderer.NOTIFICATION_ID). */
+    static final int NOTIFICATION_ID = 4205;
+    private static final int REQUEST_CODE = 4201;
     static final long CHECK_EVERY_MS = 6 * 60 * 60_000L;
     private static final int MAX_LINES = 3;
 
@@ -45,18 +47,27 @@ public final class UpdateNotifier {
         return notifiedCode > 0 && installedCode >= notifiedCode;
     }
 
+    /** Act on a notification tap only when it is fresh: not a relaunch from Recents, not a restored Activity. */
+    public static boolean shouldStartUpdate(boolean hasExtra, int intentFlags, boolean restored) {
+        return hasExtra && !restored && (intentFlags & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0;
+    }
+
+    /** Any thread, no network: clears the notification once the version it announced is installed. */
+    static void clearIfInstalled(Context ctx) {
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!shouldCancel(AppUpdater.installedVersionCode(ctx), prefs.getInt(PREF_NOTIFIED, 0))) return;
+        NotificationManagerCompat.from(ctx).cancel(NOTIFICATION_ID);
+        prefs.edit().putInt(PREF_NOTIFIED, 0).apply();
+    }
+
     /** Blocking (network): call from a worker thread. Does nothing without notification permission. */
     public static void maybeNotify(Context ctx) {
         NotificationManagerCompat nm = NotificationManagerCompat.from(ctx);
         if (!nm.areNotificationsEnabled()) return;
+        clearIfInstalled(ctx);
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         int installed = AppUpdater.installedVersionCode(ctx);
         int notified = prefs.getInt(PREF_NOTIFIED, 0);
-        if (shouldCancel(installed, notified)) {
-            nm.cancel(NOTIFICATION_ID);
-            prefs.edit().putInt(PREF_NOTIFIED, 0).apply();
-            notified = 0;
-        }
 
         long now = System.currentTimeMillis();
         if (!checkDue(now, prefs.getLong(PREF_LAST_CHECK, 0))) return;
@@ -104,7 +115,7 @@ public final class UpdateNotifier {
         Intent i = new Intent(ctx, MainActivity.class)
             .putExtra(EXTRA_UPDATE, true)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(ctx, NOTIFICATION_ID, i,
+        return PendingIntent.getActivity(ctx, REQUEST_CODE, i,
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 }

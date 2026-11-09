@@ -13,13 +13,11 @@ import androidx.work.WorkerParameters;
 import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.CheckInRules;
-import com.echo.app.update.UpdateNotifier;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Periodic safety net: refreshes the pinned notification, or revives the service if it was killed. It also
- * sends any check-in the exact alarm missed, and sets that alarm again if it was lost. It also posts a
- * notification when a new version of Echo is out.
+ * sends any check-in the exact alarm missed, and sets that alarm again if it was lost.
  */
 public class RefreshWorker extends Worker {
     static final String UNIQUE_NAME = "echo-pinned-refresh";
@@ -80,11 +78,6 @@ public class RefreshWorker extends Worker {
             Log.w("CheckInTiming", "background check-in failed", e); // the next run tries again
         } finally {
             CheckInAlarm.schedule(getApplicationContext());
-        }
-        try {
-            UpdateNotifier.maybeNotify(getApplicationContext()); // at most one network check every 6 hours
-        } catch (RuntimeException e) {
-            Log.w("EchoUpdates", "update check failed", e); // never stops check-ins
         }
         return Result.success();
     }

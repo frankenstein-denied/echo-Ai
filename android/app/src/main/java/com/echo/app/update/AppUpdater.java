@@ -62,6 +62,11 @@ public final class AppUpdater {
 
     /** Call from onStart, so "Later" only lasts until the next open. Checks in the background. */
     public static void checkOnOpen(Activity activity) {
+        try {
+            UpdateNotifier.clearIfInstalled(activity); // updated through the dialog: drop the stale notification
+        } catch (RuntimeException ignored) {
+            // the next worker run tries again
+        }
         boolean pendingInstall = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(PREF_PENDING_INSTALL, false) && canInstall(activity); // refused: offer it again
         if (!shouldCheck(promptOpen, checking, downloading, pendingInstall)) return;
@@ -97,7 +102,7 @@ public final class AppUpdater {
                 startingFromNotification = false;
                 if (activity.isFinishing() || activity.isDestroyed()) return;
                 if (info == null) {
-                    Toast.makeText(activity, "Couldn't get the update. Try again later.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(activity, R.string.update_fetch_failed, Toast.LENGTH_LONG).show();
                 } else if (info.isNewerThan(installed)) {
                     download(activity);
                 }

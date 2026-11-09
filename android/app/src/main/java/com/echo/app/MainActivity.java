@@ -11,6 +11,7 @@ import com.echo.app.echo.EchoBridgePlugin;
 import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.echo.app.update.AppUpdater;
+import com.echo.app.update.UpdateCheckWorker;
 import com.echo.app.update.UpdateNotifier;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -19,11 +20,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EchoBridgePlugin.class);
+        // A restored Activity keeps its old intent: never re-download from it. Dropped before super.onCreate,
+        // whose load() routes the intent through onNewIntent.
+        if (savedInstanceState != null && getIntent() != null) getIntent().removeExtra(UpdateNotifier.EXTRA_UPDATE);
         super.onCreate(savedInstanceState);
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         keepWebViewAboveKeyboard();
-        startUpdateFromNotification(getIntent()); // usually already handled by onNewIntent inside load()
+        startUpdateFromNotification(getIntent(), savedInstanceState != null); // usually done by onNewIntent in load()
+        UpdateCheckWorker.schedule(this);
     }
 
     /**
@@ -74,13 +79,15 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         openEchoPath(intent);
-        startUpdateFromNotification(intent);
+        startUpdateFromNotification(intent, false);
     }
 
     /** The "new version" notification was tapped: go straight to the download. */
-    private void startUpdateFromNotification(Intent intent) {
-        if (intent == null || !intent.getBooleanExtra(UpdateNotifier.EXTRA_UPDATE, false)) return;
+    private void startUpdateFromNotification(Intent intent, boolean restored) {
+        if (intent == null) return;
+        boolean hasExtra = intent.getBooleanExtra(UpdateNotifier.EXTRA_UPDATE, false);
         intent.removeExtra(UpdateNotifier.EXTRA_UPDATE); // handle once (not again on recreate)
+        if (!UpdateNotifier.shouldStartUpdate(hasExtra, intent.getFlags(), restored)) return;
         AppUpdater.startFromNotification(this);
     }
 

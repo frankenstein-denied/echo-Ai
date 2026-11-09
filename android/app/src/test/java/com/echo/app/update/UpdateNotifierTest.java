@@ -1,8 +1,11 @@
 package com.echo.app.update;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.content.Intent;
+import com.echo.app.echo.NotificationRenderer;
 import org.junit.Test;
 
 public class UpdateNotifierTest {
@@ -32,5 +35,16 @@ public class UpdateNotifierTest {
         assertTrue(UpdateNotifier.shouldCancel(16, 16));
         assertFalse(UpdateNotifier.shouldCancel(15, 16));
         assertFalse(UpdateNotifier.shouldCancel(16, 0));
+    }
+
+    @Test public void neverSharesTheIdOfThePinnedNotification() {
+        assertNotEquals(NotificationRenderer.NOTIFICATION_ID, UpdateNotifier.NOTIFICATION_ID);
+    }
+
+    @Test public void startsTheUpdateOnlyFromAFreshTap() {
+        assertTrue(UpdateNotifier.shouldStartUpdate(true, 0, false));
+        assertFalse(UpdateNotifier.shouldStartUpdate(false, 0, false));
+        assertFalse(UpdateNotifier.shouldStartUpdate(true, 0, true));
+        assertFalse(UpdateNotifier.shouldStartUpdate(true, Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY, false));
     }
 }
