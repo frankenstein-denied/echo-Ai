@@ -5,6 +5,8 @@ import { useAuth } from '@/lib/auth-context'
 import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
 import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
 import { currentEmbedMode } from '@/lib/native/float-bridge'
+import { getNativePermissions } from '@/lib/native/echo-bridge'
+import { autoSyncDue, readLastAutoSync, saveLastAutoSync, syncWeatherLocation } from '@/lib/echo/weather-location'
 import { NAV_GROUPS, type NavName } from '@/lib/echo/sidebar'
 import { Sidebar } from './sidebar'
 import { useSidebarData } from './use-sidebar-data'
@@ -131,6 +133,32 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     document.documentElement.dataset.embed = embed
     return () => { delete document.documentElement.dataset.embed }
   }, [embed])
+  // Weather follows the phone: on open and on coming back to the app, when location is allowed. At most every 6 hours,
+  // since with only approximate location allowed each position request shows Android's "use precise location?" pop-up.
+  // (@capacitor/app is not installed, so visibilitychange stands in for the App resume event.)
+  const uid = user?.uid
+  useEffect(() => {
+    if (!uid || embed) return
+    let running = false
+    const sync = async () => {
+      if (running || !autoSyncDue(Date.now(), readLastAutoSync())) return
+      running = true
+      try {
+        const perms = await getNativePermissions() // null on the web or an APK without the permission bridge
+        if (!perms?.location || !autoSyncDue(Date.now(), readLastAutoSync())) return
+        saveLastAutoSync(Date.now())
+        await syncWeatherLocation(uid)
+      } finally {
+        running = false
+      }
+    }
+    void sync()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void sync()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [uid, embed])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   if (embed) {
