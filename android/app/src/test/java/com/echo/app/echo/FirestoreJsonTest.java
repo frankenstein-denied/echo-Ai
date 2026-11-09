@@ -310,6 +310,33 @@ public class FirestoreJsonTest {
         assertTrue(s.mealTypes.contains("lunch"));
     }
 
+    @Test public void mealsKeepTheirFoodAndTimeOldestFirst() {
+        TodaySnapshot s = new TodaySnapshot();
+        FirestoreJson.applyMeals("[{\"document\":{\"name\":\"x/meals/m1\",\"fields\":{"
+            + "\"mealType\":{\"stringValue\":\"Lunch\"},\"description\":{\"stringValue\":\"adobo\"},"
+            + "\"createdAt\":{\"timestampValue\":\"2026-11-09T04:30:00Z\"}}},\"readTime\":\"t\"},"
+            + "{\"document\":{\"name\":\"x/meals/m2\",\"fields\":{"
+            + "\"mealType\":{\"stringValue\":\"snack\"},\"description\":{\"stringValue\":\" siopao \"},"
+            + "\"createdAt\":{\"timestampValue\":\"2026-11-09T00:05:00Z\"}}},\"readTime\":\"t\"}]", s);
+        assertEquals(2, s.meals.size());
+        assertEquals("siopao", s.meals.get(0).food);
+        assertEquals("snack", s.meals.get(0).type);
+        assertEquals(1794182700000L, s.meals.get(0).atMs);
+        assertEquals("lunch", s.meals.get(1).type);
+    }
+
+    @Test public void pageMessagesCarryTheirTime() {
+        List<ChatLine> lines = FirestoreJson.parsePageMessages("[{\"document\":{\"name\":\"p/messages/a\",\"fields\":{"
+            + "\"role\":{\"stringValue\":\"user\"},\"text\":{\"stringValue\":\"I ate siopao\"},"
+            + "\"createdAt\":{\"timestampValue\":\"2026-11-09T00:04:00Z\"}}},\"readTime\":\"t\"},"
+            + "{\"document\":{\"name\":\"p/messages/b\",\"fields\":{"
+            + "\"role\":{\"stringValue\":\"assistant\"},\"text\":{\"stringValue\":\"Yum\"}}},\"readTime\":\"t\"}]");
+        assertEquals(2, lines.size());
+        assertEquals(0L, lines.get(0).atMs); // the query gives newest first; parsing reverses it
+        assertEquals(1794182640000L, lines.get(1).atMs);
+        assertTrue(lines.get(1).fromUser);
+    }
+
     @Test public void noMealsLeavesAnEmptySet() {
         TodaySnapshot s = new TodaySnapshot();
         s.mealTypes = null;

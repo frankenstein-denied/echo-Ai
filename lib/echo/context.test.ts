@@ -31,10 +31,10 @@ describe('buildProfileSummary', () => {
 })
 
 describe('buildContext', () => {
-  it('keeps the last 10 messages, truncated', () => {
-    const msgs = Array.from({ length: 15 }, (_, i) => ({ role: 'user' as const, text: `m${i} ` + 'x'.repeat(600) }))
+  it('keeps the last 20 messages, truncated', () => {
+    const msgs = Array.from({ length: 25 }, (_, i) => ({ role: 'user' as const, text: `m${i} ` + 'x'.repeat(600) }))
     const c = buildContext(profile, msgs, [])
-    expect(c.recentMessages).toHaveLength(10)
+    expect(c.recentMessages).toHaveLength(20)
     expect(c.recentMessages[0].text.startsWith('m5 ')).toBe(true)
     expect(c.recentMessages[0].text.length).toBe(500)
   })
@@ -76,10 +76,10 @@ describe('buildContext weather', () => {
 })
 
 describe('buildContext check-ins', () => {
-  it('keeps real conversation in the last 10 despite many check-ins', () => {
-    const real = Array.from({ length: 10 }, (_, i) => ({ role: 'user' as const, text: `m${i}` }))
+  it('keeps real conversation in the last 20 despite many check-ins', () => {
+    const real = Array.from({ length: 20 }, (_, i) => ({ role: 'user' as const, text: `m${i}` }))
     const noise = Array.from({ length: 8 }, () => ({ role: 'assistant' as const, text: 'q', checkIn: true }))
-    expect(buildContext({}, [...real, ...noise], []).recentMessages.filter((m) => m.text !== 'q')).toHaveLength(9)
+    expect(buildContext({}, [...real, ...noise], []).recentMessages.filter((m) => m.text !== 'q')).toHaveLength(19)
   })
   it('keeps the newest check-in so a short reply is understood, without sending the marker', () => {
     const msgs = [{ role: 'assistant' as const, text: 'Water?', checkIn: true }, { role: 'assistant' as const, text: 'Had lunch yet?', checkIn: true }, { role: 'user' as const, text: 'Yes, adobo' }]

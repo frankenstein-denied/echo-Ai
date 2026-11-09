@@ -8,7 +8,7 @@ export const LIMITS = {
   webSearchKey: 8192,
   text: 2000,
   profile: 1500,
-  recentMessages: 10,
+  recentMessages: 20,
   recentMessageText: 500,
   memoryLabels: 40,
   labelLength: 60,

@@ -17,7 +17,7 @@ export const maxDuration = 20
 // Per model attempt; the default two-model chain stays well under maxDuration. The phone prefetches
 // minutes ahead and falls back to its own templates, so a slow answer only costs the AI wording.
 const GEMINI_ATTEMPT_TIMEOUT_MS = 7000
-const MAX_BODY_BYTES = 12 * 1024
+const MAX_BODY_BYTES = 24 * 1024
 const noStore = { headers: { 'Cache-Control': 'no-store' } }
 
 // The Android bubble's check-in, written from a compact snapshot of the user's day. Responds { shortText, fullText }.
@@ -63,8 +63,8 @@ export async function POST(req: Request) {
           abortSignal: signal,
         },
       })
-      const text = sanitizeCheckInText(JSON.parse(result.text ?? ''))
-      // Unusable output moves on to the next model, like malformed JSON.
+      const text = sanitizeCheckInText(JSON.parse(result.text ?? ''), parsed)
+      // Unusable output (empty, or asking how a reminder still to come went) moves on to the next model.
       if (!text) throw new SyntaxError('Check-in had no text')
       return text
     })

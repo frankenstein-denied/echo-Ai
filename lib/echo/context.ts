@@ -3,7 +3,7 @@ import type { EchoItemsContext, EchoMealType, EchoRequest } from './types'
 import { dropUnansweredCheckIns } from './today-orb'
 
 const PROFILE_MAX = 1500
-const RECENT_MAX = 10
+const RECENT_MAX = 20
 const RECENT_TEXT_MAX = 500
 const LABELS_MAX = 40
 export const TRAIT_SLOTS = 10

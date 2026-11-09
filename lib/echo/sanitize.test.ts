@@ -63,13 +63,13 @@ describe('parseEchoRequest', () => {
       ...base,
       context: {
         profile: 'p'.repeat(2000),
-        recentMessages: Array.from({ length: 15 }, (_, i) => ({ role: i % 2 ? 'user' : 'assistant', text: 't'.repeat(900) })),
+        recentMessages: Array.from({ length: 25 }, (_, i) => ({ role: i % 2 ? 'user' : 'assistant', text: 't'.repeat(900) })),
         memoryLabels: Array.from({ length: 60 }, (_, i) => ({ label: `L${i}`, type: 'person', mentions: 2 })),
       },
     })
     if ('error' in r) throw new Error(r.error)
     expect(r.context.profile).toHaveLength(1500)
-    expect(r.context.recentMessages).toHaveLength(10)
+    expect(r.context.recentMessages).toHaveLength(20)
     expect(r.context.recentMessages[0].text).toHaveLength(500)
     expect(r.context.memoryLabels).toHaveLength(40)
   })
