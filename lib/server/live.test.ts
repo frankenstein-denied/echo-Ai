@@ -9,7 +9,7 @@ const body = (over: Record<string, unknown> = {}) => ({
   snapshot: 'Active goals: Run (40%)\n' + 'x'.repeat(2000),
   context: {
     profile: 'Name: Tester\nCheck-in time: 20:30',
-    recentMessages: Array.from({ length: 14 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `m${i} ${'x'.repeat(600)}` })),
+    recentMessages: Array.from({ length: 24 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `m${i} ${'x'.repeat(600)}` })),
     memoryLabels: Array.from({ length: 45 }, (_, i) => ({ label: `L${i}`, type: 'topic', mentions: 45 - i })),
   },
   ...over,
@@ -20,7 +20,7 @@ describe('parseLiveSessionRequest', () => {
     const r = parseLiveSessionRequest(body())
     if ('error' in r) throw new Error(r.error)
     expect(r.voice).toBe('Puck')
-    expect(r.context.recentMessages).toHaveLength(10)
+    expect(r.context.recentMessages).toHaveLength(20)
     expect(r.context.recentMessages[0].text.length).toBe(500)
     expect(r.context.recentMessages[0].text.startsWith('m4 ')).toBe(true)
     expect(r.context.memoryLabels).toHaveLength(40)

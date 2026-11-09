@@ -194,6 +194,54 @@ public class CheckInPlannerTest {
         assertEquals("Have you had lunch yet?", p.shortText);
     }
 
+    @Test public void snackInTheBreakfastWindowIsConfirmedNotAskedAgain() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("snack"));
+        s.meals.add(new TodaySnapshot.Meal("snack", "siopao", at(8, 5)));
+        Plan p = plan(s, at(9, 0));
+        assertEquals(Topic.MEAL, p.topic);
+        assertEquals("Was the siopao your breakfast?", p.shortText);
+        assertEquals("Was the siopao your breakfast?", p.fullText);
+    }
+
+    @Test public void foodLoggedJustBeforeTheWindowStillCounts() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("snack"));
+        s.meals.add(new TodaySnapshot.Meal("", "pandesal", at(6, 30)));
+        assertEquals("Was the pandesal your breakfast?", plan(s, at(8, 0)).shortText);
+    }
+
+    @Test public void morningSnackIsNotTakenForLunch() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("breakfast", "snack", "dinner"));
+        s.meals.add(new TodaySnapshot.Meal("snack", "siopao", at(9, 0)));
+        assertEquals("Have you had lunch yet?", plan(s, at(14, 30)).shortText);
+    }
+
+    @Test public void aLoggedMainMealIsNeverOfferedAsAnother() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("breakfast", "dinner"));
+        s.meals.add(new TodaySnapshot.Meal("breakfast", "eggs", at(12, 10)));
+        assertEquals("Have you had lunch yet?", plan(s, at(14, 30)).shortText);
+    }
+
+    @Test public void longFoodNamesAreLeftToTheRegularQuestion() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("snack"));
+        s.meals.add(new TodaySnapshot.Meal("snack", "a very long description of everything eaten", at(8, 5)));
+        assertNotEquals(Topic.OVERVIEW, plan(s, at(9, 0)).topic);
+        assertFalse(plan(s, at(9, 0)).shortText.startsWith("Was the"));
+    }
+
+    @Test public void confirmTooLongForThePopUpUsesAShortLine() {
+        TodaySnapshot s = allLogged();
+        s.mealTypes = new HashSet<>(Arrays.asList("snack"));
+        s.meals.add(new TodaySnapshot.Meal("snack", "chicken siopao and coffee", at(8, 5)));
+        Plan p = plan(s, at(9, 0));
+        assertEquals("Was that your breakfast?", p.shortText);
+        assertEquals("Was the chicken siopao and coffee your breakfast?", p.fullText);
+    }
+
     private static void assertMeal(String meal, TodaySnapshot s, int hour, int minute) {
         Plan p = plan(s, at(hour, minute));
         assertEquals(Topic.MEAL, p.topic);

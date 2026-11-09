@@ -41,8 +41,11 @@ final class SmartCheckIns {
     /** A text older than this is about a day that has moved on. */
     static final long MAX_AGE_MS = 30 * MINUTE_MS;
     static final int SHORT_MAX = 40;
-    private static final int CHAT_TO_READ = 30;
-    private static final int CHAT_LINES = 8;
+    private static final int CHAT_TO_READ = 50;
+    /** Enough of today's chat to remember what was said this morning, not only the last few lines. */
+    static final int CHAT_LINES = 16;
+    private static final int MEALS = 8;
+    private static final int FOOD_MAX = 80;
     private static final int CHECK_INS = 5;
     private static final int GOALS = 3;
     private static final int REMINDERS = 5;
@@ -252,13 +255,22 @@ final class SmartCheckIns {
                 Collections.sort(types);
                 meals.put("types", new JSONArray(types));
                 meals.put("kcal", s.kcalToday);
+                JSONArray items = new JSONArray();
+                List<TodaySnapshot.Meal> eaten = s.meals == null ? new ArrayList<>() : s.meals;
+                for (TodaySnapshot.Meal m : eaten.subList(Math.max(0, eaten.size() - MEALS), eaten.size())) {
+                    JSONObject j = new JSONObject().put("type", m.type).put("food", clip(m.food, FOOD_MAX));
+                    if (m.atMs > 0) j.put("time", clock(m.atMs, tz));
+                    items.put(j);
+                }
+                meals.put("items", items);
                 if (s.calorieGoal != null && s.calorieGoal > 0) meals.put("calorieGoal", s.calorieGoal.intValue());
             }
             o.put("meals", meals);
 
             JSONArray reminders = new JSONArray();
             for (Reminder r : remindersAhead(s.openReminders, forMs)) {
-                reminders.put(new JSONObject().put("title", clip(r.title, 100)).put("when", when(r.dueAtMs, forMs, tz)));
+                reminders.put(new JSONObject().put("title", clip(r.title, 100)).put("when", when(r.dueAtMs, forMs, tz))
+                    .put("minutesAway", Math.max(0L, (r.dueAtMs - forMs) / MINUTE_MS)));
             }
             o.put("reminders", reminders);
 
@@ -280,7 +292,9 @@ final class SmartCheckIns {
             }
             JSONArray messages = new JSONArray();
             for (ChatLine line : talk.subList(Math.max(0, talk.size() - CHAT_LINES), talk.size())) {
-                messages.put(new JSONObject().put("role", line.fromUser ? "user" : "echo").put("text", clip(line.text, LINE_MAX)));
+                JSONObject j = new JSONObject().put("role", line.fromUser ? "user" : "echo").put("text", clip(line.text, LINE_MAX));
+                if (line.atMs > 0) j.put("time", clock(line.atMs, tz));
+                messages.put(j);
             }
             o.put("messages", messages);
             o.put("recentCheckIns", new JSONArray(checkIns.subList(Math.max(0, checkIns.size() - CHECK_INS), checkIns.size())));
@@ -315,18 +329,27 @@ final class SmartCheckIns {
         return FirestoreJson.pickTopGoals(open, GOALS);
     }
 
-    /** {@code in 20 min}, {@code today 5:30 PM} or {@code tomorrow 9 AM}, the way a friend would say it. */
+    /**
+     * How far off and when: {@code in 20 min, at 4:30 PM}, {@code in 2 h, today at 4 PM} or
+     * {@code in 14 h, tomorrow at 9 AM}. Always says it is still to come, so it can't read as past.
+     */
     static String when(long dueMs, long nowMs, TimeZone tz) {
-        long minutes = (dueMs - nowMs) / MINUTE_MS;
-        String clock = format("h:mm a", dueMs, tz).replace(":00 ", " ");
-        if (minutes < 60) return "in " + Math.max(1, minutes) + " min, at " + clock;
+        long minutes = Math.max(1, (dueMs - nowMs) / MINUTE_MS);
+        String clock = clock(dueMs, tz);
+        if (minutes < 60) return "in " + minutes + " min, at " + clock;
+        String away = "in " + (minutes / 60) + " h" + (minutes % 60 == 0 ? "" : " " + (minutes % 60) + " min");
         Calendar due = Calendar.getInstance(tz);
         due.setTimeInMillis(dueMs);
         Calendar now = Calendar.getInstance(tz);
         now.setTimeInMillis(nowMs);
         boolean today = due.get(Calendar.YEAR) == now.get(Calendar.YEAR)
             && due.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR);
-        return (today ? "today " : "tomorrow ") + clock;
+        return away + ", " + (today ? "today" : "tomorrow") + " at " + clock;
+    }
+
+    /** {@code 4 PM} or {@code 8:05 AM}. */
+    static String clock(long ms, TimeZone tz) {
+        return format("h:mm a", ms, tz).replace(":00 ", " ");
     }
 
     private static String clip(String s, int max) {

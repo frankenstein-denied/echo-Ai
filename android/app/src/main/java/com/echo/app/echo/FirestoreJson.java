@@ -229,16 +229,21 @@ public final class FirestoreJson {
         s.energyLogged = s.energy != null && !s.energy.isEmpty();
     }
 
-    /** Copies today's meals into the snapshot: the total, and which meal types are logged, in lowercase. */
+    /** Copies today's meals into the snapshot: the total, which meal types are logged (lowercase), and each meal. */
     public static void applyMeals(String runQueryJson, TodaySnapshot s) {
         s.kcalToday = 0;
         s.mealTypes = new HashSet<>();
+        s.meals = new ArrayList<>();
         for (JSONObject d : runQueryDocs(runQueryJson)) {
             JSONObject f = d.optJSONObject("fields");
             s.kcalToday += (int) Math.round(pickNumber(f, "totalCalories", 0));
-            String type = pickString(f, "mealType", "");
-            if (!type.isEmpty()) s.mealTypes.add(type.toLowerCase(Locale.ROOT));
+            String type = pickString(f, "mealType", "").toLowerCase(Locale.ROOT);
+            if (!type.isEmpty()) s.mealTypes.add(type);
+            String food = pickString(f, "description", "").trim();
+            long at = Math.max(0L, pickTimestampMs(f, "createdAt", 0L));
+            s.meals.add(new TodaySnapshot.Meal(type, food, at));
         }
+        Collections.sort(s.meals, (a, b) -> Long.compare(a.atMs, b.atMs));
     }
 
     /** Request body for :runQuery: one day's meals (equality filter, no index needed). */
@@ -297,7 +302,8 @@ public final class FirestoreJson {
             JSONObject f = d.optJSONObject("fields");
             String text = pickString(f, "text", "").trim();
             if (text.isEmpty()) continue;
-            out.add(new ChatLine("user".equals(pickString(f, "role", "")), text, pickBool(f, "checkIn", false)));
+            out.add(new ChatLine("user".equals(pickString(f, "role", "")), text, pickBool(f, "checkIn", false),
+                Math.max(0L, pickTimestampMs(f, "createdAt", 0L))));
         }
         Collections.reverse(out);
         return out;

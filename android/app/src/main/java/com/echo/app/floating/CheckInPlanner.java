@@ -40,6 +40,9 @@ public final class CheckInPlanner {
     /** The good night chat belongs to this long before the user's sleep time. */
     private static final int NIGHT_CHAT_MINUTES = 90;
     private static final int NO_WATER_BEFORE_SLEEP_MINUTES = 60;
+    /** Food logged this long before a meal window opens may still be that meal (an early breakfast). */
+    private static final int MEAL_EARLY_MINUTES = 60;
+    private static final int FOOD_MAX = 30;
 
     /*
      * The wording, as {chat message, small message} pairs. The small message never carries the name, so it
@@ -60,6 +63,12 @@ public final class CheckInPlanner {
         {"Good evening{, name}. What's for dinner tonight?", "What's for dinner tonight?"},
         {"Had dinner yet? I want to hear what you made.", "Had dinner yet?"},
         {"Evening! Did you get something good to eat?", "Did you get something good to eat?"},
+    };
+    /** Food already logged in this meal's window, but as a snack: ask, don't ask what they ate. */
+    private static final String[] MEAL_CONFIRM = {
+        "Was the {food} your {meal}?",
+        "Hey{, name}, was the {food} your {meal}?",
+        "Did the {food} count as your {meal}?",
     };
     private static final String[][] WATER_NONE = {
         {"Have you had any water today? Go grab a glass for me.", "Have you had any water today?"},
@@ -181,8 +190,11 @@ public final class CheckInPlanner {
                 return say(topic, s.energyLogged ? GOOD_MORNING_WARM : GOOD_MORNING, step, name);
             case NIGHT:
                 return say(topic, s.energyLogged ? GOOD_NIGHT_WARM : GOOD_NIGHT, step, name);
-            case MEAL:
+            case MEAL: {
+                TodaySnapshot.Meal eaten = eatenAsOther(s, meal, nowMs, tz);
+                if (eaten != null) return confirmMeal(eaten, meal, step, name);
                 return say(topic, mealLines(meal), step, name);
+            }
             case WATER:
                 return say(topic, waterLines(s), step, name);
             case MOOD:
@@ -211,6 +223,37 @@ public final class CheckInPlanner {
     private static String usableName(String name) {
         String trimmed = name == null ? "" : name.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static Plan confirmMeal(TodaySnapshot.Meal eaten, String meal, int step, String name) {
+        String line = MEAL_CONFIRM[Math.floorMod(step, MEAL_CONFIRM.length)]
+            .replace("{food}", eaten.food).replace("{meal}", meal);
+        String plain = withName(line, null);
+        String small = plain.length() <= SmartCheckIns.SHORT_MAX ? plain : "Was that your " + meal + "?";
+        return new Plan(Topic.MEAL, small, withName(line, name));
+    }
+
+    /**
+     * Food logged today as a snack (or with no type) in this meal's window or just before it: likely the meal
+     * itself, so Echo asks whether it was, instead of asking what they had. The latest such food, or null.
+     */
+    static TodaySnapshot.Meal eatenAsOther(TodaySnapshot s, String meal, long nowMs, TimeZone tz) {
+        if (meal == null || s.meals == null) return null;
+        int from = mealFrom(meal) - MEAL_EARLY_MINUTES;
+        TodaySnapshot.Meal best = null;
+        for (TodaySnapshot.Meal m : s.meals) {
+            if (!m.type.isEmpty() && !"snack".equals(m.type)) continue;
+            String food = m.food.trim();
+            if (food.isEmpty() || food.length() > FOOD_MAX || m.atMs <= 0 || m.atMs > nowMs) continue;
+            if (!sameDay(m.atMs, nowMs, tz) || minuteOfDay(m.atMs, tz) < from) continue;
+            if (best == null || m.atMs > best.atMs) best = m;
+        }
+        return best;
+    }
+
+    private static int mealFrom(String meal) {
+        if ("breakfast".equals(meal)) return BREAKFAST_FROM;
+        return "lunch".equals(meal) ? LUNCH_FROM : DINNER_FROM;
     }
 
     private static String[][] mealLines(String meal) {
