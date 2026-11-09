@@ -1,13 +1,8 @@
 package com.echo.app;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.View;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import android.webkit.WebView;
@@ -20,9 +15,6 @@ import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private static final String PREF_MIC_ASKED = "mic_permission_asked";
-    private static final int RC_MIC = 7001;
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EchoBridgePlugin.class);
@@ -30,7 +22,6 @@ public class MainActivity extends BridgeActivity {
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         keepWebViewAboveKeyboard();
-        askForMicOnFirstLaunch();
     }
 
     /**
@@ -75,20 +66,6 @@ public class MainActivity extends BridgeActivity {
         super.onDestroy();
         // Any in-app call died with this Activity's WebView, and its page could not say so.
         FloatState.appCallActive = false;
-    }
-
-    /**
-     * Asks for the microphone once, on the first launch after install, so voice works without the
-     * user hunting through Android settings. Later mic requests from the site still go through
-     * Capacitor's WebChromeClient, which asks again if needed.
-     */
-    private void askForMicOnFirstLaunch() {
-        SharedPreferences prefs = getSharedPreferences("echo_app", MODE_PRIVATE);
-        if (prefs.getBoolean(PREF_MIC_ASKED, false)) return;
-        prefs.edit().putBoolean(PREF_MIC_ASKED, true).apply();
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED) return;
-        ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.RECORD_AUDIO }, RC_MIC);
     }
 
     @Override

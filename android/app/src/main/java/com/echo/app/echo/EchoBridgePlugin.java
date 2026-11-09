@@ -3,11 +3,15 @@ package com.echo.app.echo;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import com.echo.app.floating.ChatheadService;
 import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
@@ -24,9 +28,17 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 @CapacitorPlugin(
     name = "EchoBridge",
-    permissions = @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+    permissions = {
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }),
+        @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }),
+        @Permission(alias = "location", strings = { Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION })
+    }
 )
 public class EchoBridgePlugin extends Plugin {
+    private static final String APP_PREFS = "echo_app";
+    private static final String ASKED_PREFIX = "permission_asked_";
+    /** Set by the first-launch mic ask in APKs before 1.14. */
+    private static final String LEGACY_MIC_ASKED = "mic_permission_asked";
 
     @PluginMethod
     public void setSession(PluginCall call) {
@@ -200,6 +212,7 @@ public class EchoBridgePlugin extends Plugin {
             resolveGranted(call);
             return;
         }
+        markAsked("notifications");
         requestPermissionForAlias("notifications", call, "notificationPermissionCallback");
     }
 
@@ -212,6 +225,106 @@ public class EchoBridgePlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("granted", notificationsAllowed());
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getPermissions(PluginCall call) {
+        boolean notifications = notificationsAllowed();
+        boolean microphone = granted(Manifest.permission.RECORD_AUDIO);
+        boolean location = locationAllowed();
+        JSObject ret = new JSObject();
+        ret.put("notifications", notifications);
+        ret.put("microphone", microphone);
+        ret.put("location", location);
+        ret.put("overlay", Settings.canDrawOverlays(getContext()));
+        ret.put("canAskMicrophone", canAsk("microphone", microphone, Manifest.permission.RECORD_AUDIO));
+        ret.put("canAskLocation", canAsk("location", location, Manifest.permission.ACCESS_COARSE_LOCATION));
+        // Before Android 13 notifications need no pop-up, so there is nothing that could be blocked.
+        ret.put("canAskNotifications", Build.VERSION.SDK_INT < 33
+            || canAsk("notifications", notifications, Manifest.permission.POST_NOTIFICATIONS));
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestMicrophonePermission(PluginCall call) {
+        if (granted(Manifest.permission.RECORD_AUDIO)) {
+            resolveGranted(call, true);
+            return;
+        }
+        markAsked("microphone");
+        requestPermissionForAlias("microphone", call, "microphonePermissionCallback");
+    }
+
+    @PermissionCallback
+    private void microphonePermissionCallback(PluginCall call) {
+        resolveGranted(call, granted(Manifest.permission.RECORD_AUDIO));
+    }
+
+    @PluginMethod
+    public void requestLocationPermission(PluginCall call) {
+        if (locationAllowed()) {
+            resolveGranted(call, true);
+            return;
+        }
+        markAsked("location");
+        requestPermissionForAlias("location", call, "locationPermissionCallback");
+    }
+
+    @PermissionCallback
+    private void locationPermissionCallback(PluginCall call) {
+        resolveGranted(call, locationAllowed());
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + getContext().getPackageName())));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open app settings");
+        }
+    }
+
+    private void resolveGranted(PluginCall call, boolean granted) {
+        JSObject ret = new JSObject();
+        ret.put("granted", granted);
+        call.resolve(ret);
+    }
+
+    private boolean granted(String permission) {
+        return ContextCompat.checkSelfPermission(getContext(), permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Approximate location is enough: weather only needs the town. */
+    private boolean locationAllowed() {
+        return granted(Manifest.permission.ACCESS_COARSE_LOCATION) || granted(Manifest.permission.ACCESS_FINE_LOCATION);
+    }
+
+    private SharedPreferences appPrefs() {
+        return getContext().getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE);
+    }
+
+    private void markAsked(String alias) {
+        appPrefs().edit().putBoolean(ASKED_PREFIX + alias, true).apply();
+    }
+
+    private boolean canAsk(String alias, boolean granted, String permission) {
+        android.app.Activity a = getActivity();
+        // Without an activity the rationale is unknown, so assume the pop-up can still show.
+        if (a == null) return true;
+        boolean rationale = ActivityCompat.shouldShowRequestPermissionRationale(a, permission);
+        SharedPreferences prefs = appPrefs();
+        boolean asked = prefs.getBoolean(ASKED_PREFIX + alias, false)
+            || ("microphone".equals(alias) && prefs.getBoolean(LEGACY_MIC_ASKED, false));
+        // A rationale means the pop-up was shown and turned down once, even if the WebView asked and not us.
+        if (!granted && rationale && !asked) markAsked(alias);
+        return canAsk(granted, asked, rationale);
+    }
+
+    /** False only when Android will no longer show the pop-up: denied, asked before, and no rationale. */
+    static boolean canAsk(boolean granted, boolean askedBefore, boolean rationale) {
+        return granted || !askedBefore || rationale;
     }
 
     @PluginMethod

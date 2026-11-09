@@ -20,6 +20,17 @@ export type CheckInStatus = {
   nextWake?: string | null
 }
 
+/** Android permission state. A `canAsk*` value is false once Android will no longer show its pop-up (only Settings can change it then). */
+export type NativePermissions = {
+  notifications: boolean
+  microphone: boolean
+  location: boolean
+  overlay: boolean
+  canAskMicrophone: boolean
+  canAskLocation: boolean
+  canAskNotifications: boolean
+}
+
 export type EchoSession = { uid: string; refreshToken: string; apiKey: string; projectId: string }
 
 interface EchoBridgePlugin {
@@ -36,6 +47,10 @@ interface EchoBridgePlugin {
   getCheckInStatus(): Promise<CheckInStatus>
   openOverlaySettings(): Promise<void>
   markCheckInsRead(): Promise<void>
+  getPermissions(): Promise<NativePermissions>
+  requestMicrophonePermission(): Promise<{ granted: boolean }>
+  requestLocationPermission(): Promise<{ granted: boolean }>
+  openAppSettings(): Promise<void>
 }
 
 const EchoBridge = registerPlugin<EchoBridgePlugin>('EchoBridge')
@@ -138,5 +153,42 @@ export async function markCheckInsRead(): Promise<void> {
     await EchoBridge.markCheckInsRead()
   } catch {
     // Older APK: it keeps no unread number.
+  }
+}
+
+/** Null on web, or on an APK older than 1.14 that has no permission bridge. */
+export async function getNativePermissions(): Promise<NativePermissions | null> {
+  if (!native()) return null
+  try {
+    return await EchoBridge.getPermissions()
+  } catch {
+    return null
+  }
+}
+
+export async function requestNativeMicrophone(): Promise<boolean> {
+  if (!native()) return false
+  try {
+    return (await EchoBridge.requestMicrophonePermission()).granted === true
+  } catch {
+    return false
+  }
+}
+
+export async function requestNativeLocation(): Promise<boolean> {
+  if (!native()) return false
+  try {
+    return (await EchoBridge.requestLocationPermission()).granted === true
+  } catch {
+    return false
+  }
+}
+
+export async function openNativeAppSettings(): Promise<void> {
+  if (!native()) return
+  try {
+    await EchoBridge.openAppSettings()
+  } catch {
+    // Older APK: nothing to open.
   }
 }
