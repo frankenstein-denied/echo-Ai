@@ -325,28 +325,29 @@ public class CheckInRulesTest {
 
     // ---- the wake lines ----
 
-    @Test public void clockIsTwentyFourHourWithLeadingZeros() {
-        assertEquals("00:05", CheckInRules.clock(5));
-        assertEquals("09:30", CheckInRules.clock(9 * 60 + 30));
-        assertEquals("18:40", CheckInRules.clock(18 * 60 + 40));
+    @Test public void clockIsTwelveHourWithAmPm() {
+        assertEquals("12:05 AM", CheckInRules.clock(5));
+        assertEquals("9:30 AM", CheckInRules.clock(9 * 60 + 30));
+        assertEquals("6:40 PM", CheckInRules.clock(18 * 60 + 40));
+        assertEquals("12:00 PM", CheckInRules.clock(12 * 60));
     }
 
     @Test public void wakeLineShowsTheSourceTimeAndResult() {
-        assertEquals("alarm 18:40: POPUP", CheckInRules.wakeLine("alarm", "18:40", "POPUP"));
-        assertEquals("worker Sat 07:02: no profile", CheckInRules.wakeLine("worker", "Sat 07:02", "no profile"));
+        assertEquals("alarm 6:40 PM: POPUP", CheckInRules.wakeLine("alarm", "6:40 PM", "POPUP"));
+        assertEquals("worker Sat 7:02 AM: no profile", CheckInRules.wakeLine("worker", "Sat 7:02 AM", "no profile"));
     }
 
     @Test public void todayShowsOnlyTheClock() {
-        assertEquals("18:40", CheckInRules.when(at(6, 18, 40), at(6, 9, 0), TZ));
+        assertEquals("6:40 PM", CheckInRules.when(at(6, 18, 40), at(6, 9, 0), TZ));
     }
 
     @Test public void anotherDayShowsItsWeekday() {
-        assertEquals("Sat 07:00", CheckInRules.when(at(7, 7, 0), at(6, 22, 0), TZ));
-        assertEquals("Thu 23:50", CheckInRules.when(at(5, 23, 50), at(6, 0, 10), TZ));
+        assertEquals("Sat 7:00 AM", CheckInRules.when(at(7, 7, 0), at(6, 22, 0), TZ));
+        assertEquals("Thu 11:50 PM", CheckInRules.when(at(5, 23, 50), at(6, 0, 10), TZ));
     }
 
     @Test public void aWeekOrMoreAwayShowsTheDate() {
-        assertEquals("Nov 13 07:00", CheckInRules.when(at(13, 7, 0), at(6, 7, 0), TZ));
+        assertEquals("Nov 13 7:00 AM", CheckInRules.when(at(13, 7, 0), at(6, 7, 0), TZ));
     }
 
     @Test public void aWorkerThatDidNothingKeepsTheAlarmLine() {
