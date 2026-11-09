@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { watchCheckInSettings } from '@/lib/firestore'
 import { shouldPromptOverlay } from '@/lib/echo/check-ins'
+import { readPermissionSetupDone } from '@/lib/echo/permission-setup'
 import { getCheckInStatus, openOverlaySettings, requestNativeNotificationPermission, setCheckInSettings } from '@/lib/native/echo-bridge'
 import { ConfirmDialog } from './ui'
 
@@ -25,7 +26,7 @@ function saveAsked() {
 
 /**
  * Mounted only in the full app. Keeps native's check-in settings current, even if Settings is never opened, and
- * asks once for the overlay permission. paused holds the question back while something else is on screen.
+ * asks once for the overlay permission unless the welcome permission steps already did. paused holds the question back while something else is on screen.
  */
 export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboarded: boolean; paused: boolean }) {
   const [open, setOpen] = useState(false)
@@ -67,7 +68,8 @@ export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboar
     setOpen(false)
   }
 
-  if (!open || paused) return null
+  // The welcome permission steps own this question once they are done (an older APK never runs them).
+  if (!open || paused || readPermissionSetupDone()) return null
   return (
     <ConfirmDialog
       title="Let Echo check in"

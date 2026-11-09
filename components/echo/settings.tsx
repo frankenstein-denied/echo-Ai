@@ -9,11 +9,13 @@ import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { languageCode, LANGUAGES, type LanguageCode } from '@/lib/echo/languages'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { openPermissionSetup } from '@/lib/echo/permission-setup'
 import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { useOpenInstallGuide } from './guide'
 import { Capacitor } from '@capacitor/core'
 import {
   getCheckInStatus,
+  getNativePermissions,
   getNativeStatus,
   openNativeBatterySettings,
   openOverlaySettings,
@@ -226,6 +228,8 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [bubbleLine, setBubbleLine] = useState<string | null>(null)
   const [wakeLines, setWakeLines] = useState<string[]>([])
   const [notificationsAllowed, setNotificationsAllowed] = useState(true)
+  // False on an APK older than 1.14, which cannot run the permission steps.
+  const [canSetUpPermissions, setCanSetUpPermissions] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -262,6 +266,11 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
         setPinnedState(s.pinned && s.notificationsAllowed)
         setNotificationsAllowed(s.notificationsAllowed)
         setBatteryOptimized(s.batteryOptimized)
+      })
+      .catch(() => null)
+    getNativePermissions()
+      .then((p) => {
+        if (mounted.current) setCanSetUpPermissions(p !== null)
       })
       .catch(() => null)
 
@@ -497,6 +506,16 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
               </div>
             )}
             {pinned && batteryOptimized && batteryAdvice}
+          </Card>
+        )}
+
+        {isNative && canSetUpPermissions && (
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Permissions</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Go through notifications, microphone, location and the chathead again.</p>
+            <Button variant="secondary" className="mt-3" onClick={openPermissionSetup}>
+              Set up permissions
+            </Button>
           </Card>
         )}
 

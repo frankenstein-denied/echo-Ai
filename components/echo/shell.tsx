@@ -18,6 +18,7 @@ import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
 import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
+import { PermissionSetup } from './permission-setup'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
 import { useMobileViewportSync } from './use-mobile'
 
@@ -54,6 +55,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     setGuideOpen(true)
   }, [])
   const closeGuide = useCallback(() => setGuideOpen(false), [])
+  // True while the welcome permission steps are showing or still being worked out.
+  const [setupHold, setSetupHold] = useState(true)
   const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
@@ -164,7 +167,9 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
       <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
       <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
       <Guide open={guideOpen} start={guideStart} onClose={closeGuide} />
-      {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen} />}
+      {/* The steps wait for the guide; the check-in question waits for both. */}
+      {user && <PermissionSetup uid={user.uid} onboarded={profile.onboarded} embed={false} paused={guideOpen} onHoldChange={setSetupHold} />}
+      {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen || setupHold} />}
     </div>
     </GuideProvider>
   )
