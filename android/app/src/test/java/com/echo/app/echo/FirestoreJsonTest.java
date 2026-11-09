@@ -493,4 +493,10 @@ public class FirestoreJsonTest {
         assertNull(FirestoreJson.parseProfile("{\"fields\":{\"preferredName\":{\"stringValue\":\"  \"}}}").preferredName);
         assertNull(FirestoreJson.parseProfile("{\"fields\":{}}").preferredName);
     }
+
+    @Test public void profileLanguageIsReadAndBlankMeansNone() {
+        assertEquals("fil", FirestoreJson.parseProfile("{\"fields\":{\"language\":{\"stringValue\":\"fil\"}}}").language);
+        assertNull(FirestoreJson.parseProfile("{\"fields\":{\"language\":{\"stringValue\":\" \"}}}").language);
+        assertNull(FirestoreJson.parseProfile("{\"fields\":{}}").language);
+    }
 }

@@ -60,6 +60,18 @@ public class SmartCheckInsTest {
         assertEquals(120, r.getInt("minutesAway"));
     }
 
+    @Test public void requestSendsTheLanguageCodeOnlyWhenSet() throws Exception {
+        CheckInPrefs p = CheckInPrefs.defaults();
+        p.language = "fil";
+        JSONObject o = new JSONObject(SmartCheckIns.buildRequest(p, new TodaySnapshot(), CheckInPlanner.Topic.OVERVIEW,
+            at(9, 14, 0), TZ, new ArrayList<ChatLine>(), new ArrayList<Goal>(), null));
+        assertEquals("fil", o.getString("language"));
+
+        JSONObject none = new JSONObject(SmartCheckIns.buildRequest(CheckInPrefs.defaults(), new TodaySnapshot(),
+            CheckInPlanner.Topic.OVERVIEW, at(9, 14, 0), TZ, new ArrayList<ChatLine>(), new ArrayList<Goal>(), null));
+        assertFalse(none.has("language"));
+    }
+
     @Test public void requestKeepsTheNewest16ChatLines() throws Exception {
         List<ChatLine> chat = new ArrayList<>();
         for (int i = 0; i < 20; i++) chat.add(new ChatLine(true, "m" + i, false));

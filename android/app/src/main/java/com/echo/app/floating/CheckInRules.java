@@ -104,9 +104,11 @@ public final class CheckInRules {
         return keepAlive ? Math.min(checkIn, nowMs + KEEP_ALIVE_MS) : checkIn;
     }
 
-    /** 24-hour HH:MM. */
+    /** 12-hour h:mm AM/PM, e.g. 12:05 AM, 6:40 PM. */
     static String clock(int minuteOfDay) {
-        return String.format(Locale.ROOT, "%02d:%02d", minuteOfDay / 60, minuteOfDay % 60);
+        int hour = minuteOfDay / 60;
+        int hour12 = hour % 12 == 0 ? 12 : hour % 12;
+        return String.format(Locale.ROOT, "%d:%02d %s", hour12, minuteOfDay % 60, hour < 12 ? "AM" : "PM");
     }
 
     /** The clock time, after the day if that isn't today: a weekday within a week, otherwise the date. */

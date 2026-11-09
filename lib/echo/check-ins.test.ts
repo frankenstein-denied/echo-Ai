@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleStatusLine, DEFAULT_WATER_GOAL, gapIsUnsaved, gapLabel, gapMinutes, gapParts, MAX_GAP_MINUTES, MAX_WATER_GOAL, MIN_GAP_MINUTES, MIN_WATER_GOAL, parseGap, parseWaterGoal, resolveCheckInSettings, sleepProblem, wakeStatusLines } from './check-ins'
+import { bubbleStatusLine, DEFAULT_WATER_GOAL, gapIsUnsaved, gapLabel, gapMinutes, gapParts, MAX_GAP_MINUTES, MAX_WATER_GOAL, MIN_GAP_MINUTES, MIN_WATER_GOAL, parseGap, parseWaterGoal, resolveCheckInSettings, shouldShellAskNotifications, sleepProblem, wakeStatusLines } from './check-ins'
 
 describe('resolveCheckInSettings', () => {
   it('uses the defaults for an empty profile', () => {
@@ -162,5 +162,18 @@ describe('bubbleStatusLine', () => {
   it('gives the reason when there is one', () => {
     expect(bubbleStatusLine({ bubbleRunning: false, bubbleError: 'start refused: X' })).toBe("Bubble isn't running (start refused: X)")
     expect(bubbleStatusLine({ bubbleRunning: false })).toBe("Bubble isn't running")
+  })
+})
+
+describe('shouldShellAskNotifications', () => {
+  it('asks on an older APK once onboarded with check-ins on', () => {
+    expect(shouldShellAskNotifications({ onboarded: true, enabled: true, hasPermissionBridge: false })).toBe(true)
+  })
+  it('leaves the ask to the welcome steps on an APK that reports permissions', () => {
+    expect(shouldShellAskNotifications({ onboarded: true, enabled: true, hasPermissionBridge: true })).toBe(false)
+  })
+  it('never asks before onboarding or with check-ins off', () => {
+    expect(shouldShellAskNotifications({ onboarded: false, enabled: true, hasPermissionBridge: false })).toBe(false)
+    expect(shouldShellAskNotifications({ onboarded: true, enabled: false, hasPermissionBridge: false })).toBe(false)
   })
 })

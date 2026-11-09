@@ -1,6 +1,7 @@
 import type { ConnectorStatus } from './connectors'
 import type { EchoItemsContext, EchoMealType, EchoRequest } from './types'
 import { dropUnansweredCheckIns } from './today-orb'
+import { DEFAULT_LANGUAGE, languageCode, languagePromptName } from './languages'
 
 const PROFILE_MAX = 1500
 const RECENT_MAX = 20
@@ -24,6 +25,7 @@ type ProfileInput = {
   priorities?: string[]
   yearGoals?: string[]
   importantPeople?: string[]
+  language?: string
 }
 type MessageInput = { role: 'user' | 'assistant'; text: string; checkIn?: boolean }
 type MemoryInputLike = { label: string; type: string; mentions?: number; lastSeenAt?: { toMillis(): number } | null }
@@ -34,9 +36,12 @@ function listLine(name: string, items: string[] | undefined): string | null {
 }
 
 export function buildProfileSummary(profile: ProfileInput): string {
+  const language = languageCode(profile.language)
   const lines = [
     profile.preferredName?.trim() ? `Name: ${profile.preferredName.trim()}` : null,
     profile.tone?.trim() ? `Tone: ${profile.tone.trim()}` : null,
+    // Absent for English, so the model keeps following the user's own language.
+    language !== DEFAULT_LANGUAGE ? `Language: ${languagePromptName(language)}` : null,
     // The router reads this exact line via extractCheckInTime.
     profile.checkInTime ? `${CHECK_IN_PREFIX} ${profile.checkInTime}` : null,
     listLine('Priorities', profile.priorities),

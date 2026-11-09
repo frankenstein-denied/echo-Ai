@@ -60,6 +60,7 @@ function noPagesText(period: Period): string {
     case 'today': return 'No pages today.'
     case 'week': return 'No pages this week.'
     case 'month': return 'No pages this month.'
+    case 'year': return 'No pages this year.'
     case 'all': return 'No pages yet.'
   }
 }

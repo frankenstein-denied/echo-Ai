@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { watchCheckInSettings } from '@/lib/firestore'
-import { shouldPromptOverlay } from '@/lib/echo/check-ins'
-import { getCheckInStatus, openOverlaySettings, requestNativeNotificationPermission, setCheckInSettings } from '@/lib/native/echo-bridge'
+import { shouldPromptOverlay, shouldShellAskNotifications } from '@/lib/echo/check-ins'
+import { readPermissionSetupDone } from '@/lib/echo/permission-setup'
+import { getCheckInStatus, getNativePermissions, openOverlaySettings, requestNativeNotificationPermission, setCheckInSettings } from '@/lib/native/echo-bridge'
 import { ConfirmDialog } from './ui'
 
 const ASKED_KEY = 'echo.checkIns.overlayAsked'
@@ -25,7 +26,7 @@ function saveAsked() {
 
 /**
  * Mounted only in the full app. Keeps native's check-in settings current, even if Settings is never opened, and
- * asks once for the overlay permission. paused holds the question back while something else is on screen.
+ * asks once for the overlay permission unless the welcome permission steps already did. paused holds the question back while something else is on screen.
  */
 export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboarded: boolean; paused: boolean }) {
   const [open, setOpen] = useState(false)
@@ -44,8 +45,15 @@ export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboar
         if (key === last) return
         last = key
         void setCheckInSettings(s)
-        // Check-ins fall back to a notification, and Android 13+ posts nothing without this. Android asks at most twice.
-        if (onboarded && s.enabled) void requestNativeNotificationPermission().catch(() => null)
+        // Check-ins fall back to a notification, and Android 13+ posts nothing without this. Android asks at most twice,
+        // so on an APK with the welcome steps (it reports permissions) only those steps ask.
+        if (onboarded && s.enabled) {
+          void getNativePermissions()
+            .then((perms) => {
+              if (live && shouldShellAskNotifications({ onboarded, enabled: s.enabled, hasPermissionBridge: perms !== null })) return requestNativeNotificationPermission()
+            })
+            .catch(() => null)
+        }
         getCheckInStatus()
           .then((status) => {
             if (!live || !status) return // no status: an older APK, which has no check-ins to allow
@@ -67,7 +75,8 @@ export function CheckInsPrompt({ uid, onboarded, paused }: { uid: string; onboar
     setOpen(false)
   }
 
-  if (!open || paused) return null
+  // The welcome permission steps own this question once they are done (an older APK never runs them).
+  if (!open || paused || readPermissionSetupDone()) return null
   return (
     <ConfirmDialog
       title="Let Echo check in"

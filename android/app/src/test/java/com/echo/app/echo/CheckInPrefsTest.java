@@ -16,8 +16,10 @@ public class CheckInPrefsTest {
         p.calorieGoal = 1800;
         p.onboarded = true;
         p.preferredName = "Sam";
+        p.language = "fil";
         CheckInPrefs back = CheckInPrefs.fromJson(p.toJson());
         assertEquals("Sam", back.preferredName);
+        assertEquals("fil", back.language);
         assertFalse(back.enabled);
         assertEquals(30, back.everyMinutes);
         assertEquals(1400, back.sleepStartMin);
@@ -48,8 +50,10 @@ public class CheckInPrefsTest {
         cached.caloriesEnabled = false;
         cached.calorieGoal = 2000;
         cached.preferredName = "Sam";
+        cached.language = "ceb";
         CheckInPrefs m = CheckInPrefs.merged(cached, false, 60, "23:30", "06:15", 10);
         assertEquals("Sam", m.preferredName);
+        assertEquals("ceb", m.language);
         assertFalse(m.enabled);
         assertEquals(60, m.everyMinutes);
         assertEquals(23 * 60 + 30, m.sleepStartMin);

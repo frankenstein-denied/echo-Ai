@@ -28,6 +28,14 @@ describe('buildProfileSummary', () => {
   it('handles an empty profile', () => {
     expect(buildProfileSummary({})).toBe('')
   })
+  it('names the chosen language, and says nothing for English', () => {
+    expect(buildProfileSummary({ language: 'fil' })).toContain('Language: Filipino (Tagalog)')
+    expect(buildProfileSummary({ language: 'en' })).not.toContain('Language')
+    expect(buildProfileSummary({})).not.toContain('Language')
+  })
+  it('passes the language through buildContext', () => {
+    expect(buildContext({ ...profile, language: 'ceb' }, [], []).profile).toContain('Language: Cebuano (Bisaya)')
+  })
 })
 
 describe('buildContext', () => {

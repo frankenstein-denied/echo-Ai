@@ -3,16 +3,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { Download, LogOut, Play } from 'lucide-react'
-import { updateCalorieSettings, updateCheckInSettings, watchCalorieSettings, watchCheckInSettings, type UserProfile } from '@/lib/firestore'
+import { updateCalorieSettings, updateCheckInSettings, updateLanguage, watchCalorieSettings, watchCheckInSettings, watchLanguage, type UserProfile } from '@/lib/firestore'
 import { bubbleStatusLine, gapIsUnsaved, gapLabel, gapParts, parseGap, resolveCheckInSettings, sleepProblem, wakeStatusLines, type CheckInSettings, type GapUnit } from '@/lib/echo/check-ins'
 import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
+import { languageCode, LANGUAGES, type LanguageCode } from '@/lib/echo/languages'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { openPermissionSetup } from '@/lib/echo/permission-setup'
 import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { useOpenInstallGuide } from './guide'
 import { Capacitor } from '@capacitor/core'
 import {
   getCheckInStatus,
+  getNativePermissions,
   getNativeStatus,
   openNativeBatterySettings,
   openOverlaySettings,
@@ -152,6 +155,54 @@ function CheckInSleepField({ start, end, onSave }: { start: string; end: string;
   )
 }
 
+function LanguageField({ uid, initial }: { uid: string; initial: unknown }) {
+  const [value, setValue] = useState<LanguageCode>(() => languageCode(initial))
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useSavedNote()
+
+  // The profile prop is read once at sign-in, so follow the stored value live.
+  useEffect(() => watchLanguage(uid, setValue, () => {}), [uid])
+
+  const change = async (next: LanguageCode) => {
+    if (busy || next === value) return
+    const prev = value
+    setValue(next)
+    setError('')
+    setNote('')
+    setBusy(true)
+    try {
+      await updateLanguage(uid, next)
+      setNote('Saved.')
+    } catch (e) {
+      setValue(prev)
+      setError(e instanceof Error ? e.message : 'Could not save your language.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 grid gap-2">
+      <Select
+        label="Echo's language"
+        hint="Echo talks to you in this language. Menus stay in English."
+        value={value}
+        disabled={busy}
+        onChange={(e) => void change(languageCode(e.target.value))}
+      >
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.label}
+          </option>
+        ))}
+      </Select>
+      {error && <Alert variant="danger">{error}</Alert>}
+      {note && <p role="status" className="text-xs text-muted-foreground">{note}</p>}
+    </div>
+  )
+}
+
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const openInstallGuide = useOpenInstallGuide()
   const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
@@ -177,6 +228,8 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
   const [bubbleLine, setBubbleLine] = useState<string | null>(null)
   const [wakeLines, setWakeLines] = useState<string[]>([])
   const [notificationsAllowed, setNotificationsAllowed] = useState(true)
+  // False on an APK older than 1.14, which cannot run the permission steps.
+  const [canSetUpPermissions, setCanSetUpPermissions] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const seq = useRef(0)
   const mounted = useRef(true)
@@ -213,6 +266,11 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
         setPinnedState(s.pinned && s.notificationsAllowed)
         setNotificationsAllowed(s.notificationsAllowed)
         setBatteryOptimized(s.batteryOptimized)
+      })
+      .catch(() => null)
+    getNativePermissions()
+      .then((p) => {
+        if (mounted.current) setCanSetUpPermissions(p !== null)
       })
       .catch(() => null)
 
@@ -428,6 +486,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
               <dd className="truncate text-foreground">{email || '—'}</dd>
             </div>
           </dl>
+          <LanguageField uid={user.uid} initial={profile.language} />
         </Card>
 
         {isNative && (
@@ -447,6 +506,16 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
               </div>
             )}
             {pinned && batteryOptimized && batteryAdvice}
+          </Card>
+        )}
+
+        {isNative && canSetUpPermissions && (
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Permissions</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Go through notifications, microphone, location and the chathead again.</p>
+            <Button variant="secondary" className="mt-3" onClick={openPermissionSetup}>
+              Set up permissions
+            </Button>
           </Card>
         )}
 

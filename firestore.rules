@@ -51,7 +51,7 @@ service cloud.firestore {
         return d.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
                 'remindersEnabled', 'onboarded', 'caloriesEnabled', 'calorieGoal', 'checkInsEnabled',
-                'checkInEveryMinutes', 'sleepStart', 'sleepEnd', 'waterGoal', 'createdAt', 'updatedAt'])
+                'checkInEveryMinutes', 'sleepStart', 'sleepEnd', 'waterGoal', 'language', 'createdAt', 'updatedAt'])
           && d.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'preferredName',
                 'priorities', 'yearGoals', 'importantPeople', 'tone', 'checkInTime',
                 'remindersEnabled', 'onboarded', 'createdAt', 'updatedAt'])
@@ -74,7 +74,9 @@ service cloud.firestore {
           && (!('checkInEveryMinutes' in d) || (d.checkInEveryMinutes is int && d.checkInEveryMinutes >= 1 && d.checkInEveryMinutes <= 43200))
           && (!('sleepStart' in d) || (isString(d.sleepStart, 5) && d.sleepStart.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))
           && (!('sleepEnd' in d) || (isString(d.sleepEnd, 5) && d.sleepEnd.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))
-          && (!('waterGoal' in d) || (d.waterGoal is int && d.waterGoal >= 1 && d.waterGoal <= 30));
+          && (!('waterGoal' in d) || (d.waterGoal is int && d.waterGoal >= 1 && d.waterGoal <= 30))
+          && (!('language' in d) || d.language in ['en', 'fil', 'taglish', 'ceb', 'ilo', 'hil', 'es', 'zh', 'hi',
+                'ar', 'pt', 'fr', 'ja', 'ko', 'id', 'vi', 'de']);
       }
 
       allow read, delete: if isOwner(uid);

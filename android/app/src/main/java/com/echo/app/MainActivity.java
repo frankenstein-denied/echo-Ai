@@ -1,13 +1,8 @@
 package com.echo.app;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.View;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import android.webkit.WebView;
@@ -16,21 +11,24 @@ import com.echo.app.echo.EchoBridgePlugin;
 import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.echo.app.update.AppUpdater;
+import com.echo.app.update.UpdateCheckWorker;
+import com.echo.app.update.UpdateNotifier;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private static final String PREF_MIC_ASKED = "mic_permission_asked";
-    private static final int RC_MIC = 7001;
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EchoBridgePlugin.class);
+        // A restored Activity keeps its old intent: never re-download from it. Dropped before super.onCreate,
+        // whose load() routes the intent through onNewIntent.
+        if (savedInstanceState != null && getIntent() != null) getIntent().removeExtra(UpdateNotifier.EXTRA_UPDATE);
         super.onCreate(savedInstanceState);
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         keepWebViewAboveKeyboard();
-        askForMicOnFirstLaunch();
+        startUpdateFromNotification(getIntent(), savedInstanceState != null); // usually done by onNewIntent in load()
+        UpdateCheckWorker.schedule(this);
     }
 
     /**
@@ -77,24 +75,20 @@ public class MainActivity extends BridgeActivity {
         FloatState.appCallActive = false;
     }
 
-    /**
-     * Asks for the microphone once, on the first launch after install, so voice works without the
-     * user hunting through Android settings. Later mic requests from the site still go through
-     * Capacitor's WebChromeClient, which asks again if needed.
-     */
-    private void askForMicOnFirstLaunch() {
-        SharedPreferences prefs = getSharedPreferences("echo_app", MODE_PRIVATE);
-        if (prefs.getBoolean(PREF_MIC_ASKED, false)) return;
-        prefs.edit().putBoolean(PREF_MIC_ASKED, true).apply();
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED) return;
-        ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.RECORD_AUDIO }, RC_MIC);
-    }
-
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         openEchoPath(intent);
+        startUpdateFromNotification(intent, false);
+    }
+
+    /** The "new version" notification was tapped: go straight to the download. */
+    private void startUpdateFromNotification(Intent intent, boolean restored) {
+        if (intent == null) return;
+        boolean hasExtra = intent.getBooleanExtra(UpdateNotifier.EXTRA_UPDATE, false);
+        intent.removeExtra(UpdateNotifier.EXTRA_UPDATE); // handle once (not again on recreate)
+        if (!UpdateNotifier.shouldStartUpdate(hasExtra, intent.getFlags(), restored)) return;
+        AppUpdater.startFromNotification(this);
     }
 
     /** Loads {@code <server url> + echo_path} from a notification tap; in-app view links only (/?view=...). */

@@ -16,6 +16,8 @@ public final class CheckInPrefs {
     public String preferredName;
     /** Echo's tone from onboarding (Gentle coach, Direct, Cheerful), or null. */
     public String tone;
+    /** Echo's language code (fil, ceb...), or null for English. The server maps it to a name. */
+    public String language;
 
     public static CheckInPrefs defaults() {
         return new CheckInPrefs();
@@ -38,6 +40,7 @@ public final class CheckInPrefs {
         p.onboarded = cached.onboarded;
         p.preferredName = cached.preferredName;
         p.tone = cached.tone;
+        p.language = cached.language;
         return p;
     }
 
@@ -55,6 +58,7 @@ public final class CheckInPrefs {
             if (calorieGoal != null) o.put("calorieGoal", calorieGoal.intValue());
             if (preferredName != null) o.put("preferredName", preferredName);
             if (tone != null) o.put("tone", tone);
+            if (language != null) o.put("language", language);
             return o.toString();
         } catch (JSONException e) {
             throw new IllegalStateException(e);
@@ -77,6 +81,7 @@ public final class CheckInPrefs {
             if (o.has("calorieGoal")) p.calorieGoal = o.getInt("calorieGoal");
             if (o.has("preferredName")) p.preferredName = o.getString("preferredName");
             if (o.has("tone")) p.tone = o.getString("tone");
+            if (o.has("language")) p.language = o.getString("language");
             return p;
         } catch (JSONException e) {
             return null;

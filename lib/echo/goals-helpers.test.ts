@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/firebase', () => ({ db: {}, auth: {} }))
-import { milestonePath, milestonesDoneThisWeek, overallProgress, toggleMilestone, yearProgress } from './goals-helpers'
+import { milestonePath, milestonesDoneThisWeek, overallProgress, paceLine, toggleMilestone } from './goals-helpers'
 import { applyMilestone } from './client'
 
 describe('toggleMilestone', () => {
@@ -46,10 +46,25 @@ describe('overallProgress', () => {
   })
 })
 
-describe('yearProgress', () => {
-  it('Jan 1 is day 1 of 365', () => expect(yearProgress(new Date(2027, 0, 1, 12))).toBe(0))
-  it('Dec 31 is 100', () => expect(yearProgress(new Date(2027, 11, 31, 12))).toBe(100))
-  it('mid year leap', () => expect(yearProgress(new Date(2028, 6, 1, 12))).toBe(50))
+describe('paceLine', () => {
+  it('says so when the period has no goals', () => {
+    expect(paceLine(0, 40, 'today', 0)).toBe('No goals in this period yet.')
+  })
+  it('behind when goals trail time by more than 10', () => {
+    expect(paceLine(40, 85, 'month', 3)).toBe('40% done, 85% of this month gone. A bit behind, one small step today helps.')
+  })
+  it('on track within 10 either way', () => {
+    expect(paceLine(60, 55, 'week', 2)).toBe("60% done, 55% of this week gone. You're on track.")
+    expect(paceLine(40, 50, 'week', 2)).toBe("40% done, 50% of this week gone. You're on track.")
+    expect(paceLine(60, 50, 'week', 2)).toBe("60% done, 50% of this week gone. You're on track.")
+  })
+  it('ahead when goals lead time by more than 10', () => {
+    expect(paceLine(90, 50, 'year', 4)).toBe("90% done, 50% of this year gone. You're ahead, nice!")
+  })
+  it('names the period', () => {
+    expect(paceLine(50, 50, 'today', 1)).toBe("50% done, 50% of today gone. You're on track.")
+    expect(paceLine(50, 50, 'all', 1)).toBe("50% done, 50% of this year gone. You're on track.")
+  })
 })
 
 describe('milestonesDoneThisWeek', () => {

@@ -198,6 +198,8 @@ public final class FirestoreJson {
         if (!name.isEmpty()) p.preferredName = name;
         String tone = pickString(f, "tone", "").trim();
         if (!tone.isEmpty()) p.tone = tone;
+        String language = pickString(f, "language", "").trim();
+        if (!language.isEmpty()) p.language = language;
         return p;
     }
 

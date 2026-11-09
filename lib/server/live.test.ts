@@ -146,3 +146,9 @@ describe('weather in the live call', () => {
     expect(LIVE_PERSONA).not.toContain('(news, weather')
   })
 })
+
+describe('LIVE_PERSONA language', () => {
+  it('talks in the profile language', () => {
+    expect(LIVE_PERSONA).toContain('always reply in that language')
+  })
+})

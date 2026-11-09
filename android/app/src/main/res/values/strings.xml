@@ -52,4 +52,10 @@
     <string name="update_whats_new">What\'s new</string>
     <string name="update_now">Update now</string>
     <string name="update_later">Later</string>
+
+    <!-- Update notification -->
+    <string name="update_channel_name">App updates</string>
+    <string name="update_channel_desc">Lets you know when a new version of Echo is ready</string>
+    <string name="update_notif_title">Echo %1$s is ready</string>
+    <string name="update_fetch_failed">Couldn\'t get the update. Try again later.</string>
 </resources>

@@ -71,6 +71,14 @@ export function shouldPromptOverlay(s: { isNative: boolean; embed: boolean; onbo
   return s.isNative && !s.embed && s.onboarded && s.enabled && !s.overlayAllowed && !s.asked
 }
 
+/**
+ * The shell's own notification ask, for an APK older than the welcome steps. An APK with the permission bridge (1.14+)
+ * leaves the ask to the welcome steps, so the pop-up never lands on top of the Guide.
+ */
+export function shouldShellAskNotifications(s: { onboarded: boolean; enabled: boolean; hasPermissionBridge: boolean }): boolean {
+  return s.onboarded && s.enabled && !s.hasPermissionBridge
+}
+
 /** The muted Settings line about the bubble, or null on an older APK that doesn't report it. */
 export function bubbleStatusLine(s: { bubbleRunning?: boolean; bubbleError?: string | null }): string | null {
   if (s.bubbleRunning === undefined) return null

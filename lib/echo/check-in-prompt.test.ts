@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asksAboutFutureAsPast, buildCheckInUserText, CHECK_IN_RESPONSE_SCHEMA, parseCheckInRequest, sanitizeCheckInText } from './check-in-prompt'
+import { asksAboutFutureAsPast, buildCheckInUserText, CHECK_IN_RESPONSE_SCHEMA, CHECK_IN_SYSTEM_INSTRUCTION, parseCheckInRequest, sanitizeCheckInText } from './check-in-prompt'
 
 const base = {
   localTime: 'Mon, Nov 9, 2:00 PM',
@@ -37,6 +37,12 @@ describe('parseCheckInRequest', () => {
     expect(r.reminders[0].minutesAway).toBeNull()
   })
 
+  it('maps the language code to its name, and leaves it empty when absent', () => {
+    expect(parsed({ language: 'ceb' }).language).toContain('Cebuano')
+    expect(parsed().language).toBe('')
+    expect(parsed({ language: 42 }).language).toBe('')
+  })
+
   it('keeps up to 16 chat lines, the newest', () => {
     const messages = Array.from({ length: 20 }, (_, i) => ({ role: 'user', text: `m${i}` }))
     const r = parsed({ messages })
@@ -57,6 +63,11 @@ describe('buildCheckInUserText', () => {
   it('adds the distance for an older APK that sends only the clock', () => {
     const text = buildCheckInUserText(parsed({ reminders: [{ title: 'Sleep', when: 'today 4 PM', minutesAway: 120 }] }))
     expect(text).toContain('- Sleep (in 2 h, today 4 PM; not happened yet)')
+  })
+
+  it('names the language to write in, English by default', () => {
+    expect(buildCheckInUserText(parsed({ language: 'ceb' }))).toContain('Language: Cebuano')
+    expect(buildCheckInUserText(parsed())).toContain('Language: English')
   })
 
   it('tells a meal check-in to confirm food they already mentioned', () => {
@@ -104,5 +115,11 @@ describe('sanitizeCheckInText', () => {
 describe('CHECK_IN_RESPONSE_SCHEMA', () => {
   it('asks for notes before the message', () => {
     expect(CHECK_IN_RESPONSE_SCHEMA.propertyOrdering[0]).toBe('notes')
+  })
+})
+
+describe('CHECK_IN_SYSTEM_INSTRUCTION language', () => {
+  it('writes both texts in the given language', () => {
+    expect(CHECK_IN_SYSTEM_INSTRUCTION).toContain('- Write fullText and shortText in the language given under Language (default English).')
   })
 })

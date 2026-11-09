@@ -5,6 +5,8 @@ import { useAuth } from '@/lib/auth-context'
 import { setConnectorSecret, type UserProfile } from '@/lib/firestore'
 import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/echo/client'
 import { currentEmbedMode } from '@/lib/native/float-bridge'
+import { getNativePermissions } from '@/lib/native/echo-bridge'
+import { autoSyncDue, readLastAutoSync, saveLastAutoSync, syncWeatherLocation } from '@/lib/echo/weather-location'
 import { NAV_GROUPS, type NavName } from '@/lib/echo/sidebar'
 import { Sidebar } from './sidebar'
 import { useSidebarData } from './use-sidebar-data'
@@ -18,6 +20,7 @@ import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
 import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
+import { PermissionSetup } from './permission-setup'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
 import { useMobileViewportSync } from './use-mobile'
 
@@ -54,6 +57,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     setGuideOpen(true)
   }, [])
   const closeGuide = useCallback(() => setGuideOpen(false), [])
+  // True while the welcome permission steps are showing or still being worked out.
+  const [setupHold, setSetupHold] = useState(true)
   const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
@@ -128,6 +133,32 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     document.documentElement.dataset.embed = embed
     return () => { delete document.documentElement.dataset.embed }
   }, [embed])
+  // Weather follows the phone: on open and on coming back to the app, when location is allowed. At most every 6 hours,
+  // since with only approximate location allowed each position request shows Android's "use precise location?" pop-up.
+  // (@capacitor/app is not installed, so visibilitychange stands in for the App resume event.)
+  const uid = user?.uid
+  useEffect(() => {
+    if (!uid || embed) return
+    let running = false
+    const sync = async () => {
+      if (running || !autoSyncDue(Date.now(), readLastAutoSync())) return
+      running = true
+      try {
+        const perms = await getNativePermissions() // null on the web or an APK without the permission bridge
+        if (!perms?.location || !autoSyncDue(Date.now(), readLastAutoSync())) return
+        saveLastAutoSync(Date.now())
+        await syncWeatherLocation(uid)
+      } finally {
+        running = false
+      }
+    }
+    void sync()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void sync()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [uid, embed])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
   if (embed) {
@@ -164,7 +195,9 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
       <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
       <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
       <Guide open={guideOpen} start={guideStart} onClose={closeGuide} />
-      {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen} />}
+      {/* The steps wait for the guide; the check-in question waits for both. */}
+      {user && <PermissionSetup uid={user.uid} onboarded={profile.onboarded} embed={false} paused={guideOpen} onHoldChange={setSetupHold} />}
+      {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen || setupHold} />}
     </div>
     </GuideProvider>
   )

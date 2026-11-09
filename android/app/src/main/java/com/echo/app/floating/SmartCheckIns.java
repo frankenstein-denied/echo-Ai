@@ -239,6 +239,7 @@ final class SmartCheckIns {
             String name = p.preferredName != null ? p.preferredName : s.preferredName;
             if (name != null && !name.trim().isEmpty()) o.put("name", name.trim());
             if (p.tone != null && !p.tone.trim().isEmpty()) o.put("tone", p.tone.trim());
+            if (p.language != null && !p.language.trim().isEmpty()) o.put("language", p.language.trim());
 
             JSONObject health = new JSONObject()
                 .put("waterGlasses", s.waterGlasses)
