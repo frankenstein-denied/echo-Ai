@@ -9,14 +9,21 @@ export const AUTO_PLACE = 'Your location'
 
 type WeatherDoc = { connected?: boolean; place?: string; lat?: number; lon?: number }
 type Position = { lat: number; lon: number }
+/** fromSetup: the person just allowed location on the welcome step that says it is for the weather. */
+type SyncOptions = { fromSetup?: boolean }
 
-/** Only a missing doc or one that follows the phone can change; a turned-off connector or a hand-picked city never does. */
-function followsPhone(d: WeatherDoc | null): boolean {
-  return !d || (d.connected === true && d.place === AUTO_PLACE)
+/** Off with no place saved: never set up (onboarding writes this) or turned off. Only the welcome step may connect it. */
+function offWithoutPlace(d: WeatherDoc): boolean {
+  return d.connected === false && d.place === undefined && d.lat === undefined && d.lon === undefined
 }
 
-export function weatherAction(d: WeatherDoc | null, pos: Position): 'connect' | 'update' | 'none' {
-  if (!d) return 'connect'
+/** Only a missing doc or one that follows the phone can change; a turned-off connector or a hand-picked city never does. */
+function followsPhone(d: WeatherDoc | null, { fromSetup = false }: SyncOptions = {}): boolean {
+  return !d || (d.connected === true && d.place === AUTO_PLACE) || (fromSetup && offWithoutPlace(d))
+}
+
+export function weatherAction(d: WeatherDoc | null, pos: Position, { fromSetup = false }: SyncOptions = {}): 'connect' | 'update' | 'none' {
+  if (!d || (fromSetup && offWithoutPlace(d))) return 'connect'
   if (!followsPhone(d)) return 'none'
   const same = typeof d.lat === 'number' && typeof d.lon === 'number' && roundCoord(d.lat) === roundCoord(pos.lat) && roundCoord(d.lon) === roundCoord(pos.lon)
   return same ? 'none' : 'update'
@@ -75,21 +82,22 @@ const DEFAULT_DEPS: SyncDeps = { getDoc: readWeatherDoc, getPosition: currentPos
 let inFlight: Promise<void> | null = null
 
 /** Saves the phone's rough location to Weather when it was never set up or already follows the phone. Never throws. */
-export function syncWeatherLocation(uid: string, deps: SyncDeps = DEFAULT_DEPS): Promise<void> {
-  if (inFlight) return inFlight
-  inFlight = runSync(uid, deps).finally(() => {
+export function syncWeatherLocation(uid: string, deps: SyncDeps = DEFAULT_DEPS, opts: SyncOptions = {}): Promise<void> {
+  // A welcome-step sync may connect what the automatic one may not, so it runs after an automatic one already going.
+  if (inFlight) return opts.fromSetup ? inFlight.then(() => syncWeatherLocation(uid, deps, opts)) : inFlight
+  inFlight = runSync(uid, deps, opts).finally(() => {
     inFlight = null
   })
   return inFlight
 }
 
-async function runSync(uid: string, deps: SyncDeps): Promise<void> {
+async function runSync(uid: string, deps: SyncDeps, opts: SyncOptions): Promise<void> {
   try {
     const d = await deps.getDoc(uid)
     // Skip the position request (and any pop-up it brings) when nothing could change.
-    if (!followsPhone(d)) return
+    if (!followsPhone(d, opts)) return
     const pos = await deps.getPosition()
-    if (weatherAction(d, pos) === 'none') return
+    if (weatherAction(d, pos, opts) === 'none') return
     await deps.save(uid, { place: AUTO_PLACE, lat: pos.lat, lon: pos.lon })
   } catch {
     // Offline, location off or a timeout: the next sync tries again.

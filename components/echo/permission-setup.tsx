@@ -145,10 +145,11 @@ export function PermissionSetup({
     onHoldChange(open || !checked)
   }, [open, checked, onHoldChange])
 
-  // Weather follows the phone as soon as location is allowed, whatever the 6-hour wait of the automatic sync.
+  // Weather follows the phone as soon as location is allowed, whatever the 6-hour wait of the automatic sync. This step
+  // says location is for the weather, so allowing it also turns on a Weather connector that has no place yet.
   const onLocationGranted = useCallback(() => {
     saveLastAutoSync(Date.now())
-    void syncWeatherLocation(uid)
+    void syncWeatherLocation(uid, undefined, { fromSetup: true })
   }, [uid])
 
   const allow = async (step: AskStep) => {

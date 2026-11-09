@@ -89,3 +89,36 @@ describe('syncWeatherLocation overlap', () => {
     expect(save).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('fromSetup (location just allowed on the welcome step)', () => {
+  const pos = { lat: 14.6, lon: 121 }
+  it('connects a weather connector that is off with no place', () => {
+    expect(weatherAction({ connected: false }, pos, { fromSetup: true })).toBe('connect')
+  })
+  it('the automatic sync never connects it', () => {
+    expect(weatherAction({ connected: false }, pos)).toBe('none')
+    expect(weatherAction({ connected: false }, pos, {})).toBe('none')
+  })
+  it('leaves a city chosen by hand alone', () => {
+    expect(weatherAction({ connected: true, place: 'Cebu City', lat: 10.3, lon: 123.9 }, pos, { fromSetup: true })).toBe('none')
+  })
+  it('treats a connected phone location as before', () => {
+    expect(weatherAction({ connected: true, place: AUTO_PLACE, lat: 14.6, lon: 121 }, pos, { fromSetup: true })).toBe('none')
+    expect(weatherAction({ connected: true, place: AUTO_PLACE, lat: 14.6, lon: 121 }, { lat: 14.7, lon: 121 }, { fromSetup: true })).toBe('update')
+  })
+  it('syncWeatherLocation saves for the welcome step but not for the automatic sync', async () => {
+    const getPosition = vi.fn(async () => pos)
+    const save = vi.fn(async () => {})
+    const deps = { getDoc: async () => ({ connected: false }), getPosition, save }
+    await syncWeatherLocation('u1', deps)
+    expect(getPosition).not.toHaveBeenCalled()
+    await syncWeatherLocation('u1', deps, { fromSetup: true })
+    expect(save).toHaveBeenCalledWith('u1', { place: AUTO_PLACE, lat: 14.6, lon: 121 })
+  })
+  it('runs after an automatic sync already going instead of joining it', async () => {
+    const save = vi.fn(async () => {})
+    const deps = { getDoc: async () => ({ connected: false }), getPosition: async () => pos, save }
+    await Promise.all([syncWeatherLocation('u1', deps), syncWeatherLocation('u1', deps, { fromSetup: true })])
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+})
