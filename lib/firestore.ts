@@ -28,6 +28,7 @@ import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { roundCoord } from '@/lib/echo/weather'
 import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
+import { languageCode, type LanguageCode } from '@/lib/echo/languages'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
 import { buildReciprocalUpdate, mergeLinks, mergePages, planReciprocalLinks, splitImpact } from '@/lib/echo/links'
 import type { EchoCategory, MemoryInput, MemoryType } from '@/lib/echo/types'
@@ -56,6 +57,7 @@ export type UserProfile = {
   sleepStart?: string // HH:MM
   sleepEnd?: string // HH:MM, can cross midnight
   waterGoal?: number // 1-30
+  language?: LanguageCode // Echo's language; absent means English
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -522,6 +524,16 @@ export async function updateCheckInSettings(uid: string, s: Partial<Omit<CheckIn
   if (s.sleepEnd !== undefined) upd.sleepEnd = s.sleepEnd
   if (s.waterGoal !== undefined) upd.waterGoal = s.waterGoal
   await updateDoc(userDoc(uid), upd as never)
+}
+
+// The language Echo talks in. Menus stay in English.
+export async function updateLanguage(uid: string, code: LanguageCode): Promise<void> {
+  await updateDoc(userDoc(uid), { language: code, updatedAt: serverTimestamp() } as never)
+}
+
+// Live language, with an absent or unknown value read as English.
+export function watchLanguage(uid: string, onData: (code: LanguageCode) => void, onError: (e: Error) => void): Unsubscribe {
+  return onSnapshot(userDoc(uid), (snap) => onData(languageCode(snap.data()?.language)), onError)
 }
 
 // Live check-in settings, with absent fields resolved to the defaults.
