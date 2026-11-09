@@ -367,6 +367,7 @@ const SPAN: Record<Period, { title: string; empty: string }> = {
   today: { title: 'this week', empty: 'in the last 7 days.' },
   week: { title: 'this week', empty: 'this week. Try another period.' },
   month: { title: 'this month', empty: 'this month. Try another period.' },
+  year: { title: 'this year', empty: 'this year. Try another period.' },
   all: { title: 'over the last 90 days', empty: 'in the last 90 days.' },
 }
 

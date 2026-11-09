@@ -1,5 +1,6 @@
 import type { Milestone } from '@/lib/firestore'
 import { weekStartMs } from './sidebar'
+import type { Period } from './period'
 
 /** Builds a milestone with the given done state; doneAt is only present when done (Firestore rejects undefined). */
 export function withDone(m: Milestone, done: boolean, nowMs: number): Milestone {
@@ -18,12 +19,21 @@ export function overallProgress(goals: { progress: number }[]): number {
   return Math.round(sum / goals.length)
 }
 
-export function yearProgress(now: Date): number {
-  const start = new Date(now.getFullYear(), 0, 1)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const dayOfYear = Math.round((today.getTime() - start.getTime()) / 86_400_000) + 1
-  const daysInYear = Math.round((new Date(now.getFullYear() + 1, 0, 1).getTime() - start.getTime()) / 86_400_000)
-  return Math.round((dayOfYear / daysInYear) * 100)
+const PERIOD_WORD: Record<Period, string> = { today: 'today', week: 'this week', month: 'this month', year: 'this year', all: 'this year' }
+
+/** How the period reads in "x% of {word} gone". 'all' is measured against the year. */
+export function periodWord(period: Period): string {
+  return PERIOD_WORD[period]
+}
+
+/** One plain line comparing goal progress to how much of the period has passed (more than 10 points either way counts). */
+export function paceLine(goalsPct: number, elapsedPct: number, period: Period, goalCount: number): string {
+  if (goalCount === 0) return 'No goals in this period yet.'
+  const pace =
+    goalsPct < elapsedPct - 10 ? 'A bit behind, one small step today helps.'
+    : goalsPct > elapsedPct + 10 ? "You're ahead, nice!"
+    : "You're on track."
+  return `${goalsPct}% done, ${elapsedPct}% of ${periodWord(period)} gone. ${pace}`
 }
 
 export function milestonesDoneThisWeek(goals: { milestones?: Milestone[] }[], now: Date): number {

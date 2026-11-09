@@ -90,7 +90,7 @@ export function chartDays(keys: string[], logs: { date: string; mood?: number }[
 
 export const HEALTH_ALL_DAYS = 90
 
-/** Date keys the Health charts cover: today = the last 7 days (unchanged), week/month = the calendar period, all = the last 90 days. */
+/** Date keys the Health charts cover: today = the last 7 days (unchanged), week/month/year = the calendar period, all = the last 90 days. */
 export function healthPeriodDates(period: Period, now: Date = new Date()): string[] {
   if (period === 'today') return daysEndingOn(localDateKey(now), 7)
   if (period === 'all') return daysEndingOn(localDateKey(now), HEALTH_ALL_DAYS)

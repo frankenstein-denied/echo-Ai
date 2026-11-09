@@ -5,7 +5,7 @@ import { onSnapshot, orderBy, query } from 'firebase/firestore'
 import { Plus, Target, Trash2, X } from 'lucide-react'
 import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/firestore'
 import { areaShares, debounce, goalsInPeriod, type Debounced } from '@/lib/echo/view-helpers'
-import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
+import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, periodElapsed, type Period } from '@/lib/echo/period'
 import { Alert, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
@@ -13,7 +13,7 @@ import { glowCardStyle, goalSubtitle } from '@/lib/echo/glow'
 import { KindTag, ProgressRing } from './glow'
 import { ORB_COLOR } from '@/lib/echo/orbs'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { milestonePath, milestonesDoneThisWeek, overallProgress, toggleMilestone, yearProgress } from '@/lib/echo/goals-helpers'
+import { milestonePath, milestonesDoneThisWeek, overallProgress, paceLine, periodWord, toggleMilestone } from '@/lib/echo/goals-helpers'
 
 type GoalRow = Goal & { id: string }
 
@@ -22,33 +22,26 @@ const AREA_COLORS = ['bg-primary', 'bg-success', 'bg-warning', 'bg-info', 'bg-no
 
 const AMBER_GLOW = `drop-shadow(0 0 3px color-mix(in srgb, ${ORB_COLOR.goal} 60%, transparent))`
 
-function OverallRing({ goalsPct, yearPct }: { goalsPct: number; yearPct: number }) {
+function OverallRing({ pct }: { pct: number }) {
   const size = 72
-  const ring = (r: number, pct: number, color: string, glow: boolean) => {
-    const circ = 2 * Math.PI * r
-    return (
-      <>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={6} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={6}
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          strokeDashoffset={circ * (1 - pct / 100)}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={glow && pct > 0 ? { filter: AMBER_GLOW } : undefined}
-        />
-      </>
-    )
-  }
+  const r = 32
+  const circ = 2 * Math.PI * r
   return (
-    <svg role="img" aria-label={`Goals ${goalsPct}% done, ${yearPct}% of the year gone`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
-      {ring(32, goalsPct, ORB_COLOR.goal, true)}
-      {ring(22, yearPct, 'var(--color-primary)', false)}
+    <svg role="img" aria-label={`Goals ${pct}% done`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={6} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={ORB_COLOR.goal}
+        strokeWidth={6}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={circ * (1 - pct / 100)}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={pct > 0 ? { filter: AMBER_GLOW } : undefined}
+      />
     </svg>
   )
 }
@@ -239,8 +232,9 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
 
   const shares = useMemo(() => areaShares(goals ?? []), [goals])
   const now = new Date()
-  const goalsPct = overallProgress(goals ?? [])
-  const yearPct = yearProgress(now)
+  // The ring and pace line follow the selected period: only the goals in it, against how much of it has passed.
+  const goalsPct = overallProgress(shown)
+  const elapsed = periodElapsed(period, now)
   const weekDone = milestonesDoneThisWeek(goals ?? [], now)
 
   const submit = async (e: React.FormEvent) => {
@@ -293,12 +287,16 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
 
       <Card className="mb-5" style={glowCardStyle('goal')}>
         <div className="flex items-center gap-4">
-          <OverallRing goalsPct={goalsPct} yearPct={yearPct} />
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-foreground">
-              {goalsPct}% done · {yearPct}% of the year gone
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Outer ring: your goals. Inner ring: the year.</p>
+          <OverallRing pct={goalsPct} />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-foreground">{goalsPct}% of your goals done</h2>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Time gone {periodWord(period)}: {elapsed}%
+            </p>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-label={`Time gone ${periodWord(period)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={elapsed}>
+              <div className="h-full rounded-full bg-primary" style={{ width: `${elapsed}%` }} />
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">{paceLine(goalsPct, elapsed, period, shown.length)}</p>
             {weekDone > 0 && (
               <p className="mt-1 text-xs text-foreground">
                 {weekDone} milestone{weekDone === 1 ? '' : 's'} finished this week ✨

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_PERIOD, PERIOD_OPTIONS, emptyPeriodText, inPeriod, periodDates, periodRange } from './period'
+import { DEFAULT_PERIOD, PERIOD_OPTIONS, emptyPeriodText, inPeriod, periodDates, periodElapsed, periodRange } from './period'
 
 const d = (y: number, m: number, day: number, h = 0, min = 0) => new Date(y, m - 1, day, h, min).getTime()
 
@@ -23,6 +23,9 @@ describe('periodRange', () => {
   })
   it('month for February in leap year 2028', () => {
     expect(periodRange('month', new Date(2028, 1, 29, 12))).toEqual({ start: d(2028, 2, 1), end: d(2028, 3, 1) })
+  })
+  it('year covers Jan 1 to the next Jan 1', () => {
+    expect(periodRange('year', new Date(2026, 10, 9, 15))).toEqual({ start: d(2026, 1, 1), end: d(2027, 1, 1) })
   })
   it('all returns null', () => {
     expect(periodRange('all', new Date(2026, 10, 4))).toBeNull()
@@ -83,14 +86,47 @@ describe('options and text', () => {
       { value: 'today', label: 'Today' },
       { value: 'week', label: 'This week' },
       { value: 'month', label: 'This month' },
+      { value: 'year', label: 'This year' },
       { value: 'all', label: 'All' },
     ])
+    expect(PERIOD_OPTIONS.map((o) => o.label)).toEqual(['Today', 'This week', 'This month', 'This year', 'All'])
     expect(DEFAULT_PERIOD).toBe('today')
   })
   it('names the period in empty text', () => {
     expect(emptyPeriodText('today')).toBe('Nothing for today.')
     expect(emptyPeriodText('week')).toBe('Nothing this week.')
     expect(emptyPeriodText('month')).toBe('Nothing this month.')
+    expect(emptyPeriodText('year')).toBe('Nothing this year.')
     expect(emptyPeriodText('all')).toBe('Nothing yet.')
+  })
+})
+
+describe('periodElapsed', () => {
+  it('today runs from 0 at midnight to 100 just before the next', () => {
+    expect(periodElapsed('today', new Date(2026, 10, 9, 0, 0))).toBe(0)
+    expect(periodElapsed('today', new Date(2026, 10, 9, 12, 0))).toBe(50)
+    expect(periodElapsed('today', new Date(2026, 10, 9, 23, 59))).toBe(100)
+  })
+  it('week starts at 0 on Monday midnight', () => {
+    expect(periodElapsed('week', new Date(2026, 10, 9, 0, 0))).toBe(0)
+  })
+  it('month is half gone after 15 of 30 days', () => {
+    expect(periodElapsed('month', new Date(2026, 10, 16, 0, 0))).toBe(50)
+  })
+  it('year is about half gone on July 2', () => {
+    const pct = periodElapsed('year', new Date(2026, 6, 2, 12))
+    expect(pct).toBeGreaterThanOrEqual(49)
+    expect(pct).toBeLessThanOrEqual(51)
+  })
+  it('all uses the year', () => {
+    for (const day of [new Date(2026, 0, 1), new Date(2026, 6, 2, 12), new Date(2026, 10, 9, 18), new Date(2026, 11, 31, 23, 59)]) {
+      expect(periodElapsed('all', day)).toBe(periodElapsed('year', day))
+    }
+  })
+  it('is a whole number between 0 and 100', () => {
+    const pct = periodElapsed('week', new Date(2026, 10, 11, 7, 13))
+    expect(Number.isInteger(pct)).toBe(true)
+    expect(pct).toBeGreaterThanOrEqual(0)
+    expect(pct).toBeLessThanOrEqual(100)
   })
 })
