@@ -11,6 +11,7 @@ import com.echo.app.echo.EchoBridgePlugin;
 import com.echo.app.floating.CheckInEngine;
 import com.echo.app.floating.FloatState;
 import com.echo.app.update.AppUpdater;
+import com.echo.app.update.UpdateNotifier;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
@@ -22,6 +23,7 @@ public class MainActivity extends BridgeActivity {
         // No echo_path handling here: BridgeActivity.load() (inside super.onCreate) already calls
         // onNewIntent(getIntent()) once the bridge exists, so cold starts are handled there.
         keepWebViewAboveKeyboard();
+        startUpdateFromNotification(getIntent()); // usually already handled by onNewIntent inside load()
     }
 
     /**
@@ -72,6 +74,14 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         openEchoPath(intent);
+        startUpdateFromNotification(intent);
+    }
+
+    /** The "new version" notification was tapped: go straight to the download. */
+    private void startUpdateFromNotification(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(UpdateNotifier.EXTRA_UPDATE, false)) return;
+        intent.removeExtra(UpdateNotifier.EXTRA_UPDATE); // handle once (not again on recreate)
+        AppUpdater.startFromNotification(this);
     }
 
     /** Loads {@code <server url> + echo_path} from a notification tap; in-app view links only (/?view=...). */

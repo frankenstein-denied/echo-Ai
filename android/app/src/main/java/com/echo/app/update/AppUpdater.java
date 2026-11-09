@@ -21,6 +21,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import com.echo.app.R;
@@ -39,7 +40,7 @@ import java.nio.charset.StandardCharsets;
  */
 public final class AppUpdater {
     private static final String RELEASES = "https://github.com/frankenstein-denied/echo-Ai/releases/latest/download/";
-    private static final String VERSION_URL = RELEASES + "version.json";
+    static final String VERSION_URL = RELEASES + "version.json";
     private static final String APK_URL = RELEASES + "echo.apk";
     private static final String PREFS = "echo_updates";
     private static final String PREF_PENDING_INSTALL = "pending_install";
@@ -49,6 +50,7 @@ public final class AppUpdater {
     // Main thread only, except checking, which the check thread clears.
     private static boolean promptOpen;
     private static boolean downloading;
+    private static boolean startingFromNotification;
     private static volatile boolean checking;
 
     private AppUpdater() {}
@@ -76,6 +78,33 @@ public final class AppUpdater {
         }, "echo-update-check").start();
     }
 
+    /**
+     * The user tapped the update notification: fetch version.json and go straight to the download, with no
+     * dialog. Main thread.
+     */
+    public static void startFromNotification(Activity activity) {
+        try {
+            NotificationManagerCompat.from(activity).cancel(UpdateNotifier.NOTIFICATION_ID); // "Update now" doesn't auto-cancel
+        } catch (RuntimeException ignored) {
+            // nothing to cancel
+        }
+        if (downloading || startingFromNotification) return;
+        startingFromNotification = true;
+        final int installed = installedVersionCode(activity);
+        new Thread(() -> {
+            UpdateInfo info = UpdateInfo.parse(fetch(VERSION_URL));
+            activity.runOnUiThread(() -> {
+                startingFromNotification = false;
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                if (info == null) {
+                    Toast.makeText(activity, "Couldn't get the update. Try again later.", Toast.LENGTH_LONG).show();
+                } else if (info.isNewerThan(installed)) {
+                    download(activity);
+                }
+            });
+        }, "echo-update-start").start();
+    }
+
     /** Call from onResume: finishes an install that was waiting for "Install unknown apps". */
     public static void onResume(Activity activity) {
         SharedPreferences prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -86,7 +115,7 @@ public final class AppUpdater {
     }
 
     private static void offer(Activity activity, UpdateInfo info) {
-        if (promptOpen || downloading || activity.isFinishing() || activity.isDestroyed()) return;
+        if (promptOpen || downloading || startingFromNotification || activity.isFinishing() || activity.isDestroyed()) return;
         LayoutInflater inflater = LayoutInflater.from(activity);
         View view = inflater.inflate(R.layout.dialog_update, null);
         ((TextView) view.findViewById(R.id.update_title))
@@ -116,6 +145,7 @@ public final class AppUpdater {
     }
 
     private static void download(Activity activity) {
+        if (downloading) return; // a dialog left open while the notification started one
         Context app = activity.getApplicationContext();
         File old = apkFile(app);
         if (old.exists()) old.delete();
@@ -191,7 +221,7 @@ public final class AppUpdater {
         return new File(ctx.getExternalFilesDir(APK_DIR), APK_NAME);
     }
 
-    private static int installedVersionCode(Context ctx) {
+    static int installedVersionCode(Context ctx) {
         try {
             PackageInfo p = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return Build.VERSION.SDK_INT >= 28 ? (int) p.getLongVersionCode() : p.versionCode;
@@ -201,7 +231,7 @@ public final class AppUpdater {
     }
 
     /** GET a small text file, following GitHub's redirect to its download host. Null on any failure. */
-    private static String fetch(String url) {
+    static String fetch(String url) {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
