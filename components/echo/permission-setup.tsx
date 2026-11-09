@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Capacitor } from '@capacitor/core'
 import { Check } from 'lucide-react'
-import { updateCheckInSettings, watchCheckInSettings } from '@/lib/firestore'
 import { saveLastAutoSync, syncWeatherLocation } from '@/lib/echo/weather-location'
 import {
   finalLine,
@@ -68,10 +67,9 @@ export function PermissionSetup({
   // Steps whose request came back without a grant. canAsk* is only a guess, so these offer settings instead of looping.
   const [failed, setFailed] = useState<AskStep[]>([])
   const [busy, setBusy] = useState(false)
-  const [checkInsOn, setCheckInsOn] = useState<boolean | null>(null)
-  // Only the first-run pass turns check-ins on; a rerun from Settings leaves the person's choice alone.
-  const [firstRun, setFirstRun] = useState(false)
   const live = useRef(true)
+  // perms.location as last seen while the sheet is open (null while it is closed), to catch a grant from either path.
+  const prevLocation = useRef<boolean | null>(null)
 
   const refresh = useCallback(async () => {
     const p = await getNativePermissions().catch(() => null)
@@ -97,7 +95,6 @@ export function PermissionSetup({
     void refresh().then((p) => {
       if (!live.current) return
       if (shouldShowSetup({ isNative, embed, onboarded, done: readPermissionSetupDone(), perms: p })) {
-        setFirstRun(true)
         setOpen(true)
       }
       setChecked(true)
@@ -111,7 +108,6 @@ export function PermissionSetup({
         if (!live.current || !p) return // web or an older APK: nothing to set up
         setSkipped([])
         setFailed([])
-        setFirstRun(false)
         setOpen(true)
       })
     }
@@ -135,12 +131,6 @@ export function PermissionSetup({
     }
   }, [open, refresh])
 
-  // Done turns check-ins on if they are off, so it needs their current state.
-  useEffect(() => {
-    if (!open) return
-    return watchCheckInSettings(uid, (s) => setCheckInsOn(s.enabled), () => {})
-  }, [open, uid])
-
   useEffect(() => {
     onHoldChange(open || !checked)
   }, [open, checked, onHoldChange])
@@ -152,20 +142,30 @@ export function PermissionSetup({
     void syncWeatherLocation(uid, undefined, { fromSetup: true })
   }, [uid])
 
+  // Runs once per grant, whether it came from the pop-up or from "Open settings". Location already on when the sheet
+  // opened is not a new grant.
+  const location = perms?.location ?? null
+  useEffect(() => {
+    if (!open) {
+      prevLocation.current = null
+      return
+    }
+    if (prevLocation.current === false && location === true) onLocationGranted()
+    prevLocation.current = location
+  }, [open, location, onLocationGranted])
+
   const allow = async (step: AskStep) => {
     setBusy(true)
     const granted = await requestStep(step)
     const p = await refresh()
     if (!live.current) return
     setBusy(false)
-    if (granted && step === 'location') onLocationGranted()
     if (granted === false && !(p && stepStatus(step, p) === 'granted')) setFailed((f) => (f.includes(step) ? f : [...f, step]))
   }
 
   const finish = () => {
     savePermissionSetupDone()
     setOpen(false)
-    if (firstRun && checkInsOn !== true) void updateCheckInSettings(uid, { enabled: true }).catch(() => null)
   }
 
   if (!open || paused || !perms || typeof document === 'undefined') return null

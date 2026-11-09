@@ -16,9 +16,9 @@ public class UpdateNotifierTest {
         assertTrue(UpdateNotifier.checkDue(0, 0));
     }
 
-    @Test public void waitsSixHoursBetweenChecks() {
-        assertFalse(UpdateNotifier.checkDue(T, T - 5 * HOUR));
-        assertTrue(UpdateNotifier.checkDue(T, T - 6 * HOUR));
+    @Test public void waitsFiveHoursBetweenChecks() {
+        assertFalse(UpdateNotifier.checkDue(T, T - 5 * HOUR + 60_000L));
+        assertTrue(UpdateNotifier.checkDue(T, T - 5 * HOUR));
     }
 
     @Test public void checksWhenTheClockWentBackwards() {

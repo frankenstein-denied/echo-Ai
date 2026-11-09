@@ -22,7 +22,10 @@ public final class UpdateNotifier {
     /** Not 4201: that is the pinned notification (NotificationRenderer.NOTIFICATION_ID). */
     static final int NOTIFICATION_ID = 4205;
     private static final int REQUEST_CODE = 4201;
+    /** How often UpdateCheckWorker runs. */
     static final long CHECK_EVERY_MS = 6 * 60 * 60_000L;
+    /** Shorter than CHECK_EVERY_MS, so a worker run that WorkManager starts a little early is never skipped. */
+    static final long MIN_GAP_MS = 5 * 60 * 60_000L;
     private static final int MAX_LINES = 3;
 
     // Shares AppUpdater's prefs file; the keys are separate.
@@ -32,9 +35,9 @@ public final class UpdateNotifier {
 
     private UpdateNotifier() {}
 
-    /** Never checked, 6 hours since the last check, or the clock went backwards. */
+    /** Never checked, 5 hours since the last check, or the clock went backwards. */
     static boolean checkDue(long nowMs, long lastCheckMs) {
-        return lastCheckMs <= 0 || nowMs < lastCheckMs || nowMs - lastCheckMs >= CHECK_EVERY_MS;
+        return lastCheckMs <= 0 || nowMs < lastCheckMs || nowMs - lastCheckMs >= MIN_GAP_MS;
     }
 
     /** A newer version the user has not been told about yet. */

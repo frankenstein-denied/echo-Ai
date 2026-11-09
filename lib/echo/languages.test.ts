@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { DEFAULT_LANGUAGE, languageCode, languagePromptName, LANGUAGES } from './languages'
 
 describe('LANGUAGES', () => {
@@ -28,5 +30,15 @@ describe('languagePromptName', () => {
     expect(languagePromptName('taglish')).toContain('Taglish')
     expect(languagePromptName('fil')).toBe('Filipino (Tagalog)')
     expect(languagePromptName('en')).toBe('English')
+  })
+})
+
+describe('firestore.rules', () => {
+  it('allows exactly the language codes the app offers', () => {
+    const rules = readFileSync(join(__dirname, '..', '..', 'firestore.rules'), 'utf8')
+    const list = rules.match(/d\.language in \[([^\]]*)\]/)
+    expect(list).not.toBeNull()
+    const codes = [...list![1].matchAll(/'([^']*)'/g)].map((m) => m[1])
+    expect(codes).toEqual(LANGUAGES.map((l) => l.code))
   })
 })
