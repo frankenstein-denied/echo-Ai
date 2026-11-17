@@ -2,25 +2,21 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
-import { Apple, Calendar, CloudSun, FileText, GitBranch, Globe, Mail, Music, Plug, type LucideIcon } from 'lucide-react'
-import { connectorsCol, disconnectWeather, setConnectorConnected, setWeatherLocation } from '@/lib/firestore'
-import { fetchForecast, searchPlaces, type Place } from '@/lib/echo/weather'
-import { connectedSummary, TILE_COLOR, weatherTileFacts } from '@/lib/echo/connector-tiles'
-import { CONNECTORS, connectorStatuses, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
-import { Alert, Button, Card, Input, PageHeader, Skeleton } from './ui'
-
-const ICONS: Record<ConnectorId, LucideIcon> = {
-  nutrition: Apple,
-  'web-search': Globe,
-  weather: CloudSun,
-  spotify: Music,
-  'google-calendar': Calendar,
-  gmail: Mail,
-  github: GitBranch,
-  notion: FileText,
-}
+import { Search } from 'lucide-react'
+import { connectorsCol, setConnectorConnected } from '@/lib/firestore'
+import { connectedSummary } from '@/lib/echo/connector-tiles'
+import { categoryChips, filterConnectors, groupByCategory, type CategoryFilter } from '@/lib/echo/connector-filter'
+import { CONNECTORS, connectorStatuses, type ConnectorDef, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
+import { Alert, Button, EmptyState, PageHeader, Skeleton } from './ui'
+import { ConnectorCard } from './connectors/connector-card'
+import { ConnectorFilters } from './connectors/connector-filters'
+import { WeatherBody, WeatherLive } from './connectors/weather-card'
 
 export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text: string }
+
+type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }
+
+const CHIPS = categoryChips(CONNECTORS)
 
 export function ConnectorsView({
   uid,
@@ -34,10 +30,12 @@ export function ConnectorsView({
   onTavilyDisconnect?: (sealed?: string) => Promise<void>
   notice?: ConnectorNotice | null
 }) {
-  const [docs, setDocs] = useState<{ id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }[] | null>(null)
+  const [docs, setDocs] = useState<ConnectorDoc[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [busy, setBusy] = useState<ConnectorId | null>(null)
+  const [category, setCategory] = useState<CategoryFilter>('all')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     return onSnapshot(
@@ -54,6 +52,7 @@ export function ConnectorsView({
   }, [uid])
 
   const statuses = useMemo(() => (docs ? connectorStatuses(docs) : []), [docs])
+  const groups = useMemo(() => groupByCategory(filterConnectors(CONNECTORS, { category, query })), [category, query])
 
   async function run(id: ConnectorId, action: () => Promise<void>) {
     setBusy(id)
@@ -67,10 +66,47 @@ export function ConnectorsView({
     }
   }
   const toggle = (id: ConnectorId, name: string, connected: boolean) => run(id, () => setConnectorConnected(uid, id, name, connected))
-  const webSealed = docs?.find((d) => d.id === 'web-search')?.sealed
-  const weatherPlace = docs?.find((d) => d.id === 'weather')?.place
   const statusOf = (id: ConnectorId): ConnectorStatus => statuses.find((s) => s.id === id)?.status ?? 'coming_soon'
-  const comingSoon = CONNECTORS.filter((c) => statusOf(c.id) === 'coming_soon')
+  const docOf = (id: ConnectorId) => docs?.find((d) => d.id === id)
+
+  /** Live data and actions inside one card. Connect flows are unchanged from the single-grid page. */
+  function body(c: ConnectorDef, status: ConnectorStatus) {
+    if (status === 'coming_soon') return null
+    const connected = status === 'connected'
+    const weatherDoc = docOf('weather')
+    return (
+      <>
+        {connected && c.id === 'weather' && <WeatherLive place={weatherDoc?.place} lat={weatherDoc?.lat} lon={weatherDoc?.lon} />}
+        {connected && c.id !== 'weather' && (
+          <>
+            <p className="mt-4 text-lg font-semibold text-foreground">Ready</p>
+            <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description}</p>
+          </>
+        )}
+        {!connected && <p className="mt-3 flex-1 text-sm text-muted-foreground">{c.description}</p>}
+        {c.id === 'nutrition' ? (
+          <Button variant={connected ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, !connected)} className="mt-4 w-full">
+            {connected ? 'Disconnect' : 'Connect'}
+          </Button>
+        ) : c.id === 'web-search' ? (
+          connected ? (
+            <Button variant="secondary" loading={busy === c.id} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(c.id, () => onTavilyDisconnect(docOf('web-search')?.sealed))} className="mt-4 w-full">
+              Disconnect
+            </Button>
+          ) : (
+            <>
+              <Button variant="primary" loading={busy === c.id} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(c.id, onTavilyLogin)} className="mt-4 w-full">
+                Log in with Tavily
+              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">Opens Tavily&apos;s login. Searches use your own Tavily account (free: 1,000 a month).</p>
+            </>
+          )
+        ) : c.id === 'weather' ? (
+          <WeatherBody uid={uid} connected={connected} place={weatherDoc?.place} showPlace={false} />
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <div className="animate-in">
@@ -94,263 +130,46 @@ export function ConnectorsView({
       ) : (
         <>
           <p className="-mt-3 mb-4 text-sm text-muted-foreground">{connectedSummary(statuses)}</p>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {CONNECTORS.filter((c) => statusOf(c.id) !== 'coming_soon').map((c) => {
-              const status = statusOf(c.id)
-              const connected = status === 'connected'
-              const Icon = ICONS[c.id] ?? Plug
-              const color = TILE_COLOR[c.id] ?? 'var(--color-accent)'
-              const weatherDoc = docs.find((d) => d.id === 'weather')
-              return (
-                <Card
-                  key={c.id}
-                  className={`flex flex-col ${connected ? '' : 'border-dashed'}`}
-                  style={
-                    connected
-                      ? {
-                          background: `linear-gradient(160deg, color-mix(in srgb, ${color} 18%, transparent), transparent 60%), var(--color-surface)`,
-                          borderColor: `color-mix(in srgb, ${color} 35%, var(--color-border))`,
-                          boxShadow: `0 0 22px -12px ${color}`,
-                        }
-                      : undefined
-                  }
+          <ConnectorFilters chips={CHIPS} category={category} onCategory={setCategory} query={query} onQuery={setQuery} />
+          {groups.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Nothing matches"
+              description={query.trim() ? `No connectors match “${query.trim()}” here.` : 'No connectors in this category yet.'}
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setCategory('all')
+                    setQuery('')
+                  }}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted-foreground" style={connected ? { color } : undefined}>
-                        <Icon size={18} aria-hidden="true" />
-                      </span>
-                      <h2 className="truncate text-base font-semibold text-foreground">{c.name}</h2>
-                    </div>
-                    {!connected && <span className="sr-only">Not connected</span>}
-                    {connected && (
-                      <span className="size-2 shrink-0 rounded-full bg-success" style={{ boxShadow: '0 0 8px var(--color-success)' }}>
-                        <span className="sr-only">Connected</span>
-                      </span>
-                    )}
+                  Clear
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid gap-6">
+              {groups.map((g) => (
+                <section key={g.id} aria-labelledby={`connectors-${g.id}`}>
+                  <h2 id={`connectors-${g.id}`} className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {g.label}
+                  </h2>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {g.items.map((c) => {
+                      const status = statusOf(c.id)
+                      return (
+                        <ConnectorCard key={c.id} def={c} status={status}>
+                          {body(c, status)}
+                        </ConnectorCard>
+                      )
+                    })}
                   </div>
-                  {connected && c.id === 'weather' && <WeatherLive place={weatherDoc?.place} lat={weatherDoc?.lat} lon={weatherDoc?.lon} />}
-                  {connected && c.id !== 'weather' && (
-                    <>
-                      <p className="mt-4 text-lg font-semibold text-foreground">Ready</p>
-                      <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description}</p>
-                    </>
-                  )}
-                  {!connected && <p className="mt-3 flex-1 text-sm text-muted-foreground">{c.description}</p>}
-                  {c.id === 'nutrition' ? (
-                    <Button variant={connected ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, !connected)} className="mt-4 w-full">
-                      {connected ? 'Disconnect' : 'Connect'}
-                    </Button>
-                  ) : c.id === 'web-search' ? (
-                    connected ? (
-                      <Button variant="secondary" loading={busy === c.id} disabled={!onTavilyDisconnect} onClick={() => onTavilyDisconnect && run(c.id, () => onTavilyDisconnect(webSealed))} className="mt-4 w-full">
-                        Disconnect
-                      </Button>
-                    ) : (
-                      <>
-                        <Button variant="primary" loading={busy === c.id} disabled={!onTavilyLogin} onClick={() => onTavilyLogin && run(c.id, onTavilyLogin)} className="mt-4 w-full">
-                          Log in with Tavily
-                        </Button>
-                        <p className="mt-2 text-xs text-muted-foreground">Opens Tavily&apos;s login. Searches use your own Tavily account (free: 1,000 a month).</p>
-                      </>
-                    )
-                  ) : c.id === 'weather' ? (
-                    <WeatherBody uid={uid} connected={connected} place={weatherPlace} showPlace={false} />
-                  ) : null}
-                </Card>
-              )
-            })}
-          </div>
-          {comingSoon.length > 0 && <p className="mt-4 text-sm text-muted-foreground">Coming soon: {comingSoon.map((c) => c.name).join(', ')}</p>}
-        </>
-      )}
-    </div>
-  )
-}
-
-/** Live temperature, condition and a rain/high-low hint for the saved location. Fetched once per location. */
-function WeatherLive({ place, lat, lon }: { place?: string; lat?: number; lon?: number }) {
-  const [facts, setFacts] = useState<ReturnType<typeof weatherTileFacts> | null>(null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    if (typeof lat !== 'number' || typeof lon !== 'number') return
-    let live = true
-    setFacts(null)
-    setFailed(false)
-    fetchForecast(lat, lon)
-      .then((data) => {
-        if (live) setFacts(weatherTileFacts(data, new Date()))
-      })
-      .catch(() => {
-        if (live) setFailed(true)
-      })
-    return () => {
-      live = false
-    }
-  }, [lat, lon])
-
-  const name = place || 'Your location'
-  if (failed || typeof lat !== 'number' || typeof lon !== 'number') return <p className="mt-4 text-sm text-muted-foreground">{name}</p>
-  if (!facts) return <Skeleton className="mt-4 h-16" />
-  return (
-    <div className="mt-4">
-      <p className="text-3xl font-semibold text-foreground">{facts.temp}</p>
-      <p className="mt-1 text-sm text-foreground">
-        {name} · {facts.condition}
-      </p>
-      {facts.hint && <p className="mt-1 text-sm text-muted-foreground">{facts.hint}</p>}
-    </div>
-  )
-}
-
-function geoMessage(code: number | undefined): string {
-  if (code === 1) return 'Location access was blocked. Search for your city instead.'
-  if (code === 3) return 'Finding your location took too long. Search for your city instead.'
-  return 'Could not find your location. Search for your city instead.'
-}
-
-/** Weather card body: pick a location (browser geolocation or city search), or show and change/disconnect the saved one. */
-function WeatherBody({ uid, connected, place, showPlace = true }: { uid: string; connected: boolean; place?: string; showPlace?: boolean }) {
-  const [busy, setBusy] = useState(false)
-  const [locating, setLocating] = useState(false)
-  const [changing, setChanging] = useState(false)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Place[] | null>(null)
-  const [message, setMessage] = useState('')
-
-  async function save(loc: { place: string; lat: number; lon: number }) {
-    try {
-      await setWeatherLocation(uid, loc)
-      setChanging(false)
-      setResults(null)
-      setQuery('')
-      setMessage('')
-    } catch {
-      setMessage('Could not save your location. Please try again.')
-    }
-  }
-
-  function useMyLocation() {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setMessage('Your browser can not share a location. Search for your city instead.')
-      return
-    }
-    setBusy(true)
-    setLocating(true)
-    setMessage('')
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        void save({ place: 'Your location', lat: pos.coords.latitude, lon: pos.coords.longitude }).finally(() => {
-          setBusy(false)
-          setLocating(false)
-        })
-      },
-      (err) => {
-        setMessage(geoMessage(err?.code))
-        setBusy(false)
-        setLocating(false)
-      },
-      { timeout: 10000, maximumAge: 600000 },
-    )
-  }
-
-  async function search() {
-    if (!query.trim()) return
-    setBusy(true)
-    setMessage('')
-    try {
-      const found = await searchPlaces(query)
-      setResults(found.slice(0, 5))
-      if (found.length === 0) setMessage('No places found. Try another spelling.')
-    } catch {
-      setResults(null)
-      setMessage('Could not search right now. Please try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function disconnect() {
-    setBusy(true)
-    setMessage('')
-    try {
-      await disconnectWeather(uid)
-      setChanging(false)
-    } catch {
-      setMessage('Could not disconnect. Please try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const picking = !connected || changing
-  return (
-    <div className="mt-4 space-y-3">
-      {connected && showPlace && (
-        <p className="text-sm text-foreground">
-          Showing weather for <span className="font-medium">{place || 'your location'}</span>
-        </p>
-      )}
-      {picking ? (
-        <>
-          <Button variant="primary" loading={locating} disabled={busy} onClick={useMyLocation} className="w-full">
-            Use my location
-          </Button>
-          <form
-            className="flex flex-col gap-2 sm:flex-row sm:items-end"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void search()
-            }}
-          >
-            <div className="min-w-0 flex-1">
-              <Input label="Or search for a city" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Manila" maxLength={100} />
-            </div>
-            <Button type="submit" variant="secondary" disabled={busy || !query.trim()} className="w-full sm:w-auto">
-              Search
-            </Button>
-          </form>
-          {results && results.length > 0 && (
-            <ul className="space-y-1" aria-label="Search results">
-              {results.map((r) => (
-                <li key={`${r.lat},${r.lon}`}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setBusy(true)
-                      void save({ place: r.detail ? `${r.name}, ${r.detail}` : r.name, lat: r.lat, lon: r.lon }).finally(() => setBusy(false))
-                    }}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-left text-sm text-foreground hover:bg-surface-2 disabled:opacity-50 max-lg:min-h-11"
-                  >
-                    {r.name}
-                    {r.detail ? ` — ${r.detail}` : ''}
-                  </button>
-                </li>
+                </section>
               ))}
-            </ul>
-          )}
-          {changing && (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setChanging(false)} className="w-full">
-              Cancel
-            </Button>
+            </div>
           )}
         </>
-      ) : (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="secondary" disabled={busy} onClick={() => setChanging(true)} className="w-full sm:flex-1">
-            Change location
-          </Button>
-          <Button variant="secondary" loading={busy} onClick={() => void disconnect()} className="w-full sm:flex-1">
-            Disconnect
-          </Button>
-        </div>
-      )}
-      {message && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {message}
-        </p>
       )}
     </div>
   )

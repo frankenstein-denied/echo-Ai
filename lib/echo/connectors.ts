@@ -2,12 +2,23 @@
 
 export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'spotify' | 'google-calendar' | 'gmail' | 'github' | 'notion'
 export type ConnectorStatus = 'connected' | 'not_connected' | 'coming_soon'
+export type ConnectorCategory = 'ai' | 'music' | 'health' | 'productivity' | 'live'
+
+/** Page sections, in display order. */
+export const CONNECTOR_CATEGORIES: readonly { id: ConnectorCategory; label: string }[] = [
+  { id: 'ai', label: 'AI models' },
+  { id: 'music', label: 'Music' },
+  { id: 'health', label: 'Health & Fitness' },
+  { id: 'productivity', label: 'Productivity' },
+  { id: 'live', label: 'Live info' },
+]
 
 export type ConnectorDef = {
   id: ConnectorId
   name: string
   description: string
   kind: 'builtin' | 'key' | 'oauth'
+  category: ConnectorCategory
   available: boolean
   defaultConnected: boolean
   /** What this connector answers, used in the prompt. */
@@ -15,14 +26,14 @@ export type ConnectorDef = {
 }
 
 export const CONNECTORS: readonly ConnectorDef[] = [
-  { id: 'nutrition', name: 'Nutrition (USDA)', description: 'Look up calories and macros in the USDA food database.', kind: 'builtin', available: true, defaultConnected: true, topics: 'food calories and macros' },
-  { id: 'web-search', name: 'Web search (Tavily)', description: 'Search the web when Echo and your connectors do not know.', kind: 'oauth', available: true, defaultConnected: false, topics: 'current events and facts from the web' },
-  { id: 'weather', name: 'Weather', description: 'Local forecast via Open-Meteo. No account needed.', kind: 'builtin', available: true, defaultConnected: false, topics: 'weather and forecasts' },
-  { id: 'spotify', name: 'Spotify', description: 'Understand listening patterns.', kind: 'oauth', available: false, defaultConnected: false, topics: 'music and listening history' },
-  { id: 'google-calendar', name: 'Google Calendar', description: 'Read and create events.', kind: 'oauth', available: false, defaultConnected: false, topics: 'calendar events and schedule' },
-  { id: 'gmail', name: 'Gmail', description: 'Summarize and draft emails.', kind: 'oauth', available: false, defaultConnected: false, topics: 'email' },
-  { id: 'github', name: 'GitHub', description: 'Read activity and commits.', kind: 'oauth', available: false, defaultConnected: false, topics: 'code activity and commits' },
-  { id: 'notion', name: 'Notion', description: 'Read and create pages.', kind: 'oauth', available: false, defaultConnected: false, topics: 'notes and pages in Notion' },
+  { id: 'nutrition', name: 'Nutrition (USDA)', description: 'Look up calories and macros in the USDA food database.', kind: 'builtin', category: 'health', available: true, defaultConnected: true, topics: 'food calories and macros' },
+  { id: 'web-search', name: 'Web search (Tavily)', description: 'Search the web when Echo and your connectors do not know.', kind: 'oauth', category: 'live', available: true, defaultConnected: false, topics: 'current events and facts from the web' },
+  { id: 'weather', name: 'Weather', description: 'Local forecast via Open-Meteo. No account needed.', kind: 'builtin', category: 'live', available: true, defaultConnected: false, topics: 'weather and forecasts' },
+  { id: 'spotify', name: 'Spotify', description: 'Understand listening patterns.', kind: 'oauth', category: 'music', available: false, defaultConnected: false, topics: 'music and listening history' },
+  { id: 'google-calendar', name: 'Google Calendar', description: 'Read and create events.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'calendar events and schedule' },
+  { id: 'gmail', name: 'Gmail', description: 'Summarize and draft emails.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'email' },
+  { id: 'github', name: 'GitHub', description: 'Read activity and commits.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'code activity and commits' },
+  { id: 'notion', name: 'Notion', description: 'Read and create pages.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'notes and pages in Notion' },
 ]
 
 export type ConnectorState = { id: ConnectorId; name: string; status: ConnectorStatus }
