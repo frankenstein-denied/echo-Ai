@@ -18,6 +18,9 @@ import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
+import { LegacyView } from './legacy/legacy-view'
+import { useLegacyActivity } from './legacy/use-legacy-activity'
+import { LegacyInboxContext, useLegacyInboxState } from './legacy/use-legacy-inbox'
 import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
 import { PermissionSetup } from './permission-setup'
@@ -63,6 +66,9 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
   const days = daysWithEcho(profile)
+  useLegacyActivity(user?.uid, profile)
+  // One watch on the legacies left to this user: the sidebar badge, the home banner and the Legacy page share it.
+  const legacyInbox = useLegacyInboxState(embed ? undefined : user?.uid)
   const { dueCount, week } = useSidebarData(user?.uid)
   useMobileViewportSync()
 
@@ -167,8 +173,9 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
 
   return (
     <GuideProvider value={openGuide}>
+    <LegacyInboxContext.Provider value={legacyInbox}>
     <div className="flex min-h-screen bg-background">
-      <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} dueCount={dueCount} week={week} onOpenPage={openDiaryPage} />
+      <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} dueCount={dueCount} legacyCount={legacyInbox.badge} week={week} onOpenPage={openDiaryPage} />
       <div className="min-w-0 flex-1">
         <main className={`${view === 'Diary' ? DIARY_MAIN : DEFAULT_MAIN} p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]`}>
           {/* Diary draws its own full-height mobile header (list / page bar). */}
@@ -187,6 +194,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
             <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
             <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
+          ) : view === 'Legacy' ? (
+            <LegacyView user={user} profile={profile} />
           ) : (
             <SettingsView user={user} profile={profile} signOut={signOut} />
           )}
@@ -199,6 +208,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
       {user && <PermissionSetup uid={user.uid} onboarded={profile.onboarded} embed={false} paused={guideOpen} onHoldChange={setSetupHold} />}
       {user && <CheckInsPrompt uid={user.uid} onboarded={profile.onboarded} paused={guideOpen || setupHold} />}
     </div>
+    </LegacyInboxContext.Provider>
     </GuideProvider>
   )
 }

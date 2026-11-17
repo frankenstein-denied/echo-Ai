@@ -16,7 +16,7 @@ function navColor(name: Exclude<NavName, 'Settings'>): string {
   return name === '2nd Brain' ? ORB_COLOR.interest : NAV_COLOR[name]
 }
 
-function NavList({ view, onSelect, collapsed, dueCount }: { view: NavName; onSelect: (v: NavName) => void; collapsed: boolean; dueCount: number }) {
+function NavList({ view, onSelect, collapsed, dueCount, legacyCount }: { view: NavName; onSelect: (v: NavName) => void; collapsed: boolean; dueCount: number; legacyCount: number }) {
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
       {NAV_GROUPS.map((group, gi) => (
@@ -30,8 +30,11 @@ function NavList({ view, onSelect, collapsed, dueCount }: { view: NavName; onSel
             const active = view === name
             const c = navColor(name)
             const dotColor = name === '2nd Brain' ? BRAIN_GRADIENT : c
-            const showBadge = name === 'Reminders' && dueCount > 0
-            const label = showBadge && collapsed ? `Reminders, ${dueCount} due` : collapsed ? name : undefined
+            const count = name === 'Reminders' ? dueCount : name === 'Legacy' ? legacyCount : 0
+            const showBadge = count > 0
+            const countText = name === 'Legacy' ? `${count} new` : `${count} due`
+            const badgeColor = name === 'Legacy' ? NAV_COLOR.Legacy : 'var(--color-danger)'
+            const label = showBadge && collapsed ? `${name}, ${countText}` : collapsed ? name : undefined
             const style: CSSProperties | undefined = active
               ? {
                   background: `color-mix(in srgb, ${c} 14%, transparent)`,
@@ -52,19 +55,19 @@ function NavList({ view, onSelect, collapsed, dueCount }: { view: NavName; onSel
               >
                 <span className="relative flex size-[10px] shrink-0">
                   <span aria-hidden="true" className="size-[10px] rounded-full" style={{ background: dotColor, boxShadow: `0 0 8px ${c}` }} />
-                  {showBadge && collapsed && <span aria-hidden="true" className="absolute -right-1 -top-1 size-2 rounded-full bg-danger" />}
+                  {showBadge && collapsed && <span aria-hidden="true" className="absolute -right-1 -top-1 size-2 rounded-full" style={{ background: badgeColor }} />}
                 </span>
                 {!collapsed && <span>{name}</span>}
                 {showBadge && !collapsed && (
                   <span
-                    aria-label={`${dueCount} due`}
+                    aria-label={countText}
                     className="ml-auto rounded-full px-2 text-[11px] font-semibold"
                     style={{
-                      background: 'color-mix(in srgb, var(--color-danger) 18%, transparent)',
-                      color: 'color-mix(in srgb, var(--color-danger) 80%, white)',
+                      background: `color-mix(in srgb, ${badgeColor} 18%, transparent)`,
+                      color: `color-mix(in srgb, ${badgeColor} 80%, white)`,
                     }}
                   >
-                    {dueCount}
+                    {count}
                   </span>
                 )}
               </button>
@@ -152,6 +155,7 @@ export function Sidebar({
   setCollapsed,
   days,
   dueCount,
+  legacyCount = 0,
   week,
   onOpenPage,
 }: {
@@ -161,6 +165,7 @@ export function Sidebar({
   setCollapsed: (x: boolean) => void
   days: number | null
   dueCount: number
+  legacyCount?: number
   week: WeekDay[]
   onOpenPage: (pageId: string) => void
 }) {
@@ -177,7 +182,7 @@ export function Sidebar({
           onClick={() => setCollapsed(!collapsed)}
         />
       </div>
-      <NavList view={view} onSelect={setView} collapsed={collapsed} dueCount={dueCount} />
+      <NavList view={view} onSelect={setView} collapsed={collapsed} dueCount={dueCount} legacyCount={legacyCount} />
       {!collapsed && <WeekCard days={days} week={week} onOpenPage={onOpenPage} />}
       <UserFooter collapsed={collapsed} settingsActive={view === 'Settings'} onSettings={() => setView('Settings')} />
     </aside>

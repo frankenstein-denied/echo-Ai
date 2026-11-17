@@ -6,6 +6,7 @@ import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
@@ -23,12 +24,13 @@ import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
+import { LegacyReleaseBanner } from './legacy/release-banner'
 import { showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
 
-export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
+export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy'
 
 type ChatMessage = Message & { id: string }
 type Extras = { trace: string[]; saved: SavedItem[]; failed: string[] }
@@ -519,6 +521,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
         }
+        void noteLegacyActivity(uid)
         const applied = await applyEchoResponse(uid, page, res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
         void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
@@ -808,6 +811,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6 max-lg:gap-4 max-lg:py-4">
+            {!embed && <LegacyReleaseBanner onOpen={() => onNavigate('Legacy')} />}
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
             {showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length && (

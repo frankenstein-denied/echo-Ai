@@ -16,6 +16,7 @@ import {
 import { Capacitor } from '@capacitor/core'
 import { app, auth, initAnalytics } from '@/lib/firebase'
 import { clearNativeSession, refreshNativeNotification, setNativeSession } from '@/lib/native/echo-bridge'
+import { upsertDirectoryEntry } from '@/lib/legacy-store'
 
 type AuthContextValue = {
   user: User | null
@@ -65,6 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return onAuthStateChanged(auth, (u) => {
       setUser(u)
       setLoading(false)
+      // Lets others add this user as a Legacy inheritor by email (verified emails only).
+      if (u) upsertDirectoryEntry(u).catch(() => null)
       if (Capacitor.isNativePlatform()) {
         if (u) {
           const { apiKey, projectId } = app.options
