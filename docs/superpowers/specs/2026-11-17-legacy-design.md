@@ -46,6 +46,10 @@ nickname they used — grounded in memories the owner actually left, and never i
 - Voice-call (spoken) memorial; text chat only.
 - Inheritors exporting or editing the owner's data.
 
+## Known limitations (v1)
+
+- When health isn't shared, memory ids and links (e.g. `health-…`) and a diary page's `mix.health` count are still visible to someone inspecting network data, because Firestore rules can't hide fields. The UI never shows them. A cleaned, owner-written mirror would close this.
+
 ## Anti-goals (a failure even if it "works")
 
 - The memorial **invents memories** the owner never left.
