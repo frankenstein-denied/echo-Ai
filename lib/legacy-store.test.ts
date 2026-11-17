@@ -86,6 +86,8 @@ vi.mock('firebase/firestore', async (importOriginal) => ({
 import { hashAnswer, MAX_TRIES, TRY_WINDOW_MS } from '@/lib/echo/legacy'
 import {
   addInheritor,
+  canReadLegacy,
+  getLegacySettings,
   isReleased,
   removeInheritor,
   saveLegacySettings,
@@ -211,7 +213,15 @@ describe('submitGuess', () => {
     const start = new FakeTimestamp(state.now - 1000)
     state.docs.set('legacyAttempts/o_i', { count: 4, windowStart: start, guessHash: 'x', lastAt: start })
     state.denyWrite.add('legacyAttempts/o_i')
-    expect(await submitGuess('o', 'i', 'Wrong')).toEqual({ correct: false, triesLeft: 0, lockedUntil: start.ms + TRY_WINDOW_MS })
+    expect(await submitGuess('o', 'i', 'Wrong')).toEqual({ correct: false, triesLeft: 0, lockedUntil: start.ms + TRY_WINDOW_MS, denied: true })
+  })
+})
+
+describe('canReadLegacy', () => {
+  it('is true while the profile copy is readable and false once the rules deny it', async () => {
+    expect(await canReadLegacy('o')).toBe(true)
+    state.denyRead.add('users/o/legacy/profile')
+    expect(await canReadLegacy('o')).toBe(false)
   })
 })
 
@@ -264,6 +274,46 @@ describe('stampActivity', () => {
     state.now += 3_600_000
     await stampActivity('o')
     expect(opsOn('users/o/legacy/settings')).toHaveLength(2)
+    vi.unstubAllGlobals()
+  })
+  it('keeps a separate throttle per user', async () => {
+    const mem = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) })
+    state.docs.set('users/a/legacy/settings', { enabled: true })
+    state.docs.set('users/b/legacy/settings', { enabled: true })
+    await stampActivity('a')
+    await stampActivity('b')
+    expect(opsOn('users/a/legacy/settings')).toHaveLength(1)
+    expect(opsOn('users/b/legacy/settings')).toHaveLength(1)
+    expect([...mem.keys()].sort()).toEqual(['echo.legacy.lastStamp.a', 'echo.legacy.lastStamp.b'])
+    vi.unstubAllGlobals()
+  })
+  it('stamps twice per release period in demo mode, once the period is known', async () => {
+    const mem = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) })
+    state.docs.set('users/d/legacy/settings', { enabled: true, releaseAfterMinutes: 5 })
+    await getLegacySettings('d')
+    await stampActivity('d')
+    state.now += 149_999
+    await stampActivity('d')
+    expect(opsOn('users/d/legacy/settings')).toHaveLength(1)
+    state.now += 1
+    await stampActivity('d')
+    expect(opsOn('users/d/legacy/settings')).toHaveLength(2)
+    vi.unstubAllGlobals()
+  })
+  it('writes once when stamps overlap and retries after a failed write', async () => {
+    const mem = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) })
+    state.docs.set('users/r/legacy/settings', { enabled: true })
+    await Promise.all([stampActivity('r'), stampActivity('r')])
+    expect(opsOn('users/r/legacy/settings')).toHaveLength(1)
+    state.now += 3_600_000
+    state.denyWrite.add('users/r/legacy/settings')
+    await expect(stampActivity('r')).resolves.toBeUndefined()
+    state.denyWrite.clear()
+    await stampActivity('r')
+    expect(opsOn('users/r/legacy/settings')).toHaveLength(2)
     vi.unstubAllGlobals()
   })
   it('does nothing when there are no settings and survives broken storage', async () => {
