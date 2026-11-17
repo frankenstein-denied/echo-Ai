@@ -189,9 +189,9 @@ export function MemorialChat({
           <IconButton icon={ArrowLeft} label="Back to Legacy" onClick={onBack} />
           <Avatar name={ownerName} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold text-foreground">{ownerName}</p>
-              {preview && <Badge variant="info">Preview</Badge>}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="min-w-0 truncate text-sm font-semibold text-foreground">{ownerName}</p>
+              {preview && <Badge variant="info">Preview · everything you&apos;ve shared with Echo</Badge>}
             </div>
             <button
               type="button"
