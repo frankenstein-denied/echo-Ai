@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONNECTOR_CATEGORIES, CONNECTORS, connectorStatuses, isConnected } from './connectors'
+import { CONNECTOR_CATEGORIES, CONNECTORS, connectorStatuses, isConnected, LOOKUP_SOURCES } from './connectors'
 
 describe('CONNECTORS', () => {
   it('every connector has a known category', () => {
@@ -77,5 +77,25 @@ describe('isConnected', () => {
     expect(m([{ id: 'music', connected: false, service: 'listenbrainz', username: 'bob' }])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 'bob' }])).toBe('not_connected')
     expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 'bob' }])).toBe('connected')
+  })
+})
+
+describe('free lookup connectors', () => {
+  it('are built in, available and on by default, one per lookup source', () => {
+    for (const id of LOOKUP_SOURCES) {
+      const c = CONNECTORS.find((x) => x.id === id)
+      expect(c?.kind).toBe('builtin')
+      expect(c?.available).toBe(true)
+      expect(c?.defaultConnected).toBe(true)
+    }
+    expect(status([], 'wikipedia')).toBe('connected')
+    expect(status([{ id: 'news', connected: false }], 'news')).toBe('not_connected')
+  })
+  it('sorts them into sections', () => {
+    const cat = (id: string) => CONNECTORS.find((c) => c.id === id)?.category
+    expect(['wikipedia', 'books', 'movies'].map(cat)).toEqual(['knowledge', 'knowledge', 'knowledge'])
+    expect(['news', 'currency', 'holidays'].map(cat)).toEqual(['live', 'live', 'live'])
+    expect(cat('food-facts')).toBe('health')
+    expect(CONNECTOR_CATEGORIES.map((c) => c.id)).toEqual(['ai', 'music', 'health', 'productivity', 'knowledge', 'live'])
   })
 })

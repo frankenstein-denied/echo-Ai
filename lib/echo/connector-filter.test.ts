@@ -6,7 +6,7 @@ const ids = (defs: { id: string }[]) => defs.map((d) => d.id)
 
 describe('filterConnectors', () => {
   it('filters by category', () => {
-    expect(ids(filterConnectors(CONNECTORS, { category: 'live', query: '' }))).toEqual(['web-search', 'weather'])
+    expect(ids(filterConnectors(CONNECTORS, { category: 'live', query: '' }))).toEqual(['web-search', 'weather', 'news', 'currency', 'holidays'])
   })
   it('all + empty query returns the whole catalog in order', () => {
     expect(ids(filterConnectors(CONNECTORS, { category: 'all', query: '' }))).toEqual(ids([...CONNECTORS]))
@@ -28,7 +28,7 @@ describe('filterConnectors', () => {
 describe('groupByCategory', () => {
   it('drops empty groups and keeps section order', () => {
     const groups = groupByCategory(CONNECTORS)
-    expect(groups.map((g) => g.id)).toEqual(['music', 'health', 'productivity', 'live'])
+    expect(groups.map((g) => g.id)).toEqual(['music', 'health', 'productivity', 'knowledge', 'live'])
     expect(ids(groups.find((g) => g.id === 'music')!.items)).toEqual(['music', 'spotify'])
     expect(groups.find((g) => g.id === 'health')!.label).toBe('Health & Fitness')
   })
@@ -40,7 +40,7 @@ describe('groupByCategory', () => {
 describe('categoryChips', () => {
   it('starts with All and lists only non-empty categories', () => {
     const chips = categoryChips(CONNECTORS)
-    expect(chips.map((c) => c.id)).toEqual(['all', 'music', 'health', 'productivity', 'live'])
+    expect(chips.map((c) => c.id)).toEqual(['all', 'music', 'health', 'productivity', 'knowledge', 'live'])
     expect(chips[0].label).toBe('All')
   })
 })

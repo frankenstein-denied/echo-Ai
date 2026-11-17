@@ -1,8 +1,12 @@
 // Connector catalog and state resolution. No Firebase/SDK imports: shared by browser and server.
 
-export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'music' | 'spotify' | 'google-calendar' | 'gmail' | 'github' | 'notion'
+/** Free lookups Echo runs on the server for typed chat and calls (see lib/server/lookup.ts). */
+export const LOOKUP_SOURCES = ['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts'] as const
+export type LookupSource = (typeof LOOKUP_SOURCES)[number]
+
+export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'music' | 'spotify' | 'google-calendar' | 'gmail' | 'github' | 'notion' | LookupSource
 export type ConnectorStatus = 'connected' | 'not_connected' | 'coming_soon'
-export type ConnectorCategory = 'ai' | 'music' | 'health' | 'productivity' | 'live'
+export type ConnectorCategory = 'ai' | 'music' | 'health' | 'productivity' | 'knowledge' | 'live'
 
 /** Page sections, in display order. */
 export const CONNECTOR_CATEGORIES: readonly { id: ConnectorCategory; label: string }[] = [
@@ -10,6 +14,7 @@ export const CONNECTOR_CATEGORIES: readonly { id: ConnectorCategory; label: stri
   { id: 'music', label: 'Music' },
   { id: 'health', label: 'Health & Fitness' },
   { id: 'productivity', label: 'Productivity' },
+  { id: 'knowledge', label: 'Knowledge' },
   { id: 'live', label: 'Live info' },
 ]
 
@@ -30,6 +35,13 @@ export const CONNECTORS: readonly ConnectorDef[] = [
   { id: 'web-search', name: 'Web search (Tavily)', description: 'Search the web when Echo and your connectors do not know.', kind: 'oauth', category: 'live', available: true, defaultConnected: false, topics: 'current events and facts from the web' },
   { id: 'weather', name: 'Weather', description: 'Local forecast via Open-Meteo. No account needed.', kind: 'builtin', category: 'live', available: true, defaultConnected: false, topics: 'weather and forecasts' },
   { id: 'music', name: 'Music (ListenBrainz)', description: 'See what you listen to on ListenBrainz (ArchiveTune can scrobble there).', kind: 'oauth', category: 'music', available: true, defaultConnected: false, topics: 'music and listening history' },
+  { id: 'food-facts', name: 'Packaged food (Open Food Facts)', description: 'Nutrition and ingredients of packaged food by name or barcode number. Free, no account.', kind: 'builtin', category: 'health', available: true, defaultConnected: true, topics: 'packaged food products: nutrition per 100 g, ingredients, Nutri-Score (by name or barcode number)' },
+  { id: 'wikipedia', name: 'Wikipedia', description: 'Facts about people, places, history and topics. Free, no account.', kind: 'builtin', category: 'knowledge', available: true, defaultConnected: true, topics: 'encyclopedia facts about people, places, history, science and topics' },
+  { id: 'books', name: 'Books (Open Library)', description: 'Find books, authors and when they were published. Free, no account.', kind: 'builtin', category: 'knowledge', available: true, defaultConnected: true, topics: 'books and authors' },
+  { id: 'movies', name: 'Movies & TV (TMDB)', description: 'Look up films and shows: year, rating and plot.', kind: 'builtin', category: 'knowledge', available: true, defaultConnected: true, topics: 'movies and TV shows: release year, rating, plot' },
+  { id: 'news', name: 'News (GNews)', description: 'Top headlines and news on a topic.', kind: 'builtin', category: 'live', available: true, defaultConnected: true, topics: 'news headlines and recent news on a topic' },
+  { id: 'currency', name: 'Currency rates', description: 'Exchange rates from the European Central Bank (Frankfurter). Free, no account.', kind: 'builtin', category: 'live', available: true, defaultConnected: true, topics: 'currency exchange rates and conversions' },
+  { id: 'holidays', name: 'Public holidays', description: 'Public holidays by country (Nager.Date). Free, no account.', kind: 'builtin', category: 'live', available: true, defaultConnected: true, topics: 'public holidays by country and year' },
   { id: 'spotify', name: 'Spotify', description: 'Understand listening patterns.', kind: 'oauth', category: 'music', available: false, defaultConnected: false, topics: 'music and listening history' },
   { id: 'google-calendar', name: 'Google Calendar', description: 'Read and create events.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'calendar events and schedule' },
   { id: 'gmail', name: 'Gmail', description: 'Summarize and draft emails.', kind: 'oauth', category: 'productivity', available: false, defaultConnected: false, topics: 'email' },

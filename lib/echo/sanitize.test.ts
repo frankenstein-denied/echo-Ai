@@ -485,3 +485,25 @@ describe('play_music action', () => {
     expect(out.reply).not.toMatch(/playing/i)
   })
 })
+
+describe('lookup action', () => {
+  it('keeps a lone lookup with a known source and trimmed query', () => {
+    expect(resp([{ type: 'lookup', source: 'wikipedia', query: '  José Rizal ' }]).actions).toEqual([{ type: 'lookup', source: 'wikipedia', query: 'José Rizal' }])
+  })
+  it('drops an unknown source or an empty query', () => {
+    expect(resp([{ type: 'lookup', source: 'imdb', query: 'x' }]).actions).toEqual([])
+    expect(resp([{ type: 'lookup', source: 'news', query: '  ' }]).actions).toEqual([])
+  })
+  it('caps the query at 200 characters', () => {
+    const a = resp([{ type: 'lookup', source: 'books', query: 'x'.repeat(250) }]).actions[0] as { query: string }
+    expect(a.query).toHaveLength(200)
+  })
+  it('stands alone like a search and wins over a web_search', () => {
+    expect(resp([{ type: 'web_search', query: 'peso rate' }, { type: 'lookup', source: 'currency', query: '1 USD PHP' }]).actions).toEqual([{ type: 'lookup', source: 'currency', query: '1 USD PHP' }])
+    expect(resp([{ type: 'lookup', source: 'news', query: 'top' }, { type: 'lookup', source: 'wikipedia', query: 'x' }]).actions).toHaveLength(1)
+  })
+  it('loses to saves and plays, like a search', () => {
+    const out = resp([{ type: 'lookup', source: 'wikipedia', query: 'x' }, { type: 'note', title: 'Milk', body: 'buy milk' }])
+    expect(out.actions.map((a) => a.type)).toEqual(['note'])
+  })
+})

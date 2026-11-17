@@ -1,4 +1,4 @@
-import type { ConnectorStatus } from './connectors'
+import type { ConnectorStatus, LookupSource } from './connectors'
 export type EchoCategory = 'note' | 'goal' | 'health' | 'reminder' | 'connector' | 'general'
 
 export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector' | 'interest' | 'topic' | 'trait'
@@ -38,6 +38,8 @@ export type EchoAction =
   | { type: 'meal_delete'; ref: string }
   /** Resolved on the server (never reaches the browser): the reply is written from Tavily results. */
   | { type: 'web_search'; query: string }
+  /** Resolved on the server (never reaches the browser): the reply is written from a free connector's data. */
+  | { type: 'lookup'; source: LookupSource; query: string }
   /** Reaches the browser: it finds the song (a pasted YouTube link, or POST /api/music/search) and opens the player. */
   | { type: 'play_music'; query: string }
 

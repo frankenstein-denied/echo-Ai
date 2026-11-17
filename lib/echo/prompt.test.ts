@@ -149,3 +149,19 @@ describe('play_music', () => {
     expect(APP_GUIDE).toContain('- Music:')
   })
 })
+
+describe('lookup', () => {
+  it('is a category with each source query format and a schema variant', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('- lookup:')
+    for (const s of ['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts']) expect(SYSTEM_INSTRUCTION).toContain(`${s}:`)
+    expect(SYSTEM_INSTRUCTION).toContain('"100 USD PHP"')
+    expect(SYSTEM_INSTRUCTION).toContain('"PH 2026"')
+    const variants = (RESPONSE_SCHEMA.properties.actions.items as { anyOf: { properties: { type: { enum: string[] }; source?: { enum?: string[] } }; required: string[] }[] }).anyOf
+    const v = variants.find((x) => x.properties.type.enum.includes('lookup'))
+    expect(v?.required).toEqual(['type', 'source', 'query'])
+    expect(v?.properties.source?.enum).toEqual(['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts'])
+  })
+  it('prefers a connected free connector over web_search', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('prefer a lookup over web_search for those topics')
+  })
+})
