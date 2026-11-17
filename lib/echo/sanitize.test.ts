@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { extractCheckInTime } from './prompt'
 import { parseEchoContext, parseEchoRequest, REMINDER_DROPPED_TRACE, sanitizeEchoResponse, slugifyLabel } from './sanitize'
+import { CONNECTORS } from './connectors'
 
 const NOW = '2026-10-25T19:42:00+08:00'
 const base = { text: 'hello', clientTime: NOW, timeZone: 'Asia/Manila' }
@@ -28,9 +29,9 @@ describe('parseEchoRequest', () => {
       { id: 'nutrition', status: 'connected' },
       { id: 'web-search', status: 'not_connected' },
     ])
-    const many = Array.from({ length: 30 }, () => ({ id: 'nutrition', status: 'connected' }))
+    const many = Array.from({ length: 40 }, () => ({ id: 'nutrition', status: 'connected' }))
     const m = parseEchoRequest({ ...base, context: { connectors: many } })
-    if (!('error' in m)) expect(m.context.connectors).toHaveLength(10)
+    if (!('error' in m)) expect(m.context.connectors).toHaveLength(32)
   })
 
   it('accepts webSearchKey up to 8192 chars and ignores other values', () => {
@@ -425,5 +426,93 @@ describe('parseEchoContext weather', () => {
     expect(parseEchoContext({ weather: 42 })).not.toHaveProperty('weather')
     expect(parseEchoContext({ weather: '   ' })).not.toHaveProperty('weather')
     expect(parseEchoContext({})).not.toHaveProperty('weather')
+  })
+})
+
+describe('play_music action', () => {
+  it('keeps a lone play_music with its trimmed query', () => {
+    expect(resp([{ type: 'play_music', query: '  lofi beats  ' }]).actions).toEqual([{ type: 'play_music', query: 'lofi beats' }])
+  })
+  it('drops an empty query', () => {
+    expect(resp([{ type: 'play_music', query: '  ' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music', query: 42 }]).actions).toEqual([])
+  })
+  it('cuts the query to 200 characters', () => {
+    expect(resp([{ type: 'play_music', query: 'q'.repeat(300) }]).actions).toEqual([{ type: 'play_music', query: 'q'.repeat(200) }])
+  })
+  it('keeps a pasted link as the query', () => {
+    expect(resp([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }]).actions).toEqual([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }])
+  })
+  it('stands alone: one play_music, over general, connector and web_search; memories kept', () => {
+    const out = sanitizeEchoResponse(
+      {
+        reply: 'Playing it.',
+        actions: [
+          { type: 'connector', provider: 'Spotify', request: 'play lofi' },
+          { type: 'play_music', query: 'lofi' },
+          { type: 'play_music', query: 'jazz' },
+          { type: 'web_search', query: 'lofi' },
+          { type: 'general' },
+        ],
+        memories: [{ label: 'Lofi', type: 'interest', links: [] }],
+        trace: [],
+      },
+      NOW,
+      '09:00',
+    )
+    expect(out.actions).toEqual([{ type: 'play_music', query: 'lofi' }])
+    expect(out.memories.map((m) => m.label)).toEqual(['Lofi'])
+  })
+  it('coexists with real saves: reminder + one play_music (play saves nothing)', () => {
+    const out = resp([
+      { type: 'reminder', title: 'Call Mama', dueAt: '2026-10-25T20:00:00+08:00' },
+      { type: 'play_music', query: 'lofi' },
+      { type: 'play_music', query: 'jazz' },
+      { type: 'web_search', query: 'lofi' },
+    ])
+    expect(out.actions.map((a) => a.type)).toEqual(['reminder', 'play_music'])
+    expect(out.actions[1]).toEqual({ type: 'play_music', query: 'lofi' })
+  })
+  it('is dropped when a delete needs confirming, so the question reaches the user', () => {
+    const out = sanitizeEchoResponse(
+      { reply: 'Deleted it and playing lofi.', actions: [{ type: 'reminder_delete', ref: 'r1' }, { type: 'play_music', query: 'lofi' }], memories: [], trace: [] },
+      NOW,
+      '09:00',
+      [],
+      { items: { reminders: [{ ref: 'r1', title: 'Stretch', due: 'Mon' }], goals: [], notes: [], health: '', meals: [], caloriesEnabled: true }, recentMessages: [] },
+    )
+    expect(out.actions.some((a) => a.type === 'play_music')).toBe(false)
+    expect(out.reply).not.toMatch(/playing/i)
+  })
+})
+
+describe('lookup action', () => {
+  it('keeps a lone lookup with a known source and trimmed query', () => {
+    expect(resp([{ type: 'lookup', source: 'wikipedia', query: '  José Rizal ' }]).actions).toEqual([{ type: 'lookup', source: 'wikipedia', query: 'José Rizal' }])
+  })
+  it('drops an unknown source or an empty query', () => {
+    expect(resp([{ type: 'lookup', source: 'imdb', query: 'x' }]).actions).toEqual([])
+    expect(resp([{ type: 'lookup', source: 'news', query: '  ' }]).actions).toEqual([])
+  })
+  it('caps the query at 200 characters', () => {
+    const a = resp([{ type: 'lookup', source: 'books', query: 'x'.repeat(250) }]).actions[0] as { query: string }
+    expect(a.query).toHaveLength(200)
+  })
+  it('stands alone like a search and wins over a web_search', () => {
+    expect(resp([{ type: 'web_search', query: 'peso rate' }, { type: 'lookup', source: 'currency', query: '1 USD PHP' }]).actions).toEqual([{ type: 'lookup', source: 'currency', query: '1 USD PHP' }])
+    expect(resp([{ type: 'lookup', source: 'news', query: 'top' }, { type: 'lookup', source: 'wikipedia', query: 'x' }]).actions).toHaveLength(1)
+  })
+  it('loses to saves and plays, like a search', () => {
+    const out = resp([{ type: 'lookup', source: 'wikipedia', query: 'x' }, { type: 'note', title: 'Milk', body: 'buy milk' }])
+    expect(out.actions.map((a) => a.type)).toEqual(['note'])
+  })
+})
+
+describe('connectors context', () => {
+  it('keeps every catalog connector state (the list outgrew 10)', () => {
+    const states = CONNECTORS.map((c) => ({ id: c.id, status: 'connected' }))
+    const parsed = parseEchoRequest({ ...base, context: { connectors: states } })
+    expect('error' in parsed ? [] : (parsed.context.connectors ?? []).map((c) => c.id)).toContain('holidays')
   })
 })

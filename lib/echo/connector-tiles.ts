@@ -7,6 +7,13 @@ export const TILE_COLOR: Partial<Record<ConnectorId, string>> = {
   weather: '#38bdf8',
   nutrition: ORB_COLOR.health,
   'web-search': ORB_COLOR.interest,
+  'food-facts': ORB_COLOR.health,
+  wikipedia: ORB_COLOR.note,
+  books: ORB_COLOR.note,
+  movies: ORB_COLOR.person,
+  news: ORB_COLOR.reminder,
+  currency: ORB_COLOR.goal,
+  holidays: ORB_COLOR.goal,
 }
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)

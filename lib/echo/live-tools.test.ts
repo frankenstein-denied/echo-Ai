@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RESPONSE_SCHEMA } from './prompt'
 import { SEARCH_NOT_CONNECTED_REPLY } from './search-replies'
+import { MUSIC_REPLIES } from './music-play'
 import { CONFIRM_WITHIN_MS, executeToolCalls, LIVE_TOOL_DECLARATIONS, LIVE_TOOL_NAMES, mapToolCall, type ToolContext } from './live-tools'
 
 const ctx = (): ToolContext => ({ clientTime: '2026-10-25T14:00:00+08:00', checkInTime: '09:00', memoryLabels: [{ label: 'Mama', type: 'person' }] })
@@ -205,5 +206,67 @@ describe('web_search tool', () => {
   it('without a search function reports not connected', async () => {
     const out = await executeToolCalls([{ id: 'a', name: 'web_search', args: { query: 'x' } }], ctx(), vi.fn() as never)
     expect(out.responses[0].response.output).toMatchObject({ error: 'not_connected', tell_user: SEARCH_NOT_CONNECTED_REPLY })
+  })
+})
+
+describe('play_music tool', () => {
+  it('is declared with a required query and maps/caps it', () => {
+    const d = LIVE_TOOL_DECLARATIONS.find((x) => x.name === 'play_music')
+    expect(d?.parameters?.required).toEqual(['query'])
+    expect(d?.description).toMatch(/paused/i)
+    expect(mapToolCall('play_music', { query: '' }, ctx()).ok).toBe(false)
+    expect(mapToolCall('play_music', {}, ctx()).ok).toBe(false)
+    const r = mapToolCall('play_music', { query: '  lofi beats  ' }, ctx())
+    expect(r.ok && r.response.actions).toEqual([{ type: 'play_music', query: 'lofi beats' }])
+    const long = mapToolCall('play_music', { query: 'q'.repeat(300) }, ctx())
+    expect(long.ok && long.response.actions).toEqual([{ type: 'play_music', query: 'q'.repeat(200) }])
+  })
+  it('runs the play function and never saves anything', async () => {
+    const apply = vi.fn()
+    const play = vi.fn(async () => ({ ok: true, title: 'Lofi Girl' }))
+    const out = await executeToolCalls([{ id: 'a', name: 'play_music', args: { query: 'lofi' } }], ctx(), apply as never, { play })
+    expect(play).toHaveBeenCalledWith('lofi')
+    expect(out.responses[0]).toEqual({ id: 'a', name: 'play_music', response: { output: { ok: true, title: 'Lofi Girl' } } })
+    expect(apply).not.toHaveBeenCalled()
+    expect(out.saved).toEqual([])
+  })
+  it('answers a throwing or missing play function with a tell_user', async () => {
+    const thrown = await executeToolCalls([{ id: 'a', name: 'play_music', args: { query: 'x' } }], ctx(), vi.fn() as never, {
+      play: async () => {
+        throw new Error('boom')
+      },
+    })
+    expect(thrown.responses[0].response.output).toEqual({ error: 'failed', tell_user: MUSIC_REPLIES.failed })
+    const none = await executeToolCalls([{ id: 'a', name: 'play_music', args: { query: 'x' } }], ctx(), vi.fn() as never)
+    expect(none.responses[0].response.output).toEqual({ error: 'failed', tell_user: MUSIC_REPLIES.failed })
+  })
+})
+
+describe('lookup tool', () => {
+  it('is declared with a source enum and maps a valid call', () => {
+    const d = LIVE_TOOL_DECLARATIONS.find((x) => x.name === 'lookup')
+    expect(d?.parameters?.required).toEqual(['source', 'query'])
+    expect(mapToolCall('lookup', { source: 'imdb', query: 'x' }, ctx()).ok).toBe(false)
+    expect(mapToolCall('lookup', { source: 'news', query: ' ' }, ctx()).ok).toBe(false)
+    const r = mapToolCall('lookup', { source: 'currency', query: ' 100 USD PHP ' }, ctx())
+    expect(r.ok && r.response.actions).toEqual([{ type: 'lookup', source: 'currency', query: '100 USD PHP' }])
+  })
+  it('runs the lookup function and never saves anything', async () => {
+    const apply = vi.fn()
+    const lookup = vi.fn(async () => ({ results: [{ title: 'Rizal', url: 'https://w/x', content: 'c' }] }))
+    const out = await executeToolCalls([{ id: 'a', name: 'lookup', args: { source: 'wikipedia', query: 'rizal' } }], ctx(), apply as never, { lookup })
+    expect(lookup).toHaveBeenCalledWith('wikipedia', 'rizal')
+    expect(out.responses[0].response.output).toEqual({ results: [{ title: 'Rizal', url: 'https://w/x', content: 'c' }] })
+    expect(apply).not.toHaveBeenCalled()
+  })
+  it('a missing or throwing lookup tells Echo to web_search instead', async () => {
+    const none = await executeToolCalls([{ id: 'a', name: 'lookup', args: { source: 'news', query: 'x' } }], ctx(), vi.fn() as never)
+    expect(none.responses[0].response.output).toEqual({ error: 'unavailable', next: 'use web_search with the same question' })
+    const thrown = await executeToolCalls([{ id: 'a', name: 'lookup', args: { source: 'news', query: 'x' } }], ctx(), vi.fn() as never, {
+      lookup: async () => {
+        throw new Error('boom')
+      },
+    })
+    expect(thrown.responses[0].response.output).toEqual({ error: 'unavailable', next: 'use web_search with the same question' })
   })
 })

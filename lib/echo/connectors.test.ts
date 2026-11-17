@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONNECTOR_CATEGORIES, CONNECTORS, connectorStatuses, isConnected } from './connectors'
+import { CONNECTOR_CATEGORIES, CONNECTORS, connectorStatuses, isConnected, LOOKUP_SOURCES } from './connectors'
 
 describe('CONNECTORS', () => {
   it('every connector has a known category', () => {
@@ -8,20 +8,20 @@ describe('CONNECTORS', () => {
   })
 })
 
-const status = (docs: { id: string; connected?: boolean; sealed?: string; lat?: unknown; lon?: unknown }[], id: string) => connectorStatuses(docs).find((s) => s.id === id)?.status
+const status = (docs: { id: string; connected?: boolean; sealed?: string; lat?: unknown; lon?: unknown; service?: unknown; username?: unknown }[], id: string) => connectorStatuses(docs).find((s) => s.id === id)?.status
 
 describe('connectorStatuses', () => {
   it('uses catalog defaults when there are no docs', () => {
     expect(status([], 'nutrition')).toBe('connected')
     expect(status([], 'web-search')).toBe('not_connected')
-    expect(status([], 'spotify')).toBe('coming_soon')
+    expect(status([], 'gmail')).toBe('coming_soon')
   })
   it('lets a doc override an available connector', () => {
     expect(status([{ id: 'nutrition', connected: false }], 'nutrition')).toBe('not_connected')
     expect(status([{ id: 'web-search', connected: true, sealed: 'v1.x.y' }], 'web-search')).toBe('connected')
   })
   it('keeps unavailable connectors coming soon even if a doc says connected', () => {
-    expect(status([{ id: 'spotify', connected: true }], 'spotify')).toBe('coming_soon')
+    expect(status([{ id: 'gmail', connected: true }], 'gmail')).toBe('coming_soon')
   })
   it('ignores unknown ids and follows catalog order', () => {
     const out = connectorStatuses([{ id: 'bogus', connected: true }])
@@ -56,5 +56,46 @@ describe('isConnected', () => {
     expect(w([{ id: 'weather', connected: false, lat: 14.6, lon: 121 }])).toBe('not_connected')
     expect(w([{ id: 'weather', connected: true, lat: 14.6, lon: 121 }])).toBe('connected')
     expect(w([{ id: 'weather', connected: true, lat: 0, lon: 0 }])).toBe('connected')
+  })
+
+  it('catalogs music as available and keeps spotify coming soon', () => {
+    const m = CONNECTORS.find((c) => c.id === 'music')
+    expect(m?.name).toBe('Music (ListenBrainz)')
+    expect(m?.available).toBe(true)
+    expect(CONNECTORS.find((c) => c.id === 'spotify')?.available).toBe(false)
+  })
+
+  it('counts music as connected only with service listenbrainz and a username', () => {
+    const m = (docs: { id: string; connected?: boolean; service?: unknown; username?: unknown }[]) => status(docs, 'music')
+    expect(m([])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, username: 'bob' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'spotify', username: 'bob' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: '   ' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 5 }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: false, service: 'listenbrainz', username: 'bob' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 'bob' }])).toBe('not_connected')
+    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 'bob' }])).toBe('connected')
+  })
+})
+
+describe('free lookup connectors', () => {
+  it('are built in, available and on by default, one per lookup source', () => {
+    for (const id of LOOKUP_SOURCES) {
+      const c = CONNECTORS.find((x) => x.id === id)
+      expect(c?.kind).toBe('builtin')
+      expect(c?.available).toBe(true)
+      expect(c?.defaultConnected).toBe(true)
+    }
+    expect(status([], 'wikipedia')).toBe('connected')
+    expect(status([{ id: 'news', connected: false }], 'news')).toBe('not_connected')
+  })
+  it('sorts them into sections', () => {
+    const cat = (id: string) => CONNECTORS.find((c) => c.id === id)?.category
+    expect(['wikipedia', 'books', 'movies'].map(cat)).toEqual(['knowledge', 'knowledge', 'knowledge'])
+    expect(['news', 'currency', 'holidays'].map(cat)).toEqual(['live', 'live', 'live'])
+    expect(cat('food-facts')).toBe('health')
+    expect(CONNECTOR_CATEGORIES.map((c) => c.id)).toEqual(['ai', 'music', 'health', 'productivity', 'knowledge', 'live'])
   })
 })

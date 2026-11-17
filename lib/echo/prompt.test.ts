@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { APP_GUIDE } from './app-guide'
-import { buildUserContents, RESPONSE_SCHEMA, SYSTEM_INSTRUCTION } from './prompt'
+import { buildUserContents, renderConnectors, RESPONSE_SCHEMA, SYSTEM_INSTRUCTION } from './prompt'
 import type { EchoRequest } from './types'
 
 const req = (connectors?: EchoRequest['context']['connectors']): EchoRequest => ({
@@ -36,7 +36,7 @@ describe('SYSTEM_INSTRUCTION search order and teaching', () => {
   it('teaches for coming-soon connectors instead of pretending', () => {
     expect(SYSTEM_INSTRUCTION).toContain('TEACHING')
     expect(SYSTEM_INSTRUCTION).toContain('"coming soon"')
-    expect(SYSTEM_INSTRUCTION).toContain("Spotify isn't connected yet — it's coming soon in Connectors.")
+    expect(SYSTEM_INSTRUCTION).toContain("Google Calendar isn't connected yet — it's coming soon in Connectors.")
   })
 
   it('splits TEACHING into connector actions (teach) and information questions (web search fallback)', () => {
@@ -69,13 +69,13 @@ describe('buildUserContents connectors and app guide', () => {
     expect(c).toContain('=== CONNECTORS')
     expect(c).toContain('- Web search (Tavily): connected — current events and facts from the web')
     expect(c).toContain('- Nutrition (USDA): not connected — food calories and macros')
-    expect(c).toContain('- Spotify: coming soon — music and listening history')
+    expect(c).toContain('- Gmail: coming soon — email')
   })
 
   it('uses catalog defaults when the browser sent no states, and never marks an unavailable connector connected', () => {
     expect(buildUserContents(req())).toContain('- Nutrition (USDA): connected')
     expect(buildUserContents(req())).toContain('- Web search (Tavily): not connected')
-    expect(buildUserContents(req([{ id: 'spotify', status: 'connected' }]))).toContain('- Spotify: coming soon')
+    expect(buildUserContents(req([{ id: 'gmail', status: 'connected' }]))).toContain('- Gmail: coming soon')
   })
 
   it('includes the APP GUIDE block', () => {
@@ -123,5 +123,53 @@ describe('SYSTEM_INSTRUCTION language', () => {
   it('replies in the profile language', () => {
     expect(SYSTEM_INSTRUCTION).toContain('always reply in that language')
     expect(SYSTEM_INSTRUCTION).toContain('Saved item fields (reminder titles, notes) stay in the user\'s own words.')
+  })
+})
+
+describe('play_music', () => {
+  it('is a category with the link rule and a schema variant', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('- play_music:')
+    expect(SYSTEM_INSTRUCTION).toContain('YouTube or YouTube Music link')
+    expect(SYSTEM_INSTRUCTION).toContain('{"type":"play_music","query":"https://youtu.be/')
+    expect(SYSTEM_INSTRUCTION).not.toContain('Spotify')
+    const variants = (RESPONSE_SCHEMA.properties.actions.items as { anyOf: { properties: { type: { enum: string[] }; query?: unknown }; required: string[] }[] }).anyOf
+    const v = variants.find((x) => x.properties.type.enum.includes('play_music'))
+    expect(v?.required).toEqual(['type', 'query'])
+  })
+  it('no longer teaches a connector for playing music', () => {
+    const teaching = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('TEACHING ('), SYSTEM_INSTRUCTION.indexOf('EDITING EXISTING ITEMS'))
+    expect(teaching).not.toContain('play music')
+    const connector = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('- connector:'), SYSTEM_INSTRUCTION.indexOf('- meal_log:'))
+    expect(connector).not.toContain('play music')
+  })
+  it('may come with saves but never with web_search', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('It may come with saves the user asks for in the same message (e.g. "remind me at 8 and play lofi"); never with web_search.')
+  })
+  it('the APP GUIDE says how music plays', () => {
+    expect(APP_GUIDE).toContain('- Music:')
+  })
+})
+
+describe('lookup', () => {
+  it('is a category with each source query format and a schema variant', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('- lookup:')
+    for (const s of ['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts']) expect(SYSTEM_INSTRUCTION).toContain(`${s}:`)
+    expect(SYSTEM_INSTRUCTION).toContain('"100 USD PHP"')
+    expect(SYSTEM_INSTRUCTION).toContain('"PH 2026"')
+    const variants = (RESPONSE_SCHEMA.properties.actions.items as { anyOf: { properties: { type: { enum: string[] }; source?: { enum?: string[] } }; required: string[] }[] }).anyOf
+    const v = variants.find((x) => x.properties.type.enum.includes('lookup'))
+    expect(v?.required).toEqual(['type', 'source', 'query'])
+    expect(v?.properties.source?.enum).toEqual(['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts'])
+  })
+  it('prefers a connected free connector over web_search', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('prefer a lookup over web_search for those topics')
+  })
+})
+
+describe('renderConnectors', () => {
+  it('leaves out Music (ListenBrainz) until its listening data reaches Echo', () => {
+    const text = renderConnectors([{ id: 'music', status: 'connected' }])
+    expect(text).not.toContain('ListenBrainz')
+    expect(text).toContain('- Wikipedia: connected')
   })
 })

@@ -5,13 +5,14 @@ import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
-import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
+import { findTrack, MUSIC_REPLIES, type MusicTrack } from '@/lib/echo/music-play'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -29,6 +30,7 @@ import { showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
+import { useMusicPlayer } from './music-player'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy'
 
@@ -191,6 +193,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
+  const { play: playMusic, track: musicTrack, available: musicAvailable } = useMusicPlayer()
   const callBtnRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -522,8 +525,23 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           return
         }
         void noteLegacyActivity(uid)
-        const applied = await applyEchoResponse(uid, page, res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
-        void speakReply(applied.reply)
+        // play_music: a pasted link plays directly, a name is searched; typed chat autoplays (the send tap is the gesture).
+        // Saves next to it still apply. If the song can't be found, nothing opens and the reply carries the error text.
+        let songStarted = false
+        const applied = await applyEchoResponseWithMusic(
+          uid,
+          page,
+          res,
+          // No player here (the chathead bubble): say so instead of spending a search on a song that can't open.
+          (q) => (musicAvailable ? findTrack(user, q, { text: msg }) : Promise.resolve({ ok: false as const, error: 'unavailable' as const, reply: MUSIC_REPLIES.unavailable })),
+          (t) => {
+            songStarted = true
+            playMusic(t, { autoplay: true })
+          },
+          { refs: built?.refs, source: 'chat', onDeleted: pushUndo },
+        )
+        // Don't read the reply aloud over the start of the song.
+        if (!songStarted) void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
           setExtras((x) => ({ ...x, [applied.messageId as string]: { ...ex, failed: applied.failed } }))
@@ -552,7 +570,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic, musicAvailable],
   )
   useEffect(() => {
     sendRef.current = send
@@ -650,8 +668,21 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid],
   )
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather })
+  // Calls open the player paused so it never plays over Echo's voice.
+  const playCallMusic = useCallback((t: MusicTrack) => playMusic(t, { autoplay: false }), [playMusic])
+  // A song from typed chat must not play over a call: when a call starts, reopen it paused.
+  const musicRef = useRef(musicTrack)
+  const wasInCall = useRef(false)
+  useEffect(() => {
+    musicRef.current = musicTrack
+  }, [musicTrack])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined })
   useCallFlag(call.active)
+  useEffect(() => {
+    const t = musicRef.current
+    if (call.active && !wasInCall.current && t?.autoplay) playMusic(t, { autoplay: false })
+    wasInCall.current = call.active
+  }, [call.active, playMusic])
   useEffect(() => {
     onCallActiveChange?.(call.active)
     return () => onCallActiveChange?.(false)

@@ -1,6 +1,6 @@
 import { Type } from '@google/genai'
 import { APP_GUIDE } from './app-guide'
-import { CONNECTORS, type ConnectorStatus } from './connectors'
+import { CONNECTORS, LOOKUP_SOURCES, type ConnectorStatus } from './connectors'
 import { renderItems } from './context'
 import type { EchoRequest } from './types'
 
@@ -40,20 +40,22 @@ CATEGORIES (return one entry in "actions" per thing worth doing; a message may p
 - goal: a longer-term aim or a commitment to progress. Example: "I want to run a half marathon by March" (targetDate if a date is clear, as YYYY-MM-DD).
 - health: mood, sleep, water, energy or exercise mentions about today or a named day. Example: "Slept 6 hours, feeling tired" -> sleepMinutes 360, energy low, moodTag tired. A feeling maps to "moodTag": great, happy, okay, tired, sad, anxious or angry (pick the closest; the score is derived from it). A diary entry that states a mood produces BOTH a note and a health action.
 - reminder: something to do at a time. Example: "Remind me to call Mama at 8:30".
-- connector: an action for an outside service to perform (play music, add a calendar event, send an email, create a Notion page) when CONNECTORS lists that service as coming soon or not connected. Example: "Add dentist to my calendar on Friday". Information questions are not connector actions (see TEACHING). Set provider to the service name and request to what the user wants. The reply follows TEACHING.
+- connector: an action for an outside service to perform (add a calendar event, send an email, create a Notion page) when CONNECTORS lists that service as coming soon or not connected. Example: "Add dentist to my calendar on Friday". Information questions are not connector actions (see TEACHING). Set provider to the service name and request to what the user wants. The reply follows TEACHING.
 - meal_log: the user says what they ate or drank (food with calories). Example: "I had two eggs and toast for breakfast" -> {"type":"meal_log","description":"two eggs and toast","mealType":"breakfast"}. description is the food in the user's words, with quantities. mealType is breakfast, lunch, dinner or snack: use the meal they name; otherwise food eaten at a meal time is that meal (about 5-11 AM breakfast, 11 AM-3 PM lunch, 5-10 PM dinner), even food often eaten as a snack (siopao, bread, a banana at 8 AM is breakfast); snack only when they say so or it is between meal times. Calories are estimated automatically and a sentence like "About 540 kcal — logged as breakfast." is put in front of your reply, so your reply must NOT mention calories, logging or saving the meal; just add a short friendly reaction (e.g. "Nice protein to start the day!"). If "Meals today" says calorie tracking is OFF, never return meal_log and tell the user calorie tracking is turned off in Settings.
 - general: questions and conversation. Answer in "reply" (following SEARCH ORDER); save nothing. Return a single {"type":"general"} action only when nothing else applies.
 - web_search: the question needs a web search (see SEARCH ORDER). Example: "What's the latest iPhone?" -> {"type":"web_search","query":"latest iPhone model"}.
+- lookup: the question is about a topic a connected free connector in CONNECTORS covers (Wikipedia, News, Currency rates, Public holidays, Books, Movies & TV, Packaged food). Return one {"type":"lookup","source":"...","query":"..."} and no other actions (memories are fine); put "" in "reply" (Echo writes the answer from the data). source and query: wikipedia: the person, place or topic ("José Rizal"); news: a topic ("Lakers"), or "top headlines" for general news; currency: "AMOUNT FROM TO" with ISO codes ("100 USD PHP"; a plain "pesos" or "dollars" means the user's local currency from the profile or the obvious one); holidays: "CC YYYY" with the two-letter country code ("PH 2026"); books: the title and/or author; movies: the film or show title; food-facts: a packaged product's brand and name, or its barcode digits. Never for food the user ate (that is meal_log). Example: "What's 50 euros in pesos?" -> {"type":"lookup","source":"currency","query":"50 EUR PHP"}.
+- play_music: the user asks Echo to play a song, artist, genre or mood. Echo plays it in its own music player (YouTube), no connector needed. Example: "Play some lofi beats" -> {"type":"play_music","query":"lofi beats"}. When the message is or contains a YouTube or YouTube Music link and asks to play it (or is just the link), copy the link as the query: "play this https://youtu.be/dQw4w9WgXcQ" -> {"type":"play_music","query":"https://youtu.be/dQw4w9WgXcQ"}. query is at most 200 characters. It may come with saves the user asks for in the same message (e.g. "remind me at 8 and play lofi"); never with web_search. The reply is a short line like "Playing lofi beats." Never claim music is playing without a play_music action; Echo replaces your reply if the song can't be found.
 
 SEARCH ORDER (where answers come from; go down the list and use the first that can answer)
 1. Echo's knowledge: the USER DATA sections (profile, recent messages, known memories, your items) and the APP GUIDE. "What are my reminders?" or "how do I turn off calories?" are answered from here: never search the web for the user's own data or how to use Echo.
 2. Your own knowledge: well-established facts you are sure of (definitions, how-to, math, writing help, common knowledge). Only when you are confident; if you would be guessing, go to step 3.
-3. Connectors: a connected service in CONNECTORS that covers the question (Nutrition answers food calories through meal_log automatically). Weather answers weather and forecast questions from the WEATHER section; never web_search the weather when it is present. Web search is a connector: use it only when 1 and 2 cannot answer and the question needs current or outside facts (news, prices, releases, scores, opening hours, facts you are unsure of). Return one web_search action with a short query (max 300 characters) and no other actions (memories are fine). Return it even when Web search is not connected; Echo then tells the user how to connect it. In "reply" put only your best short answer from what you already know, or "" if you don't know; Echo writes the final reply from the search results.
+3. Connectors: a connected service in CONNECTORS that covers the question (Nutrition answers food calories through meal_log automatically). Weather answers weather and forecast questions from the WEATHER section; never web_search the weather when it is present. The free connectors (Wikipedia, News, Currency rates, Public holidays, Books, Movies & TV, Packaged food) answer their topics through a lookup action when CONNECTORS lists them as connected: prefer a lookup over web_search for those topics, and use web_search when that connector is not connected. Web search is a connector: use it only when 1 and 2 cannot answer and the question needs current or outside facts (news, prices, releases, scores, opening hours, facts you are unsure of). Return one web_search action with a short query (max 300 characters) and no other actions (memories are fine). Return it even when Web search is not connected; Echo then tells the user how to connect it. In "reply" put only your best short answer from what you already know, or "" if you don't know; Echo writes the final reply from the search results.
 - No web_search for small talk, feelings, advice, or things you can answer well yourself (definitions, how-to, math, writing help).
 4. Honest answer: if none of these can answer, say plainly that you don't know or can't do that yet. Never make something up.
 
 TEACHING (when the right source is not available)
-- Action requests (something a connector would do: play music, add a calendar event, send an email) for a connector marked "coming soon" or "not connected": return a connector action and say honestly that it isn't connected yet, e.g. "Spotify isn't connected yet — it's coming soon in Connectors." (coming soon) or "Connect it in Connectors." (not connected). Never pretend you did it.
+- Action requests (something a connector would do: add a calendar event, send an email) for a connector marked "coming soon" or "not connected": return a connector action and say honestly that it isn't connected yet, e.g. "Google Calendar isn't connected yet — it's coming soon in Connectors." (coming soon) or "Connect it in Connectors." (not connected). Never pretend you did it.
 - Information questions whose connector is "coming soon" or "not connected" (e.g. "what's the latest news on the election?"): follow SEARCH ORDER step 3 and return web_search (no connector action). Echo searches the web when Web search is connected and otherwise tells the user how to connect it.
 - Weather questions when there is no WEATHER section: never web_search. If CONNECTORS lists Weather as not connected, tell the user to connect Weather in Connectors (it's free, no account). If CONNECTORS lists Weather as connected, say briefly that the forecast isn't available right now and to try again in a moment.
 - An app feature that is off or lives elsewhere: say where it is, using the APP GUIDE, e.g. "You can turn calorie tracking on in Settings."
@@ -164,6 +166,12 @@ const ACTION_VARIANTS = [
   { type: Type.OBJECT, properties: { type: kind('web_search'), query: str('short web search query, max 300 characters') }, required: ['type', 'query'] },
   {
     type: Type.OBJECT,
+    properties: { type: kind('lookup'), source: { type: Type.STRING, enum: [...LOOKUP_SOURCES] }, query: str('what to look up, in the format the source needs; max 200 characters') },
+    required: ['type', 'source', 'query'],
+  },
+  { type: Type.OBJECT, properties: { type: kind('play_music'), query: str('song, artist, genre or mood, or the YouTube link the user gave; max 200 characters') }, required: ['type', 'query'] },
+  {
+    type: Type.OBJECT,
     properties: { type: kind('meal_log'), description: str('what the user ate, with quantities, in their words'), mealType: MEAL_TYPE, date: str('optional YYYY-MM-DD when not today') },
     required: ['type', 'description'],
   },
@@ -248,8 +256,11 @@ export const RESPONSE_SCHEMA = {
 const STATUS_TEXT: Record<ConnectorStatus, string> = { connected: 'connected', not_connected: 'not connected', coming_soon: 'coming soon' }
 
 /** Every catalog connector with the browser's status (catalog default when absent; unavailable ones stay coming soon). */
+/** Connectors the model isn't told about yet: Music (ListenBrainz) saves a username but no listening data reaches Echo. */
+const NOT_IN_PROMPT = new Set(['music'])
+
 export function renderConnectors(states: { id: string; status: ConnectorStatus }[] | undefined): string {
-  return CONNECTORS.map((c) => {
+  return CONNECTORS.filter((c) => !NOT_IN_PROMPT.has(c.id)).map((c) => {
     const given = states?.find((s) => s.id === c.id)?.status
     const status: ConnectorStatus = !c.available ? 'coming_soon' : given === 'connected' || given === 'not_connected' ? given : c.defaultConnected ? 'connected' : 'not_connected'
     return `- ${c.name}: ${STATUS_TEXT[status]} — ${c.topics}`

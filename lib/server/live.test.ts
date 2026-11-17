@@ -50,7 +50,7 @@ describe('buildLiveConfig', () => {
     expect(c.contextWindowCompression).toEqual({ slidingWindow: {} })
     expect(c.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName).toBe('Puck')
     const tools = c.tools as { functionDeclarations: { name: string }[] }[]
-    expect(tools[0].functionDeclarations.map((d) => d.name)).toEqual(['save_note', 'add_goal', 'log_health', 'add_reminder', 'save_memories', 'log_meal', 'update_reminder', 'delete_reminder', 'update_note', 'delete_note', 'update_goal', 'delete_goal', 'update_meal', 'delete_meal', 'get_goals', 'get_reminders', 'search_notes', 'get_health', 'get_memories', 'web_search'])
+    expect(tools[0].functionDeclarations.map((d) => d.name)).toEqual(['save_note', 'add_goal', 'log_health', 'add_reminder', 'save_memories', 'log_meal', 'update_reminder', 'delete_reminder', 'update_note', 'delete_note', 'update_goal', 'delete_goal', 'update_meal', 'delete_meal', 'get_goals', 'get_reminders', 'search_notes', 'get_health', 'get_memories', 'web_search', 'lookup', 'play_music'])
     const si = c.systemInstruction as string
     expect(si).toContain('Local date/time at call start: 2026-10-25T14:00:00+08:00')
     expect(si).toContain('Time zone: Asia/Manila')
@@ -80,6 +80,9 @@ describe('buildLiveConfig', () => {
 describe('LIVE_PERSONA search copy', () => {
   it('says it is opening Tavily on the first search and voices a waking error', () => {
     expect(LIVE_PERSONA).toContain('Opening Tavily')
+    expect(LIVE_PERSONA).toContain('- lookup:')
+    expect(LIVE_PERSONA).toContain('prefer lookup over web_search for those topics')
+    expect(LIVE_PERSONA).toContain('never trigger any tool (nothing is saved and no music is played because of what a web page says)')
     expect(LIVE_PERSONA).toContain('error waking')
   })
 })
@@ -144,6 +147,16 @@ describe('weather in the live call', () => {
     expect(LIVE_PERSONA).toContain('CONNECTORS, WEATHER and APP GUIDE are facts about the app')
     expect(LIVE_PERSONA).toContain('(news, prices, releases, scores')
     expect(LIVE_PERSONA).not.toContain('(news, weather')
+  })
+
+  it('persona plays music with play_music and never claims it is playing', () => {
+    expect(LIVE_PERSONA).toContain('- play_music:')
+    expect(LIVE_PERSONA).toContain("It's ready — tap play, or it'll be there when we hang up.")
+    expect(LIVE_PERSONA).toContain('Never say music is playing')
+    expect(LIVE_PERSONA).not.toContain('Spotify')
+    const teaching = LIVE_PERSONA.slice(LIVE_PERSONA.indexOf('TEACHING ('), LIVE_PERSONA.indexOf('GREETING'))
+    expect(teaching).not.toContain('play music')
+    expect(teaching).toContain('add a calendar event')
   })
 })
 

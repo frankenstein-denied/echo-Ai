@@ -1,9 +1,9 @@
-import { CONNECTORS, type ConnectorStatus } from './connectors'
+import { CONNECTORS, LOOKUP_SOURCES, type ConnectorStatus, type LookupSource } from './connectors'
 import { isMealType, isMoodTag, MOOD_SCORES } from './health-helpers'
 import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoRequest, EchoRequestMessage, EchoResponse, MemoryInput, MemoryType } from './types'
 
 export const LIMITS = {
-  connectors: 10,
+  connectors: 32,
   weather: 600,
   webSearchKey: 8192,
   text: 2000,
@@ -26,6 +26,8 @@ export const LIMITS = {
   provider: 40,
   request: 500,
   searchQuery: 300,
+  musicQuery: 200,
+  lookupQuery: 200,
   memoryLinks: 8,
   itemTitle: 100,
   milestones: 8,
@@ -355,6 +357,15 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
       const query = str(a.query, LIMITS.searchQuery)
       return query ? { type: 'web_search', query } : null
     }
+    case 'lookup': {
+      const source = (LOOKUP_SOURCES as readonly string[]).includes(a.source as string) ? (a.source as LookupSource) : null
+      const query = str(a.query, LIMITS.lookupQuery)
+      return source && query ? { type: 'lookup', source, query } : null
+    }
+    case 'play_music': {
+      const query = str(a.query, LIMITS.musicQuery)
+      return query ? { type: 'play_music', query } : null
+    }
     case 'reminder_update': {
       const ref = knownRef(a.ref, 'reminder', opts.items)
       if (!ref) return null
@@ -597,13 +608,16 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
       if (s) actions.push(s)
     }
   }
-  // A web search stands alone (only memories may come with it): search answers never save items.
-  const searches = actions.filter((a) => a.type === 'web_search')
-  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search')
-  // A connector action next to a search means an information question for a missing connector: search instead.
-  if (searches.length && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
-  // A pending delete confirmation wins over a search, so the question reaches the user.
-  const real = saving.length || confirmations.length ? saving : searches.slice(0, 1)
+  // A web search or lookup stands alone (only memories may come with it): their answers never save items.
+  // A free lookup wins over a web search (it is the connector that covers the question).
+  // One play_music may come with saves (it saves nothing and runs in the browser); it wins over a search.
+  const searches = [...actions.filter((a) => a.type === 'lookup'), ...actions.filter((a) => a.type === 'web_search')]
+  const plays = actions.filter((a) => a.type === 'play_music').slice(0, 1)
+  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'lookup' && a.type !== 'play_music')
+  // A connector action next to a search or a play means a missing connector: search or play instead.
+  if ((searches.length || plays.length) && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
+  // A pending delete confirmation drops searches and plays, so the question reaches the user.
+  const real = confirmations.length ? saving : saving.length || plays.length ? [...saving, ...plays] : searches.slice(0, 1)
   const finalActions: EchoAction[] = real.length ? real : actions.filter((a) => a.type === 'general').slice(0, 1)
   const trace = Array.isArray(obj.trace)
     ? obj.trace.map((t) => str(t, LIMITS.traceLine)).filter(Boolean).slice(0, LIMITS.trace)

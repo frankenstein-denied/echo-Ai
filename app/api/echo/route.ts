@@ -8,6 +8,7 @@ import { isConnected, type ConnectorId, type ConnectorStatus } from '@/lib/echo/
 import { estimateNutrition, looksLikeMeal, resolveMeals, withSpeculative } from '@/lib/server/nutrition'
 import { verifyUser } from '@/lib/server/verify-user'
 import { answerFromWeb, resolveWebSearch } from '@/lib/server/web-answer'
+import { resolveLookup } from '@/lib/server/lookup'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -76,8 +77,18 @@ export async function POST(req: Request) {
     const t1 = Date.now()
     // Web search stands alone (sanitize guarantees it): search when connected, otherwise teach.
     const deadline = t0 + REQUEST_BUDGET_MS
+    // A free connector lookup answers first; if it can't, it becomes a web_search for the step below.
+    const looked = await resolveLookup(sanitized, {
+      uid: user.uid,
+      question: parsed.text,
+      clientTime: parsed.clientTime,
+      profile: parsed.context.profile,
+      connectors,
+      deadline,
+      answer: (q, results, ctx) => answerFromWeb(ai, q, results, ctx, { deadline }),
+    })
     const webConnected = !connectors || isConnected(connectors, 'web-search')
-    const searched = await resolveWebSearch(sanitized, {
+    const searched = await resolveWebSearch(looked, {
       uid: user.uid,
       sealed: webConnected ? parsed.webSearchKey : undefined,
       question: parsed.text,
