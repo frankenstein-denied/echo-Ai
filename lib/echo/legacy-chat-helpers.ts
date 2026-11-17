@@ -33,6 +33,16 @@ export function deniedGuessOutcome(stillReleased: boolean): 'tries' | 'relocked'
   return stillReleased ? 'tries' : 'relocked'
 }
 
+/**
+ * The live version of the open legacy's link: 'loading' while the inbox has no links yet, 'gone' once the
+ * link was removed (or is no longer accepted), so the open view can close.
+ */
+export function liveOpenLink<T extends { id: string; status: string }>(links: readonly T[] | null, id: string): T | 'loading' | 'gone' {
+  if (links === null) return 'loading'
+  const link = links.find((l) => l.id === id)
+  return link && link.status === 'accepted' ? link : 'gone'
+}
+
 /** Pending requests plus released legacies this device hasn't shown yet. */
 export function legacyBadgeCount(pending: number, released: readonly string[], seen: readonly string[]): number {
   const seenSet = new Set(seen)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { User } from 'firebase/auth'
 import type { UserProfile } from '@/lib/firestore'
+import { liveOpenLink } from '@/lib/echo/legacy-chat-helpers'
 import type { LegacyLink } from '@/lib/legacy-store'
 import { PageHeader } from '../ui'
 import { LegacyInboxContext } from './use-legacy-inbox'
@@ -40,6 +41,13 @@ export function LegacyView({ user, profile }: { user: User; profile: UserProfile
 
   const back = useCallback(() => show(null), [show])
 
+  // The open legacy follows the live link, so question and sharing changes apply; a removed link closes it.
+  const openId = active?.kind === 'legacy' ? active.link.id : null
+  const live = openId ? liveOpenLink(links, openId) : null
+  useEffect(() => {
+    if (live === 'gone') setActive(null)
+  }, [live])
+
   if (active?.kind === 'preview') {
     return (
       <div className="animate-in mx-auto grid max-w-3xl gap-5">
@@ -47,10 +55,11 @@ export function LegacyView({ user, profile }: { user: User; profile: UserProfile
       </div>
     )
   }
-  if (active?.kind === 'legacy') {
+  if (active?.kind === 'legacy' && live !== 'gone') {
+    const link = live && live !== 'loading' ? live : active.link
     return (
       <div className="animate-in mx-auto grid max-w-3xl gap-5">
-        <OpenLegacy key={active.link.id} user={user} profile={profile} link={active.link} onBack={back} />
+        <OpenLegacy key={link.id} user={user} profile={profile} link={link} onBack={back} />
       </div>
     )
   }

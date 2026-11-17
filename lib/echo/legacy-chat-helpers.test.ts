@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleDelayMs, chatSendGate, deniedGuessOutcome, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
+import { bubbleDelayMs, chatSendGate, deniedGuessOutcome, liveOpenLink, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
 
 describe('bubbleDelayMs', () => {
   it('starts at 600 ms for an empty bubble', () => {
@@ -95,5 +95,22 @@ describe('deniedGuessOutcome', () => {
   it('blames the tries limit only while the legacy is still released', () => {
     expect(deniedGuessOutcome(true)).toBe('tries')
     expect(deniedGuessOutcome(false)).toBe('relocked')
+  })
+})
+
+describe('liveOpenLink', () => {
+  const a = { id: 'o_i', status: 'accepted', shared: ['life'] }
+  it('returns the live link by id, with its latest fields', () => {
+    const updated = { ...a, shared: ['life', 'health'] }
+    expect(liveOpenLink([{ id: 'x', status: 'accepted', shared: [] }, updated], 'o_i')).toBe(updated)
+  })
+
+  it('waits while links are loading', () => {
+    expect(liveOpenLink(null, 'o_i')).toBe('loading')
+  })
+
+  it('reports a removed or no-longer-accepted link as gone', () => {
+    expect(liveOpenLink([], 'o_i')).toBe('gone')
+    expect(liveOpenLink([{ ...a, status: 'pending' }], 'o_i')).toBe('gone')
   })
 })
