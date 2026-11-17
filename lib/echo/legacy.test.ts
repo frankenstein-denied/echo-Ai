@@ -1,0 +1,111 @@
+import { createHash } from 'node:crypto'
+import { describe, expect, it } from 'vitest'
+import {
+  DEFAULT_SHARED,
+  DEMO_MINUTES,
+  LEGACY_KINDS,
+  LEGACY_QUESTIONS,
+  MAX_RELEASE_MINUTES,
+  hashAnswer,
+  isValidAnswer,
+  legacyLinkId,
+  memoryTypesFor,
+  monthsToMinutes,
+  normalizeAnswer,
+  questionText,
+  releaseOptions,
+  shouldStampActivity,
+} from './legacy'
+
+describe('normalizeAnswer', () => {
+  it('trims and lowercases', () => {
+    expect(normalizeAnswer('  Bantay ')).toBe('bantay')
+    expect(normalizeAnswer('BANTAY')).toBe('bantay')
+  })
+  it('uses NFC and locale-free toLowerCase', () => {
+    expect(normalizeAnswer('İstanbul')).toBe('İstanbul'.normalize('NFC').toLowerCase())
+  })
+})
+
+describe('isValidAnswer', () => {
+  it('accepts one word with letters, apostrophes and hyphens', () => {
+    for (const ok of ['Bantay', "O'Neil", 'Jean-Luc', 'Ñora']) expect(isValidAnswer(ok)).toBe(true)
+  })
+  it('rejects spaces, empty and over 40 chars', () => {
+    for (const bad of ['two words', '', '   ', 'a'.repeat(41)]) expect(isValidAnswer(bad)).toBe(false)
+  })
+})
+
+describe('hashAnswer', () => {
+  it('matches regardless of case and surrounding spaces', async () => {
+    expect(await hashAnswer('o_i', 'Bantay')).toBe(await hashAnswer('o_i', ' bantay '))
+  })
+  it('is salted by link id', async () => {
+    expect(await hashAnswer('o_i', 'bantay')).not.toBe(await hashAnswer('o_x', 'bantay'))
+  })
+  it('equals sha256 hex of linkId:normalized', async () => {
+    const h = await hashAnswer('o_i', 'Bantay')
+    expect(h).toBe(createHash('sha256').update('o_i:bantay').digest('hex'))
+    expect(h).toHaveLength(64)
+  })
+})
+
+describe('questions', () => {
+  it('has stable ids q1..q12 in order', () => {
+    expect(LEGACY_QUESTIONS.length).toBeGreaterThanOrEqual(12)
+    const ids = LEGACY_QUESTIONS.map(q => q.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids.slice(0, 12)).toEqual(Array.from({ length: 12 }, (_, i) => `q${i + 1}`))
+  })
+  it('looks up text by id', () => {
+    expect(questionText('q1')).not.toBeNull()
+    expect(questionText('zz')).toBeNull()
+  })
+})
+
+describe('legacyLinkId', () => {
+  it('joins owner and inheritor', () => {
+    expect(legacyLinkId('a', 'b')).toBe('a_b')
+  })
+})
+
+describe('share kinds', () => {
+  it('defaults to all but health', () => {
+    expect(DEFAULT_SHARED).toEqual(LEGACY_KINDS.filter(k => k !== 'health'))
+  })
+  it('maps kinds to memory types', () => {
+    const types = memoryTypesFor(DEFAULT_SHARED)
+    expect(types).not.toContain('health')
+    expect(types).toContain('goal')
+    expect(types).toContain('person')
+    expect(memoryTypesFor(['health'])).toEqual(['health'])
+  })
+})
+
+describe('release timing', () => {
+  it('converts months to minutes', () => {
+    expect(monthsToMinutes(1)).toBe(43200)
+    // 24 * 30 days = 1,036,800 min; the rules cap (730 days) sits just above it.
+    expect(monthsToMinutes(24)).toBe(1_036_800)
+  })
+  it('keeps every month option within the rules bounds', () => {
+    for (const o of releaseOptions(true)) {
+      expect(o.minutes).toBeGreaterThanOrEqual(DEMO_MINUTES)
+      expect(o.minutes).toBeLessThanOrEqual(MAX_RELEASE_MINUTES)
+    }
+    expect(releaseOptions(false).map(o => o.minutes)).toEqual([1, 2, 3, 6, 12, 18, 24].map(monthsToMinutes))
+    expect(releaseOptions(true)).toHaveLength(8)
+  })
+  it('offers a 5 minute option only in demo', () => {
+    expect(releaseOptions(false)[0].minutes).toBe(43200)
+    expect(releaseOptions(true)[0].minutes).toBe(5)
+  })
+})
+
+describe('shouldStampActivity', () => {
+  it('stamps at most once per hour', () => {
+    expect(shouldStampActivity(null, 0)).toBe(true)
+    expect(shouldStampActivity(0, 3_599_999)).toBe(false)
+    expect(shouldStampActivity(0, 3_600_000)).toBe(true)
+  })
+})
