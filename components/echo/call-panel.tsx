@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import type { User } from 'firebase/auth'
 import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
-import { applyActions, estimateMealViaApi, localIsoWithOffset, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
+import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
 import { findTrack, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
@@ -299,6 +299,7 @@ export function useEchoCall({
             else if (r.resealed) cb.current.onWebSearchSecret?.(r.resealed)
             return r.output
           },
+          lookup: (source, q) => lookupViaApi(cb.current.user, source, q),
           play: async (q) => {
             const r = await findTrack(cb.current.user, q)
             if (r.ok) cb.current.onPlayMusic?.(r.track)
