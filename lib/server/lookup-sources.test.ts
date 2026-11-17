@@ -72,11 +72,12 @@ describe('fetchLookup', () => {
   })
 
   it('food-facts: a barcode reads the product directly', async () => {
-    const f = routes({ 'api/v2/product/3017620422003.json': { product: { code: '3017620422003', product_name: 'Nutella', brands: 'Ferrero', nutriments: { 'energy-kcal_100g': 539, proteins_100g: 6.3, carbohydrates_100g: 57.5, sugars_100g: 56.3, fat_100g: 30.9 }, nutriscore_grade: 'e' } } })
+    const f = routes({ 'api/v2/product/3017620422003.json': { product: { code: '3017620422003', product_name: 'Nutella', brands: 'Ferrero', nutriments: { 'energy-kcal_100g': 539, proteins_100g: 6.3, carbohydrates_100g: 57.5, sugars_100g: 56.3, fat_100g: 30.9 }, nutriscore_grade: 'e', quantity: '400 g e' } } })
     const [r] = await run('food-facts', '3017 6204 22003', f)
     expect(r.url).toBe('https://world.openfoodfacts.org/product/3017620422003')
     expect(r.content).toContain('Per 100 g: 539 kcal')
     expect(r.content).toContain('Nutri-Score: E')
+    expect(r.content).toContain('Nutella (Ferrero), 400 g.')
   })
 
   it('news: needs GNEWS_API_KEY and never puts the key in a result', async () => {

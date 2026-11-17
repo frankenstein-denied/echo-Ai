@@ -22,7 +22,7 @@ export type LookupOptions = {
 
 /** Generic client name (Wikipedia asks API clients to identify themselves). */
 const USER_AGENT = 'EchoAI/1.0 (https://github.com/frankenstein-denied/echo-Ai)'
-const DEFAULT_TIMEOUT_MS = 6000
+const DEFAULT_TIMEOUT_MS = 8000
 const MAX_RESULTS = 5
 const MAX_CONTENT = 700
 
@@ -151,7 +151,9 @@ function offResult(p: OffProduct): WebResult | null {
     .map(([k, unit]) => (num(n[k]) !== null ? `${fmt(num(n[k]) as number)} ${unit}` : ''))
     .filter(Boolean)
   const grade = typeof p.nutriscore_grade === 'string' && /^[a-e]$/i.test(p.nutriscore_grade) ? p.nutriscore_grade.toUpperCase() : ''
-  const parts = [`${name}${clip(p.brands, 80) ? ` (${clip(p.brands, 80)})` : ''}${clip(p.quantity, 30) ? `, ${clip(p.quantity, 30)}` : ''}.`]
+  // Labels mark estimated weights with ℮ (sometimes typed as a trailing "e"): drop it.
+  const qty = clip(p.quantity, 30).replace(/\s*℮$/u, '').replace(/\s+e$/, '')
+  const parts = [`${name}${clip(p.brands, 80) ? ` (${clip(p.brands, 80)})` : ''}${qty ? `, ${qty}` : ''}.`]
   if (per.length) parts.push(`Per 100 g: ${per.join(', ')}.`)
   if (grade) parts.push(`Nutri-Score: ${grade}.`)
   const ingredients = clip(p.ingredients_text, 300)

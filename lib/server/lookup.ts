@@ -11,7 +11,8 @@ export const LOOKUP_LIMITS = { perHour: 30, windowMs: 3_600_000, sources: 5, rep
 export const LOOKUP_FAILED_REPLY = "I couldn't look that up just now. Try again in a moment."
 export const LOOKUP_SOURCES_ONLY_REPLY = "Here's what I found, but I couldn't write an answer just now."
 
-const FETCH_TIMEOUT_MS = 6000
+// Open Library and Open Food Facts often take 5-6 s.
+const FETCH_TIMEOUT_MS = 8000
 /** Time kept for the answer call after the fetch. */
 const ANSWER_RESERVE_MS = 4000
 /** Below this much time left, don't start a lookup. */
