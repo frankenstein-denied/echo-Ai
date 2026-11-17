@@ -18,6 +18,8 @@ import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
 import { BrainView } from './brain-view'
+import { LegacyView } from './legacy/legacy-view'
+import { useLegacyActivity } from './legacy/use-legacy-activity'
 import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
 import { PermissionSetup } from './permission-setup'
@@ -63,6 +65,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
   const [connectorNotice, setConnectorNotice] = useState<ConnectorNotice | null>(null)
   const days = daysWithEcho(profile)
+  useLegacyActivity(user?.uid, profile)
   const { dueCount, week } = useSidebarData(user?.uid)
   useMobileViewportSync()
 
@@ -187,6 +190,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
             <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
             <BrainView uid={user.uid} onOpenPage={openDiaryPage} />
+          ) : view === 'Legacy' ? (
+            <LegacyView user={user} profile={profile} />
           ) : (
             <SettingsView user={user} profile={profile} signOut={signOut} />
           )}

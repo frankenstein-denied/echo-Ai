@@ -6,12 +6,12 @@
  * The tab bar hides itself while a text field is focused or a call is active (see globals.css `.mobile-tabbar`).
  */
 import type { ReactNode } from 'react'
-import { BookOpen, Brain, CalendarDays, FileText, HeartPulse, LogOut, MoreHorizontal, Network, Settings, Target, type LucideIcon } from 'lucide-react'
+import { BookOpen, Brain, CalendarDays, Feather, FileText, HeartPulse, LogOut, MoreHorizontal, Network, Settings, Target, type LucideIcon } from 'lucide-react'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { GuideInfoButton } from './guide'
 import { Sheet, SheetItem } from './sheet'
 
-export type TabView = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Settings'
+export type TabView = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy' | 'Settings'
 
 const TABS: { name: TabView; label: string; icon: LucideIcon }[] = [
   { name: 'Diary', label: 'Diary', icon: BookOpen },
@@ -24,6 +24,7 @@ export const MORE_VIEWS: { name: TabView; icon: LucideIcon; description: string 
   { name: 'Goals', icon: Target, description: 'Progress and milestones' },
   { name: 'Health', icon: HeartPulse, description: 'Mood, sleep, water, energy' },
   { name: 'Connectors', icon: Network, description: 'Linked tools' },
+  { name: 'Legacy', icon: Feather, description: 'Who inherits your Echo' },
   { name: 'Settings', icon: Settings, description: 'Profile, voice, account' },
 ]
 

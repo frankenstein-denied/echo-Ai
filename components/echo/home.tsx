@@ -6,6 +6,7 @@ import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponse, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
@@ -519,6 +520,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
         }
+        void noteLegacyActivity(uid)
         const applied = await applyEchoResponse(uid, page, res, { refs: built?.refs, source: 'chat', onDeleted: pushUndo })
         void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
