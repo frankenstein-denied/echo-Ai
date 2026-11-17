@@ -87,7 +87,46 @@ export function releaseOptions(demo: boolean): { label: string; minutes: number 
   return demo ? [{ label: '5 minutes', minutes: DEMO_MINUTES }, ...months] : months
 }
 
-/** lastActiveAt is stamped at most once per hour. */
-export function shouldStampActivity(lastStampMs: number | null, nowMs: number): boolean {
-  return lastStampMs === null || nowMs - lastStampMs >= ACTIVITY_THROTTLE_MS
+/**
+ * How often lastActiveAt may be stamped: at most once per hour, but at least twice per release period,
+ * so a returning owner re-locks well before a short (demo) period runs out. Unknown period: one hour.
+ */
+export function activityThrottleMs(releaseAfterMinutes?: number | null): number {
+  if (typeof releaseAfterMinutes !== 'number' || !Number.isFinite(releaseAfterMinutes) || releaseAfterMinutes <= 0) return ACTIVITY_THROTTLE_MS
+  return Math.min(ACTIVITY_THROTTLE_MS, (releaseAfterMinutes * 60_000) / 2)
+}
+
+/** lastActiveAt is stamped at most once per throttle window (one hour by default). */
+export function shouldStampActivity(lastStampMs: number | null, nowMs: number, throttleMs: number = ACTIVITY_THROTTLE_MS): boolean {
+  return lastStampMs === null || nowMs - lastStampMs >= throttleMs
+}
+
+export type ActivityStampDeps = {
+  /** The last recorded stamp time, or null. */
+  readStamp: () => number | null
+  /** Records a stamp time; null clears it. */
+  writeStamp: (ms: number | null) => void
+  /** The Firestore write; rejects with { code: 'not-found' } when Legacy was never set up. */
+  write: () => Promise<void>
+  nowMs: number
+  throttleMs: number
+}
+
+/**
+ * One throttled activity stamp. The time is recorded before the write so overlapping calls (open + focus)
+ * write once; a failed write rolls it back so the next call retries. A missing settings doc keeps the
+ * stamp: there is nothing to keep alive until the owner turns Legacy on (which stamps by itself).
+ */
+export async function runActivityStamp(d: ActivityStampDeps): Promise<'skipped' | 'stamped' | 'missing' | 'failed'> {
+  const prev = d.readStamp()
+  if (!shouldStampActivity(prev, d.nowMs, d.throttleMs)) return 'skipped'
+  d.writeStamp(d.nowMs)
+  try {
+    await d.write()
+    return 'stamped'
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === 'not-found') return 'missing'
+    d.writeStamp(prev)
+    return 'failed'
+  }
 }

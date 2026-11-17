@@ -1,7 +1,7 @@
 import { getLegacySettings, stampActivity } from '@/lib/legacy-store'
 
-// Keeps the owner's Legacy alive: stampActivity runs only when Legacy is enabled.
-// The enabled flag is read once per user and cached; the Legacy page updates it on toggle.
+// Keeps the owner's Legacy alive. Stamping is never gated on a cached "enabled" flag: a stale `false`
+// would stop a long-lived tab from re-locking a released legacy. The flag only gates the profile copy.
 
 const enabledByUid = new Map<string, Promise<boolean>>()
 
@@ -27,10 +27,10 @@ export function setLegacyEnabledCache(uid: string, enabled: boolean): void {
   enabledByUid.set(uid, Promise.resolve(enabled))
 }
 
-/** Marks the owner active (throttled to once an hour inside stampActivity). Never throws. */
+/** Marks the owner active (throttled inside stampActivity; a missing settings doc is a quiet no-op). Never throws. */
 export async function noteLegacyActivity(uid: string): Promise<void> {
   try {
-    if (await isLegacyEnabled(uid)) await stampActivity(uid)
+    await stampActivity(uid)
   } catch {
     // Activity stamping is best effort.
   }

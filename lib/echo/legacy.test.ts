@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_SHARED,
   DEMO_MINUTES,
@@ -15,6 +15,8 @@ import {
   questionText,
   releaseOptions,
   shouldStampActivity,
+  activityThrottleMs,
+  runActivityStamp,
 } from './legacy'
 
 describe('normalizeAnswer', () => {
@@ -107,5 +109,73 @@ describe('shouldStampActivity', () => {
     expect(shouldStampActivity(null, 0)).toBe(true)
     expect(shouldStampActivity(0, 3_599_999)).toBe(false)
     expect(shouldStampActivity(0, 3_600_000)).toBe(true)
+  })
+
+  it('honours a custom throttle window', () => {
+    expect(shouldStampActivity(0, 149_999, 150_000)).toBe(false)
+    expect(shouldStampActivity(0, 150_000, 150_000)).toBe(true)
+    expect(shouldStampActivity(null, 0, 150_000)).toBe(true)
+  })
+})
+
+describe('activityThrottleMs', () => {
+  it('is half the release period, capped at one hour', () => {
+    expect(activityThrottleMs(5)).toBe(150_000)
+    expect(activityThrottleMs(43200)).toBe(3_600_000)
+    expect(activityThrottleMs(120)).toBe(3_600_000)
+    expect(activityThrottleMs(60)).toBe(1_800_000)
+  })
+
+  it('defaults to one hour when the period is unknown', () => {
+    expect(activityThrottleMs()).toBe(3_600_000)
+    expect(activityThrottleMs(null)).toBe(3_600_000)
+    expect(activityThrottleMs(0)).toBe(3_600_000)
+    expect(activityThrottleMs(Number.NaN)).toBe(3_600_000)
+  })
+})
+
+describe('runActivityStamp', () => {
+  function deps(initial: number | null, write: () => Promise<void>) {
+    let stored = initial
+    const d = {
+      readStamp: () => stored,
+      writeStamp: vi.fn((ms: number | null) => { stored = ms }),
+      write: vi.fn(write),
+      nowMs: 10_000_000,
+      throttleMs: 3_600_000,
+    }
+    return { d, stored: () => stored }
+  }
+
+  it('skips inside the throttle window', async () => {
+    const { d } = deps(10_000_000 - 1000, () => Promise.resolve())
+    expect(await runActivityStamp(d)).toBe('skipped')
+    expect(d.write).not.toHaveBeenCalled()
+  })
+
+  it('records the stamp before the write so overlapping calls write once', async () => {
+    let release!: () => void
+    const { d, stored } = deps(null, () => new Promise<void>(r => { release = r }))
+    const first = runActivityStamp(d)
+    expect(stored()).toBe(10_000_000)
+    expect(await runActivityStamp(d)).toBe('skipped')
+    release()
+    expect(await first).toBe('stamped')
+    expect(d.write).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the stamp when Legacy was never set up', async () => {
+    const { d, stored } = deps(null, () => Promise.reject({ code: 'not-found' }))
+    expect(await runActivityStamp(d)).toBe('missing')
+    expect(stored()).toBe(10_000_000)
+  })
+
+  it('rolls the stamp back when the write fails otherwise', async () => {
+    const { d, stored } = deps(5, () => Promise.reject({ code: 'unavailable' }))
+    expect(await runActivityStamp(d)).toBe('failed')
+    expect(stored()).toBe(5)
+    const fresh = deps(null, () => Promise.reject(new Error('offline')))
+    expect(await runActivityStamp(fresh.d)).toBe('failed')
+    expect(fresh.stored()).toBeNull()
   })
 })

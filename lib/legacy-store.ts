@@ -30,7 +30,8 @@ import {
   MAX_TRIES,
   memoryTypesFor,
   questionText,
-  shouldStampActivity,
+  activityThrottleMs,
+  runActivityStamp,
   TRY_WINDOW_MS,
   type LegacyKind,
 } from '@/lib/echo/legacy'
@@ -117,9 +118,14 @@ export async function lookupInheritor(email: string): Promise<{ uid: string; dis
 
 // ---------- settings, beacon, profile copy ----------
 
+/** The owner's release period, remembered for this page so stamping can keep up with short (demo) periods. */
+const releaseMinutesByUid = new Map<string, number>()
+
 export async function getLegacySettings(uid: string): Promise<LegacySettings | null> {
   const snap = await getDoc(legacySettingsDoc(uid))
-  return snap.exists() ? snap.data() : null
+  const s = snap.exists() ? snap.data() : null
+  if (s && typeof s.releaseAfterMinutes === 'number') releaseMinutesByUid.set(uid, s.releaseAfterMinutes)
+  return s
 }
 
 /** The safe fields of the owner's profile that an unlocked inheritor may read. */
@@ -156,38 +162,41 @@ export async function saveLegacySettings(uid: string, s: { enabled: boolean; rel
   b.set(legacyBeaconDoc(uid), { ownerName, updatedAt: serverTimestamp() } as never)
   if (profile) b.set(legacyProfileDoc(uid), legacyProfileFields(profile) as never)
   await b.commit()
+  releaseMinutesByUid.set(uid, s.releaseAfterMinutes)
 }
 
-const STAMP_KEY = 'echo.legacy.lastStamp'
+const stampKey = (uid: string) => `echo.legacy.lastStamp.${uid}`
 
-function readStamp(): number | null {
+function readStamp(uid: string): number | null {
   try {
-    const v = Number(globalThis.localStorage?.getItem(STAMP_KEY))
+    const v = Number(globalThis.localStorage?.getItem(stampKey(uid)))
     return Number.isFinite(v) && v > 0 ? v : null
   } catch {
     return null
   }
 }
 
-function writeStamp(ms: number): void {
+function writeStamp(uid: string, ms: number | null): void {
   try {
-    globalThis.localStorage?.setItem(STAMP_KEY, String(ms))
+    if (ms === null) globalThis.localStorage?.removeItem(stampKey(uid))
+    else globalThis.localStorage?.setItem(stampKey(uid), String(ms))
   } catch {
     // Storage blocked: we just stamp more often.
   }
 }
 
-/** Marks the owner active, at most once per hour. Silent when Legacy was never set up. */
+/**
+ * Marks the owner active, at most once an hour (or twice per release period when that is shorter).
+ * Silent when Legacy was never set up; never throws.
+ */
 export async function stampActivity(uid: string): Promise<void> {
-  const now = Date.now()
-  if (!shouldStampActivity(readStamp(), now)) return
-  try {
-    await updateDoc(legacySettingsDoc(uid), { lastActiveAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
-    writeStamp(now)
-  } catch (e) {
-    // No settings doc yet: nothing to keep alive, so don't retry for an hour.
-    if ((e as { code?: string } | null)?.code === 'not-found') writeStamp(now)
-  }
+  await runActivityStamp({
+    readStamp: () => readStamp(uid),
+    writeStamp: (ms) => writeStamp(uid, ms),
+    write: () => updateDoc(legacySettingsDoc(uid), { lastActiveAt: serverTimestamp(), updatedAt: serverTimestamp() } as never),
+    nowMs: Date.now(),
+    throttleMs: activityThrottleMs(releaseMinutesByUid.get(uid)),
+  })
 }
 
 // ---------- links (owner side) ----------
