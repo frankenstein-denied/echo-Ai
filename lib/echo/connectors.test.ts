@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CONNECTORS, connectorStatuses, isConnected } from './connectors'
+import { CONNECTOR_CATEGORIES, CONNECTORS, connectorStatuses, isConnected } from './connectors'
+
+describe('CONNECTORS', () => {
+  it('every connector has a known category', () => {
+    const known = CONNECTOR_CATEGORIES.map((c) => c.id) as string[]
+    for (const c of CONNECTORS) expect(known).toContain(c.category)
+  })
+})
 
 const status = (docs: { id: string; connected?: boolean; sealed?: string; lat?: unknown; lon?: unknown }[], id: string) => connectorStatuses(docs).find((s) => s.id === id)?.status
 
