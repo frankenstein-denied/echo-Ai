@@ -20,6 +20,14 @@ export function historyForRequest(messages: readonly { role: MemorialTurn['role'
     .map((m) => ({ role: m.role, text: m.text }))
 }
 
+/** Shown when an open legacy stops being readable because the owner came back. */
+export const RELOCKED_MESSAGE = 'This legacy is locked again.'
+
+/** Before a memorial chat send: go ahead unless the access check says the legacy is no longer readable. */
+export function chatSendGate(readable: boolean | 'unknown'): 'send' | 'locked' {
+  return readable === false ? 'locked' : 'send'
+}
+
 /** Pending requests plus released legacies this device hasn't shown yet. */
 export function legacyBadgeCount(pending: number, released: readonly string[], seen: readonly string[]): number {
   const seenSet = new Set(seen)

@@ -339,6 +339,20 @@ export async function isReleased(ownerUid: string): Promise<boolean> {
 }
 
 /**
+ * Whether this inheritor can still read the owner's legacy (the profile copy). False when the rules deny it:
+ * a wrong stored guess, or the owner came back and the legacy locked again. Other errors are thrown.
+ */
+export async function canReadLegacy(ownerUid: string): Promise<boolean> {
+  try {
+    await getDoc(legacyProfileDoc(ownerUid))
+    return true
+  } catch (e) {
+    if (isDenied(e)) return false
+    throw e
+  }
+}
+
+/**
  * Every guess is a counted write; the write never says if it was right. Afterwards the profile
  * copy is readable only when the stored guess matches the answer, which is how we learn the result.
  */
@@ -371,14 +385,7 @@ export async function submitGuess(
     throw e
   }
 
-  let correct: boolean
-  try {
-    await getDoc(legacyProfileDoc(ownerUid))
-    correct = true
-  } catch (e) {
-    if (!isDenied(e)) throw e
-    correct = false
-  }
+  const correct = await canReadLegacy(ownerUid)
   const triesLeft = MAX_TRIES - count
   return {
     correct,

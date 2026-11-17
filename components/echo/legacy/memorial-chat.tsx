@@ -6,11 +6,11 @@ import { Timestamp } from 'firebase/firestore'
 import { ArrowLeft, Send } from 'lucide-react'
 import type { UserProfile } from '@/lib/firestore'
 import { LEGACY_KINDS } from '@/lib/echo/legacy'
-import { bubbleDelayMs, historyForRequest, initialOf } from '@/lib/echo/legacy-chat-helpers'
+import { bubbleDelayMs, chatSendGate, historyForRequest, initialOf, RELOCKED_MESSAGE } from '@/lib/echo/legacy-chat-helpers'
 import { askMemorial } from '@/lib/echo/legacy-client'
 import { buildLegacyContext, toVoiceProfile } from '@/lib/echo/legacy-prompt'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { addLegacyChatMessage, loadSharedLegacy, watchLegacyChat, type SharedLegacy } from '@/lib/legacy-store'
+import { addLegacyChatMessage, canReadLegacy, loadSharedLegacy, watchLegacyChat, type SharedLegacy } from '@/lib/legacy-store'
 import { Alert, Badge, Button, IconButton, Skeleton } from '../ui'
 import { BrowseMemories } from './browse-memories'
 
@@ -65,6 +65,7 @@ export function MemorialChat({
   const [error, setError] = useState('')
   const [info, setInfo] = useState(false)
   const [browsing, setBrowsing] = useState(false)
+  const [locked, setLocked] = useState(false)
   const context = useMemo(() => buildLegacyContext(shared), [shared])
   const voice = useMemo(() => toVoiceProfile(shared.voice), [shared])
   const messagesRef = useRef<ChatMsg[]>([])
@@ -113,9 +114,20 @@ export function MemorialChat({
 
   async function send() {
     const text = draft.trim()
-    if (!text || busy) return
+    if (!text || busy || locked) return
     setBusy(true)
     setError('')
+    if (!preview) {
+      // The owner may have come back since this chat opened; the rules then deny the profile copy.
+      const readable = await canReadLegacy(ownerUid).catch(() => 'unknown' as const)
+      if (chatSendGate(readable) === 'locked') {
+        if (alive.current) {
+          setLocked(true)
+          setBusy(false)
+        }
+        return
+      }
+    }
     const history = historyForRequest(messagesRef.current)
     setDraft('')
     try {
@@ -243,10 +255,16 @@ export function MemorialChat({
         </div>
 
         <div className="shrink-0 border-t border-border p-3">
-          {error && (
+          {locked ? (
             <div className="mb-2">
-              <Alert variant="warning">{error}</Alert>
+              <Alert variant="info">{RELOCKED_MESSAGE}</Alert>
             </div>
+          ) : (
+            error && (
+              <div className="mb-2">
+                <Alert variant="warning">{error}</Alert>
+              </div>
+            )
           )}
           <div className="flex items-end gap-2">
             <textarea
@@ -258,10 +276,10 @@ export function MemorialChat({
               maxLength={2000}
               aria-label={`Message ${ownerName}`}
               placeholder={`Message ${ownerName}`}
-              disabled={messages === null}
+              disabled={messages === null || locked}
               className={`max-h-32 min-h-10 flex-1 resize-none rounded-lg border border-input-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50 max-lg:min-h-11 max-lg:text-[15px] ${FOCUS_RING}`}
             />
-            <IconButton icon={Send} label="Send" variant="primary" onClick={() => void send()} disabled={busy || !draft.trim()} />
+            <IconButton icon={Send} label="Send" variant="primary" onClick={() => void send()} disabled={busy || locked || !draft.trim()} />
           </div>
         </div>
       </section>

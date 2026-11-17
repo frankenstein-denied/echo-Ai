@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleDelayMs, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
+import { bubbleDelayMs, chatSendGate, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
 
 describe('bubbleDelayMs', () => {
   it('starts at 600 ms for an empty bubble', () => {
@@ -77,5 +77,16 @@ describe('ownerDisplayName', () => {
   })
   it('falls back to "Someone"', () => {
     expect(ownerDisplayName(null, null)).toBe('Someone')
+  })
+})
+
+describe('chatSendGate', () => {
+  it('blocks a send once the legacy is no longer readable', () => {
+    expect(chatSendGate(false)).toBe('locked')
+  })
+
+  it('sends when readable, or when the check could not tell', () => {
+    expect(chatSendGate(true)).toBe('send')
+    expect(chatSendGate('unknown')).toBe('send')
   })
 })
