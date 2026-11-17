@@ -97,7 +97,7 @@ nickname they used — grounded in memories the owner actually left, and never i
   - Owner creates (status `pending`), may update `questionId`/`shared`, may delete.
   - Inheritor may update only `status` from `pending` to `accepted`, and may delete (decline/leave).
   - Both can read. Max 5 inheritors per owner (enforced in the UI).
-- `legacySecrets/{linkId}`: `{ answerHash }`. Owner may create/update/delete. **Nobody may read.**
+- `legacySecrets/{linkId}`: `{ answerHash }`. Owner may create/update/delete/get. **No inheritor or other user may read it.**
   Rules use `get()` on it, which bypasses read permission.
 - **Preset questions** (stable ids, never reorder; at least 12):
   first pet's name · nickname I called you · city we first met · my favorite food · my first job ·
@@ -109,17 +109,17 @@ nickname they used — grounded in memories the owner actually left, and never i
 
 ### Unlocking
 
-- `legacyAttempts/{linkId}`: `{ count, windowStart, guessHash, correct, lastAt }`. Only the link's
-  inheritor writes it, and only while the owner is Released. The rule forces
-  `correct == (guessHash == get(legacySecrets/{linkId}).answerHash)`, so the owner can see wrong
-  tries without ever reading the secret. The owner may delete it.
+- `legacyAttempts/{linkId}`: `{ count, windowStart, guessHash, lastAt }`. Only the link's
+  inheritor writes it, and only while the owner is Released. Every guess — right or wrong — is an
+  accepted, counted write; the rule never compares the hash on write (doing so would let denied
+  writes reveal the answer for free). The owner may delete it.
   - Create: `count == 1`, `windowStart == request.time`.
   - Update: if `request.time > windowStart + 24h` → reset (`count == 1`, `windowStart == request.time`);
     else `count == old + 1` and `count <= 5`.
   - Readable by the inheritor and the owner. The owner's Legacy page shows "N wrong tries from
-    <name>" when `correct == false`, so a returning owner sees misuse.
-- **Unlocked(owner, inheritor)** = link `accepted` && Released(owner) && `attempts.correct == true`.
-- The client reads `correct` back after writing a guess.
+    <name>" when `guessHash != answerHash` (the owner's client reads both), so a returning owner sees misuse.
+- **Unlocked(owner, inheritor)** = link `accepted` && Released(owner) && `attempts.guessHash == secrets.answerHash` (compared in rules at read time).
+- After writing a guess, the inheritor's client tries to read `legacy/profile`; success means correct.
 - **Removal and re-adding:** removing an inheritor deletes the link, secret and attempts in one
   batch (owner may delete all three). An inheritor leaving deletes only the link; the owner's
   client deletes any stale attempts doc before creating a new link for the same person, so a
