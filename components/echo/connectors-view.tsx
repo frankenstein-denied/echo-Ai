@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { Search } from 'lucide-react'
 import { connectorsCol, setConnectorConnected } from '@/lib/firestore'
 import { connectedSummary } from '@/lib/echo/connector-tiles'
-import { categoryChips, filterConnectors, groupByCategory, type CategoryFilter } from '@/lib/echo/connector-filter'
+import { categoryChips, emptyMessage, filterConnectors, groupByCategory, shownCountText, type CategoryFilter } from '@/lib/echo/connector-filter'
 import { CONNECTORS, connectorStatuses, type ConnectorDef, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { Alert, Button, EmptyState, PageHeader, Skeleton } from './ui'
 import { ConnectorCard } from './connectors/connector-card'
@@ -17,6 +17,8 @@ export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text:
 type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }
 
 const CHIPS = categoryChips(CONNECTORS)
+// Every section and card stays mounted; filtering only hides them, so Weather keeps its forecast and picker state.
+const ALL_GROUPS = groupByCategory(CONNECTORS)
 
 export function ConnectorsView({
   uid,
@@ -36,6 +38,7 @@ export function ConnectorsView({
   const [busy, setBusy] = useState<ConnectorId | null>(null)
   const [category, setCategory] = useState<CategoryFilter>('all')
   const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     return onSnapshot(
@@ -52,7 +55,7 @@ export function ConnectorsView({
   }, [uid])
 
   const statuses = useMemo(() => (docs ? connectorStatuses(docs) : []), [docs])
-  const groups = useMemo(() => groupByCategory(filterConnectors(CONNECTORS, { category, query })), [category, query])
+  const visible = useMemo(() => new Set(filterConnectors(CONNECTORS, { category, query }).map((c) => c.id)), [category, query])
 
   async function run(id: ConnectorId, action: () => Promise<void>) {
     setBusy(id)
@@ -130,45 +133,50 @@ export function ConnectorsView({
       ) : (
         <>
           <p className="-mt-3 mb-4 text-sm text-muted-foreground">{connectedSummary(statuses)}</p>
-          <ConnectorFilters chips={CHIPS} category={category} onCategory={setCategory} query={query} onQuery={setQuery} />
-          {groups.length === 0 ? (
+          <ConnectorFilters chips={CHIPS} category={category} onCategory={setCategory} query={query} onQuery={setQuery} inputRef={searchRef} />
+          <p role="status" className="sr-only">
+            {shownCountText(visible.size)}
+          </p>
+          {visible.size === 0 && (
             <EmptyState
               icon={Search}
               title="Nothing matches"
-              description={query.trim() ? `No connectors match “${query.trim()}” here.` : 'No connectors in this category yet.'}
+              description={emptyMessage({ category, query })}
               action={
                 <Button
                   variant="secondary"
                   onClick={() => {
                     setCategory('all')
                     setQuery('')
+                    searchRef.current?.focus()
                   }}
                 >
                   Clear
                 </Button>
               }
             />
-          ) : (
-            <div className="grid gap-6">
-              {groups.map((g) => (
-                <section key={g.id} aria-labelledby={`connectors-${g.id}`}>
-                  <h2 id={`connectors-${g.id}`} className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {g.label}
-                  </h2>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {g.items.map((c) => {
-                      const status = statusOf(c.id)
-                      return (
-                        <ConnectorCard key={c.id} def={c} status={status}>
+          )}
+          <div className="grid gap-6">
+            {ALL_GROUPS.map((g) => (
+              <section key={g.id} aria-labelledby={`connectors-${g.id}`} hidden={!g.items.some((c) => visible.has(c.id))}>
+                <h2 id={`connectors-${g.id}`} className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {g.label}
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {g.items.map((c) => {
+                    const status = statusOf(c.id)
+                    return (
+                      <div key={c.id} className="grid" hidden={!visible.has(c.id)}>
+                        <ConnectorCard def={c} status={status}>
                           {body(c, status)}
                         </ConnectorCard>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
         </>
       )}
     </div>

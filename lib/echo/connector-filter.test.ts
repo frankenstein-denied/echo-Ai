@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CONNECTORS } from './connectors'
-import { categoryChips, filterConnectors, groupByCategory } from './connector-filter'
+import { categoryChips, emptyMessage, filterConnectors, groupByCategory, shownCountText } from './connector-filter'
 
 const ids = (defs: { id: string }[]) => defs.map((d) => d.id)
 
@@ -42,5 +42,23 @@ describe('categoryChips', () => {
     const chips = categoryChips(CONNECTORS)
     expect(chips.map((c) => c.id)).toEqual(['all', 'music', 'health', 'productivity', 'live'])
     expect(chips[0].label).toBe('All')
+  })
+})
+
+describe('emptyMessage', () => {
+  it('names the query, and the category only when one is picked', () => {
+    expect(emptyMessage({ category: 'all', query: ' zzz ' })).toBe('No connectors match “zzz”.')
+    expect(emptyMessage({ category: 'music', query: 'zzz' })).toBe('No connectors match “zzz” in Music.')
+  })
+  it('falls back when there is no query', () => {
+    expect(emptyMessage({ category: 'ai', query: '  ' })).toBe('No connectors in AI models yet.')
+  })
+})
+
+describe('shownCountText', () => {
+  it('pluralises the count for screen readers', () => {
+    expect(shownCountText(0)).toBe('No connectors shown')
+    expect(shownCountText(1)).toBe('1 connector shown')
+    expect(shownCountText(8)).toBe('8 connectors shown')
   })
 })

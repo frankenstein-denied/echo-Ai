@@ -20,3 +20,17 @@ export function groupByCategory(defs: readonly ConnectorDef[]): { id: ConnectorC
 export function categoryChips(defs: readonly ConnectorDef[]): { id: CategoryFilter; label: string }[] {
   return [{ id: 'all', label: 'All' }, ...groupByCategory(defs).map(({ id, label }) => ({ id, label }))]
 }
+
+const categoryLabel = (c: CategoryFilter) => CONNECTOR_CATEGORIES.find((x) => x.id === c)?.label ?? 'this category'
+
+/** Copy for the "Nothing matches" state. */
+export function emptyMessage(filter: { category: CategoryFilter; query: string }): string {
+  const q = filter.query.trim()
+  if (!q) return `No connectors in ${categoryLabel(filter.category)} yet.`
+  return filter.category === 'all' ? `No connectors match “${q}”.` : `No connectors match “${q}” in ${categoryLabel(filter.category)}.`
+}
+
+/** Screen-reader announcement after filtering. */
+export function shownCountText(n: number): string {
+  return n === 0 ? 'No connectors shown' : `${n} connector${n === 1 ? '' : 's'} shown`
+}

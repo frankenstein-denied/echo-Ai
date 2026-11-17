@@ -1,11 +1,11 @@
 /**
  * Form controls (forward native props; 8px radius, surface-2 fill, visible focus ring)
- * Input / Textarea / Select props: label?: string (rendered above), hint?: string, error?: string (sets aria-invalid, role=alert text),
+ * Input / Textarea / Select props: label?: string (rendered above), hint?: string, error?: string (sets aria-invalid, role=alert text), Input also ref?,
  *   plus native props. Select takes <option> children.
  * RadioGroup props: label: string, value: string, onChange(value), options: {value,label,description?,swatch?: CSS colour for a decorative dot}[], name?: string.
  * Switch props: checked: boolean, onChange(checked), label: string (aria-label), disabled?.
  */
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useId, type InputHTMLAttributes, type Ref, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 
@@ -27,7 +27,7 @@ function aria(id: string, f: FieldMeta) {
   return { 'aria-invalid': f.error ? true : undefined, 'aria-describedby': f.error ? `${id}-err` : f.hint ? `${id}-hint` : undefined }
 }
 
-export function Input({ label, hint, error, className = '', id, ...rest }: InputHTMLAttributes<HTMLInputElement> & FieldMeta) {
+export function Input({ label, hint, error, className = '', id, ...rest }: InputHTMLAttributes<HTMLInputElement> & FieldMeta & { ref?: Ref<HTMLInputElement> }) {
   const auto = useId()
   const fid = id ?? auto
   return (
