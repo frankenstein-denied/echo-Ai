@@ -28,6 +28,11 @@ export function chatSendGate(readable: boolean | 'unknown'): 'send' | 'locked' {
   return readable === false ? 'locked' : 'send'
 }
 
+/** A guess write the rules denied: if the legacy is still released it was the tries limit, otherwise the owner came back. */
+export function deniedGuessOutcome(stillReleased: boolean): 'tries' | 'relocked' {
+  return stillReleased ? 'tries' : 'relocked'
+}
+
 /** Pending requests plus released legacies this device hasn't shown yet. */
 export function legacyBadgeCount(pending: number, released: readonly string[], seen: readonly string[]): number {
   const seenSet = new Set(seen)

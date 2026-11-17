@@ -6,7 +6,7 @@ import type { User } from 'firebase/auth'
 import { LogOut } from 'lucide-react'
 import type { UserProfile } from '@/lib/firestore'
 import type { LegacyKind } from '@/lib/echo/legacy'
-import { initialOf, ownerDisplayName } from '@/lib/echo/legacy-chat-helpers'
+import { initialOf, ownerDisplayName, RELOCKED_MESSAGE } from '@/lib/echo/legacy-chat-helpers'
 import { isReleased, leaveLegacy, legacyProfileDoc, loadSharedLegacy, respondToRequest, type LegacyLink, type SharedLegacy } from '@/lib/legacy-store'
 import { Alert, Badge, Button, Card, ConfirmDialog, IconButton, Skeleton } from '../ui'
 import { MemorialChat } from './memorial-chat'
@@ -194,7 +194,7 @@ function isDenied(e: unknown): boolean {
   return (e as { code?: string } | null)?.code === 'permission-denied'
 }
 
-type OpenState = { step: 'checking' } | { step: 'closed' } | { step: 'question' } | { step: 'loading' } | { step: 'chat'; shared: SharedLegacy } | { step: 'error' }
+type OpenState = { step: 'checking' } | { step: 'closed'; relocked?: boolean } | { step: 'question' } | { step: 'loading' } | { step: 'chat'; shared: SharedLegacy } | { step: 'error' }
 
 /** Opening a released legacy: the question first (unless already answered), then the memorial chat. */
 export function OpenLegacy({ user, profile, link, onBack }: { user: User; profile: UserProfile; link: LegacyLink; onBack: () => void }) {
@@ -244,6 +244,7 @@ export function OpenLegacy({ user, profile, link, onBack }: { user: User; profil
         inheritorUid={user.uid}
         questionId={link.questionId}
         onUnlocked={() => setAttempt((n) => n + 1)}
+        onRelocked={() => setState({ step: 'closed', relocked: true })}
         onBack={onBack}
       />
     )
@@ -256,7 +257,7 @@ export function OpenLegacy({ user, profile, link, onBack }: { user: User; profil
         </Button>
       </div>
       {state.step === 'closed' ? (
-        <Alert variant="info">{fallbackName}&apos;s legacy is locked right now.</Alert>
+        <Alert variant="info">{state.relocked ? RELOCKED_MESSAGE : <>{fallbackName}&apos;s legacy is locked right now.</>}</Alert>
       ) : state.step === 'error' ? (
         <Alert variant="danger">
           Couldn&apos;t open {fallbackName}&apos;s legacy.{' '}

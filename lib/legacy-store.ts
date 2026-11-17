@@ -360,7 +360,7 @@ export async function submitGuess(
   ownerUid: string,
   inheritorUid: string,
   answer: string,
-): Promise<{ correct: boolean; triesLeft: number; lockedUntil: number | null }> {
+): Promise<{ correct: boolean; triesLeft: number; lockedUntil: number | null; denied?: true }> {
   const linkId = legacyLinkId(ownerUid, inheritorUid)
   const guessHash = await hashAnswer(linkId, answer)
   const ref = legacyAttemptDoc(linkId)
@@ -381,7 +381,8 @@ export async function submitGuess(
       lastAt: serverTimestamp(),
     } as never)
   } catch (e) {
-    if (isDenied(e)) return { correct: false, triesLeft: 0, lockedUntil }
+    // Denied: out of tries, or the legacy is no longer released (the owner came back). The caller tells them apart.
+    if (isDenied(e)) return { correct: false, triesLeft: 0, lockedUntil, denied: true }
     throw e
   }
 

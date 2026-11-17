@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleDelayMs, chatSendGate, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
+import { bubbleDelayMs, chatSendGate, deniedGuessOutcome, historyForRequest, initialOf, legacyBadgeCount, legacySeenKey, ownerDisplayName } from './legacy-chat-helpers'
 
 describe('bubbleDelayMs', () => {
   it('starts at 600 ms for an empty bubble', () => {
@@ -88,5 +88,12 @@ describe('chatSendGate', () => {
   it('sends when readable, or when the check could not tell', () => {
     expect(chatSendGate(true)).toBe('send')
     expect(chatSendGate('unknown')).toBe('send')
+  })
+})
+
+describe('deniedGuessOutcome', () => {
+  it('blames the tries limit only while the legacy is still released', () => {
+    expect(deniedGuessOutcome(true)).toBe('tries')
+    expect(deniedGuessOutcome(false)).toBe('relocked')
   })
 })

@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { isValidAnswer, MAX_TRIES, questionText } from '@/lib/echo/legacy'
-import { submitGuess } from '@/lib/legacy-store'
+import { deniedGuessOutcome } from '@/lib/echo/legacy-chat-helpers'
+import { isReleased, submitGuess } from '@/lib/legacy-store'
 import { Alert, Button, Card, IconButton, Input } from '../ui'
 import { ANSWER_INVALID } from './kinds'
 
@@ -20,6 +21,7 @@ export function UnlockScreen({
   inheritorUid,
   questionId,
   onUnlocked,
+  onRelocked,
   onBack,
 }: {
   ownerName: string
@@ -27,6 +29,8 @@ export function UnlockScreen({
   inheritorUid: string
   questionId: string
   onUnlocked: () => void
+  /** The owner came back while this screen was open: the legacy is locked again. */
+  onRelocked: () => void
   onBack: () => void
 }) {
   const [answer, setAnswer] = useState('')
@@ -47,6 +51,8 @@ export function UnlockScreen({
     try {
       const res = await submitGuess(ownerUid, inheritorUid, answer)
       if (res.correct) return onUnlocked()
+      // A denied write is either the tries limit or a legacy that locked again; only the beacon can tell.
+      if (res.denied && deniedGuessOutcome(await isReleased(ownerUid)) === 'relocked') return onRelocked()
       if (res.triesLeft <= 0 || res.lockedUntil !== null) {
         setLocked(true)
         setMessage({ variant: 'warning', text: LOCKED })
