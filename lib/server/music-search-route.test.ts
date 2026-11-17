@@ -54,6 +54,8 @@ describe('POST /api/music/search', () => {
     expect((await POST(req({}))).status).toBe(400)
     expect((await POST(req(null))).status).toBe(400)
     expect((await POST(req({ query: 'x'.repeat(201) }))).status).toBe(400)
+    expect((await POST(req({ query: '' }))).headers.get('cache-control')).toBe('no-store')
+    expect((await POST(req('{nope'))).headers.get('cache-control')).toBe('no-store')
     expect((await POST(req({ query: 'x'.repeat(200) }))).status).toBe(200)
     expect(mocks.search).toHaveBeenCalledTimes(1)
   })

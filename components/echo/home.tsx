@@ -193,7 +193,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
-  const { play: playMusic } = useMusicPlayer()
+  const { play: playMusic, track: musicTrack } = useMusicPlayer()
   const callBtnRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -527,15 +527,20 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         void noteLegacyActivity(uid)
         // play_music: a pasted link plays directly, a name is searched; typed chat autoplays (the send tap is the gesture).
         // Saves next to it still apply. If the song can't be found, nothing opens and the reply carries the error text.
+        let songStarted = false
         const applied = await applyEchoResponseWithMusic(
           uid,
           page,
           res,
           (q) => findTrack(user, q, { text: msg }),
-          (t) => playMusic(t, { autoplay: true }),
+          (t) => {
+            songStarted = true
+            playMusic(t, { autoplay: true })
+          },
           { refs: built?.refs, source: 'chat', onDeleted: pushUndo },
         )
-        void speakReply(applied.reply)
+        // Don't read the reply aloud over the start of the song.
+        if (!songStarted) void speakReply(applied.reply)
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
           setExtras((x) => ({ ...x, [applied.messageId as string]: { ...ex, failed: applied.failed } }))
@@ -664,8 +669,19 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   )
   // Calls open the player paused so it never plays over Echo's voice.
   const playCallMusic = useCallback((t: MusicTrack) => playMusic(t, { autoplay: false }), [playMusic])
+  // A song from typed chat must not play over a call: when a call starts, reopen it paused.
+  const musicRef = useRef(musicTrack)
+  const wasInCall = useRef(false)
+  useEffect(() => {
+    musicRef.current = musicTrack
+  }, [musicTrack])
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: playCallMusic })
   useCallFlag(call.active)
+  useEffect(() => {
+    const t = musicRef.current
+    if (call.active && !wasInCall.current && t?.autoplay) playMusic(t, { autoplay: false })
+    wasInCall.current = call.active
+  }, [call.active, playMusic])
   useEffect(() => {
     onCallActiveChange?.(call.active)
     return () => onCallActiveChange?.(false)

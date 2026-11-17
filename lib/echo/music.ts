@@ -31,7 +31,6 @@ export function formatListening({ recent, topArtists }: Listening): string {
   return lines.join('\n').slice(0, MUSIC_MAX_CHARS)
 }
 
-export type MusicService = 'listenbrainz'
 export const MUSIC_USERNAME_MAX = 100
 
 export const youtubeEmbedUrl = (id: string, autoplay: boolean) =>

@@ -142,6 +142,9 @@ describe('play_music', () => {
     const connector = SYSTEM_INSTRUCTION.slice(SYSTEM_INSTRUCTION.indexOf('- connector:'), SYSTEM_INSTRUCTION.indexOf('- meal_log:'))
     expect(connector).not.toContain('play music')
   })
+  it('may come with saves but never with web_search', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('It may come with saves the user asks for in the same message (e.g. "remind me at 8 and play lofi"); never with web_search.')
+  })
   it('the APP GUIDE says how music plays', () => {
     expect(APP_GUIDE).toContain('- Music:')
   })

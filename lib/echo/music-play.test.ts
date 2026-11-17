@@ -20,6 +20,16 @@ describe('findTrack', () => {
     expect(r).toEqual({ ok: true, track: { videoId: ID, title: LINK_TITLE } })
     expect(f).not.toHaveBeenCalled()
   })
+  it('a named query wins over an unrelated link elsewhere in the message', async () => {
+    const f = vi.fn(async () => json({ videoId: ID, title: 'Lofi Girl' }))
+    await findTrack(user, 'lofi', { text: `save https://youtu.be/AAAAAAAAAAA as a note, and play lofi`, fetchImpl: f as never })
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+  it('a truncated link in the query still uses the full link from the message', async () => {
+    const f = vi.fn()
+    const r = await findTrack(user, 'youtu.be/', { text: `play https://youtu.be/${ID}`, fetchImpl: f as never })
+    expect(r).toEqual({ ok: true, track: { videoId: ID, title: LINK_TITLE } })
+  })
   it('searches by name through POST /api/music/search with the token', async () => {
     const f = vi.fn(async () => json({ videoId: ID, title: 'Lofi Girl', channel: 'Lofi Records' }))
     const r = await findTrack(user, 'lofi beats', { fetchImpl: f as never })

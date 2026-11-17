@@ -7,7 +7,7 @@
  * its own play button); calls open it paused. Sits above the mobile tab bar and composer, bottom-right on desktop.
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { ExternalLink, Music, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, Music, X } from 'lucide-react'
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { buttonClass } from '@/lib/echo/ui-classes'
@@ -41,6 +41,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 }
 
 function DockedPlayer({ track, onClose }: { track: PlayerTrack; onClose: () => void }) {
+  // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
+  const [minimized, setMinimized] = useState(false)
   return (
     <section
       aria-label="Music player"
@@ -51,9 +53,10 @@ function DockedPlayer({ track, onClose }: { track: PlayerTrack; onClose: () => v
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={track.title}>
           {track.title}
         </p>
+        <IconButton icon={minimized ? ChevronUp : ChevronDown} label={minimized ? 'Show player' : 'Minimize player'} size="sm" onClick={() => setMinimized((m) => !m)} />
         <IconButton icon={X} label="Close player" size="sm" onClick={onClose} />
       </div>
-      <div className="aspect-video w-full bg-black">
+      <div className="aspect-video w-full bg-black" hidden={minimized}>
         <iframe
           key={track.key}
           src={youtubeEmbedUrl(track.videoId, track.autoplay)}
@@ -64,9 +67,9 @@ function DockedPlayer({ track, onClose }: { track: PlayerTrack; onClose: () => v
           className="size-full border-0"
         />
       </div>
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 px-3 py-2" hidden={minimized}>
         {track.channel ? <p className="min-w-0 truncate text-xs text-muted-foreground">{track.channel}</p> : <span />}
-        <a href={youtubeMusicUrl(track.videoId)} target="_blank" rel="noopener" className={buttonClass('secondary', 'sm', 'shrink-0 gap-1.5')}>
+        <a href={youtubeMusicUrl(track.videoId)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm', 'shrink-0 gap-1.5')}>
           <ExternalLink size={16} aria-hidden="true" />
           Open in app
         </a>

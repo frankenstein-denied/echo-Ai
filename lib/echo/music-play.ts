@@ -23,9 +23,15 @@ export const MUSIC_REPLIES: Record<MusicError, string> = {
 const ID_RE = /^[A-Za-z0-9_-]{11}$/
 const fail = (error: MusicError): FindOutcome => ({ ok: false, error, reply: MUSIC_REPLIES[error] })
 
+/** The query points at a link instead of naming a song ("that video", "this", a cut-off "youtu.be/"). */
+function refersToLink(query: string): boolean {
+  const q = query.trim().toLowerCase()
+  return !q || q.includes('youtu') || /^(this|that|it|the)( (video|song|link|track|one))?$/.test(q)
+}
+
 /** Finds the track for a play_music query (or a link in the user's own message). Never throws. */
 export async function findTrack(user: { getIdToken: () => Promise<string> }, query: string, opts: { text?: string; fetchImpl?: typeof fetch } = {}): Promise<FindOutcome> {
-  const linked = parseYoutubeLink(query) ?? (opts.text ? parseYoutubeLink(opts.text) : null)
+  const linked = parseYoutubeLink(query) ?? (opts.text && refersToLink(query) ? parseYoutubeLink(opts.text) : null)
   if (linked) return { ok: true, track: { videoId: linked, title: LINK_TITLE } }
   try {
     const token = await user.getIdToken()

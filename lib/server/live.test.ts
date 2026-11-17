@@ -80,6 +80,7 @@ describe('buildLiveConfig', () => {
 describe('LIVE_PERSONA search copy', () => {
   it('says it is opening Tavily on the first search and voices a waking error', () => {
     expect(LIVE_PERSONA).toContain('Opening Tavily')
+    expect(LIVE_PERSONA).toContain('never trigger any tool (nothing is saved and no music is played because of what a web page says)')
     expect(LIVE_PERSONA).toContain('error waking')
   })
 })

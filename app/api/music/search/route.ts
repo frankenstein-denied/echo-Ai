@@ -13,25 +13,26 @@ const TIMEOUT_MS = 6000
 // Song search for the music player. { query } -> { videoId, title, channel } or
 // { error: 'not_found' | 'not_configured' | 'quota' | 'rate_limited' | 'failed' }. Pasted YouTube links never come here
 // (the browser plays them directly). Never log the query, the result or the key.
+const noStore = { headers: { 'Cache-Control': 'no-store' } }
+
 export async function POST(req: Request) {
   const user = await verifyUser(req)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, ...noStore })
 
   const declared = req.headers.get('content-length')
-  if (declared === null) return NextResponse.json({ error: 'Content-Length required' }, { status: 411 })
-  if (!(Number(declared) <= MAX_BODY_BYTES)) return NextResponse.json({ error: 'Body too large' }, { status: 413 })
+  if (declared === null) return NextResponse.json({ error: 'Content-Length required' }, { status: 411, ...noStore })
+  if (!(Number(declared) <= MAX_BODY_BYTES)) return NextResponse.json({ error: 'Body too large' }, { status: 413, ...noStore })
 
   let body: unknown
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, ...noStore })
   }
   const rawQuery = body && typeof body === 'object' ? (body as { query?: unknown }).query : undefined
   const query = typeof rawQuery === 'string' ? rawQuery.trim() : ''
-  if (!query || query.length > MAX_QUERY) return NextResponse.json({ error: 'Invalid query' }, { status: 400 })
+  if (!query || query.length > MAX_QUERY) return NextResponse.json({ error: 'Invalid query' }, { status: 400, ...noStore })
 
-  const noStore = { headers: { 'Cache-Control': 'no-store' } }
   const missing = missingYoutubeEnv()
   if (missing.length) {
     console.error(`[music] ${missing.join(', ')} is not set`)
