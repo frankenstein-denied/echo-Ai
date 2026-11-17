@@ -17,6 +17,7 @@ import {
   shouldStampActivity,
   activityThrottleMs,
   runActivityStamp,
+  healthLogParts,
 } from './legacy'
 
 describe('normalizeAnswer', () => {
@@ -177,5 +178,21 @@ describe('runActivityStamp', () => {
     const fresh = deps(null, () => Promise.reject(new Error('offline')))
     expect(await runActivityStamp(fresh.d)).toBe('failed')
     expect(fresh.stored()).toBeNull()
+  })
+})
+
+describe('healthLogParts', () => {
+  it('lists only the fields that are present', () => {
+    expect(healthLogParts({ mood: 6 })).toEqual(['mood 6/10'])
+    expect(healthLogParts({ moodTag: 'okay' })).toEqual(['mood okay'])
+    expect(healthLogParts({})).toEqual([])
+  })
+
+  it('prefers the mood tag and formats every field', () => {
+    expect(healthLogParts({ mood: 6, moodTag: 'great', sleepMinutes: 420, waterGlasses: 1, energy: 'low' })).toEqual(['mood great', 'slept 7 h', '1 glass of water', 'energy low'])
+  })
+
+  it('skips malformed values', () => {
+    expect(healthLogParts({ mood: Number.NaN, sleepMinutes: 'x', waterGlasses: null, energy: '  ' })).toEqual([])
   })
 })

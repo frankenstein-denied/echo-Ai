@@ -130,3 +130,25 @@ export async function runActivityStamp(d: ActivityStampDeps): Promise<'skipped' 
     return 'failed'
   }
 }
+
+const healthText = (v: unknown, n: number): string => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '')
+const healthNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+/**
+ * The present fields of a health log as short phrases ("mood 7/10", "slept 7.5 h", "8 glasses of water",
+ * "energy high"). Missing or malformed fields are left out, so a partial log never prints "undefined".
+ */
+export function healthLogParts(h: { mood?: unknown; moodTag?: unknown; sleepMinutes?: unknown; waterGlasses?: unknown; energy?: unknown }): string[] {
+  const parts: string[] = []
+  const tag = healthText(h.moodTag, 20)
+  const mood = healthNum(h.mood)
+  if (tag) parts.push(`mood ${tag}`)
+  else if (mood !== null) parts.push(`mood ${mood}/10`)
+  const sleep = healthNum(h.sleepMinutes)
+  if (sleep !== null) parts.push(`slept ${Math.round(sleep / 6) / 10} h`)
+  const water = healthNum(h.waterGlasses)
+  if (water !== null) parts.push(`${water} ${water === 1 ? 'glass' : 'glasses'} of water`)
+  const energy = healthText(h.energy, 10)
+  if (energy) parts.push(`energy ${energy}`)
+  return parts
+}

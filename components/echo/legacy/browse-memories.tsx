@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import type { LegacyKind } from '@/lib/echo/legacy'
+import { healthLogParts, type LegacyKind } from '@/lib/echo/legacy'
 import type { SharedLegacy } from '@/lib/legacy-store'
 import type { Memory } from '@/lib/firestore'
 import { Badge, Card, IconButton } from '../ui'
@@ -14,6 +14,8 @@ const millis = (t: unknown): number => {
   const m = t && typeof (t as { toMillis?: unknown }).toMillis === 'function' ? (t as { toMillis(): number }).toMillis() : 0
   return Number.isFinite(m) ? m : 0
 }
+
+const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
 function kindOf(m: Memory): LegacyKind {
   return m.type === 'goal' ? 'goals' : m.type === 'health' ? 'health' : 'life'
@@ -120,7 +122,7 @@ export function BrowseMemories({ ownerName, shared, onBack }: { ownerName: strin
               ...logs.map((h) => ({
                 id: `log-${h.id}`,
                 title: h.date,
-                body: `Mood ${h.moodTag ?? `${h.mood}/10`} · slept ${Math.round((h.sleepMinutes ?? 0) / 6) / 10} h · ${h.waterGlasses} glasses of water · ${h.energy} energy`,
+                body: capitalize(healthLogParts(h).join(' · ')) || 'Logged',
               })),
               ...meals.map((m) => ({ id: `meal-${m.id}`, title: `${m.date} · ${m.mealType}`, body: m.description })),
             ]}
