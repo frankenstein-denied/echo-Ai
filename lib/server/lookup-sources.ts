@@ -18,6 +18,8 @@ export type LookupOptions = {
   /** "Now" for the holidays year. */
   now?: Date
   env?: Record<string, string | undefined>
+  /** One deadline for every request of a lookup (set by fetchLookup from timeoutMs). */
+  signal?: AbortSignal
 }
 
 /** Generic client name (Wikipedia asks API clients to identify themselves). */
@@ -33,7 +35,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
 async function getJson(url: string, opts: LookupOptions, headers: Record<string, string> = {}, onStatus?: (status: number) => LookupError | null): Promise<unknown> {
   let res: Response
   try {
-    res = await (opts.fetchImpl ?? fetch)(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...headers }, signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) })
+    res = await (opts.fetchImpl ?? fetch)(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...headers }, signal: opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) })
   } catch (err) {
     const name = (err as { name?: string })?.name
     throw new LookupError(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'failed')
@@ -54,12 +56,14 @@ async function getJson(url: string, opts: LookupOptions, headers: Record<string,
 
 // ---------- query parsing ----------
 
-const CODE_RE = /\b[a-z]{3}\b/gi
-const NOT_CODES = new Set(['TO', 'AND', 'THE', 'IN', 'FOR', 'HOW', 'ARE', 'YOU', 'WHAT', 'RATE', 'MUCH', 'MANY'])
+/** Three letters not inside a longer word; digits may touch them ("100USD"). */
+const CODE_RE = /(?<![a-z])[a-z]{3}(?![a-z])/gi
+/** The currencies Frankfurter (ECB reference rates) knows; anything else ("now", "per") isn't a code. */
+const ECB_CODES = new Set('AUD BGN BRL CAD CHF CNY CZK DKK EUR GBP HKD HUF IDR ILS INR ISK JPY KRW MXN MYR NOK NZD PHP PLN RON SEK SGD THB TRY USD ZAR'.split(' '))
 
 /** "100 USD PHP", "1,250 usd to php", "EUR to USD, JPY", "gbp" (amount defaults to 1). */
 export function parseCurrencyQuery(q: string): { amount: number; from: string; to: string[] } | null {
-  const codes = (q.match(CODE_RE) ?? []).map((c) => c.toUpperCase()).filter((c) => !NOT_CODES.has(c))
+  const codes = [...new Set((q.match(CODE_RE) ?? []).map((c) => c.toUpperCase()).filter((c) => ECB_CODES.has(c)))]
   if (!codes.length || codes.length > 6) return null
   const m = /\d[\d,]*(?:\.\d+)?/.exec(q)
   const amount = m ? Number(m[0].replace(/,/g, '')) : 1
@@ -83,18 +87,21 @@ export function parseHolidayQuery(q: string, now: Date): { country: string; year
 async function wikipedia(query: string, opts: LookupOptions): Promise<WebResult[]> {
   const search = (await getJson(`https://en.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=2`, opts)) as { pages?: { key?: unknown }[] }
   const keys = (search?.pages ?? []).map((p) => p?.key).filter((k): k is string => typeof k === 'string').slice(0, 2)
-  const out: WebResult[] = []
-  for (const key of keys) {
-    try {
-      const s = (await getJson(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(key)}`, opts)) as { title?: unknown; extract?: unknown; content_urls?: { desktop?: { page?: unknown } } }
-      const url = s?.content_urls?.desktop?.page
-      const extract = clip(s?.extract)
-      if (typeof url === 'string' && url.startsWith('https://') && extract) out.push({ title: `${clip(s.title, 200) || key} (Wikipedia)`, url, content: extract })
-    } catch {
-      // One missing summary shouldn't lose the others.
-    }
-  }
-  return out
+  // Both summaries at once, under the lookup's single deadline.
+  const summaries = await Promise.all(
+    keys.map(async (key): Promise<WebResult | null> => {
+      try {
+        const s = (await getJson(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(key)}`, opts)) as { title?: unknown; extract?: unknown; content_urls?: { desktop?: { page?: unknown } } }
+        const url = s?.content_urls?.desktop?.page
+        const extract = clip(s?.extract)
+        return typeof url === 'string' && url.startsWith('https://') && extract ? { title: `${clip(s.title, 200) || key} (Wikipedia)`, url, content: extract } : null
+      } catch {
+        // One missing summary shouldn't lose the others.
+        return null
+      }
+    }),
+  )
+  return summaries.filter((r): r is WebResult => r !== null)
 }
 
 async function currency(query: string, opts: LookupOptions): Promise<WebResult[]> {
@@ -221,5 +228,6 @@ const SOURCES: Record<LookupSource, (query: string, opts: LookupOptions) => Prom
 
 /** Facts for one lookup (≤ 5 results; [] when nothing matched). Throws LookupError. */
 export async function fetchLookup(source: LookupSource, query: string, opts: LookupOptions = {}): Promise<WebResult[]> {
-  return (await SOURCES[source](query.trim(), opts)).slice(0, MAX_RESULTS)
+  const signal = opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  return (await SOURCES[source](query.trim(), { ...opts, signal })).slice(0, MAX_RESULTS)
 }

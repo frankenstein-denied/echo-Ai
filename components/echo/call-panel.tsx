@@ -7,7 +7,7 @@ import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
-import { findTrack, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
+import { findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
@@ -301,6 +301,8 @@ export function useEchoCall({
           },
           lookup: (source, q) => lookupViaApi(cb.current.user, source, q),
           play: async (q) => {
+            // No player in this view (the chathead): tell the user instead of finding a song that can't open.
+            if (!cb.current.onPlayMusic) return musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })
             const r = await findTrack(cb.current.user, q)
             if (r.ok) cb.current.onPlayMusic?.(r.track)
             return musicToolOutput(r)

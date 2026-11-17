@@ -5,7 +5,7 @@ import { fetchWithTimeout } from './send-helpers'
 import type { EchoResponse } from './types'
 
 export type MusicTrack = { videoId: string; title: string; channel?: string }
-export type MusicError = 'not_found' | 'not_configured' | 'quota' | 'rate_limited' | 'failed'
+export type MusicError = 'not_found' | 'not_configured' | 'quota' | 'rate_limited' | 'failed' | 'unavailable'
 export type FindOutcome = { ok: true; track: MusicTrack } | { ok: false; error: MusicError; reply: string }
 
 /** Shown for a pasted link (the embedded player shows the real title; no extra API call). */
@@ -18,6 +18,7 @@ export const MUSIC_REPLIES: Record<MusicError, string> = {
   quota: "YouTube searches are used up for today. Paste a YouTube or YouTube Music link and I'll play it.",
   rate_limited: "I've looked up a lot of songs this hour. Try again later, or paste a YouTube link.",
   failed: "I couldn't reach YouTube just now. Try again in a moment.",
+  unavailable: "I can't play music in the bubble. Open Echo and ask me there.",
 }
 
 const ID_RE = /^[A-Za-z0-9_-]{11}$/

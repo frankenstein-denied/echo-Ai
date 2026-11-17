@@ -129,3 +129,10 @@ describe('musicToolOutput', () => {
     expect(musicToolOutput({ ok: false, error: 'not_found', reply: MUSIC_REPLIES.not_found })).toEqual({ error: 'not_found', tell_user: MUSIC_REPLIES.not_found })
   })
 })
+
+describe('music where there is no player', () => {
+  it('has a reply for the bubble and a tool output that says so', () => {
+    expect(MUSIC_REPLIES.unavailable).toMatch(/Open Echo/)
+    expect(musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })).toEqual({ error: 'unavailable', tell_user: MUSIC_REPLIES.unavailable })
+  })
+})

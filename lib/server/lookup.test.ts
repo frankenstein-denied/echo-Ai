@@ -84,3 +84,12 @@ describe('resolveLookup', () => {
     expect(out.reply).toMatch(/couldn't look that up/)
   })
 })
+
+describe('resolveLookup with an old client', () => {
+  it('treats a connector missing from the states as its default (on)', async () => {
+    const d = deps({ connectors: [{ id: 'nutrition', status: 'connected' }] })
+    const out = await resolveLookup(lookup(), d)
+    expect(d.fetch).toHaveBeenCalled()
+    expect(out.actions).toEqual([])
+  })
+})

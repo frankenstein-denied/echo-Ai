@@ -12,7 +12,7 @@ import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/se
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
-import { findTrack, type MusicTrack } from '@/lib/echo/music-play'
+import { findTrack, MUSIC_REPLIES, type MusicTrack } from '@/lib/echo/music-play'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -193,7 +193,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
-  const { play: playMusic, track: musicTrack } = useMusicPlayer()
+  const { play: playMusic, track: musicTrack, available: musicAvailable } = useMusicPlayer()
   const callBtnRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -532,7 +532,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           uid,
           page,
           res,
-          (q) => findTrack(user, q, { text: msg }),
+          // No player here (the chathead bubble): say so instead of spending a search on a song that can't open.
+          (q) => (musicAvailable ? findTrack(user, q, { text: msg }) : Promise.resolve({ ok: false as const, error: 'unavailable' as const, reply: MUSIC_REPLIES.unavailable })),
           (t) => {
             songStarted = true
             playMusic(t, { autoplay: true })
@@ -569,7 +570,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic, musicAvailable],
   )
   useEffect(() => {
     sendRef.current = send
@@ -675,7 +676,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useEffect(() => {
     musicRef.current = musicTrack
   }, [musicTrack])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: playCallMusic })
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined })
   useCallFlag(call.active)
   useEffect(() => {
     const t = musicRef.current

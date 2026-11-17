@@ -19,6 +19,10 @@ describe('parseCurrencyQuery', () => {
     expect(parseCurrencyQuery('EUR to USD, JPY')).toEqual({ amount: 1, from: 'EUR', to: ['USD', 'JPY'] })
     expect(parseCurrencyQuery('gbp')).toEqual({ amount: 1, from: 'GBP', to: [] })
   })
+  it('ignores ordinary three-letter words and reads codes glued to the amount', () => {
+    expect(parseCurrencyQuery('100 usd to php now')).toEqual({ amount: 100, from: 'USD', to: ['PHP'] })
+    expect(parseCurrencyQuery('100USD PHP')).toEqual({ amount: 100, from: 'USD', to: ['PHP'] })
+  })
   it('rejects text without a currency code', () => {
     expect(parseCurrencyQuery('how much is a dollar')).toBeNull()
   })
@@ -109,5 +113,18 @@ describe('fetchLookup', () => {
     await expect(run('movies', 'x', status(401), { TMDB_API_KEY: 'k' })).rejects.toMatchObject({ kind: 'not_configured' })
     const err = await run('books', 'x', status(500)).catch((e) => e)
     expect(err).toBeInstanceOf(LookupError)
+  })
+})
+
+describe('fetchLookup time limit', () => {
+  it('shares one deadline across a source’s requests (Wikipedia never runs past it)', async () => {
+    const f = vi.fn((url: string, init: RequestInit) => {
+      if (url.includes('search/page')) return Promise.resolve(ok({ pages: [{ key: 'A' }, { key: 'B' }] }))
+      return new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('t'), { name: 'TimeoutError' }))))
+    })
+    const t = Date.now()
+    const r = await fetchLookup('wikipedia', 'x', { fetchImpl: f as never, timeoutMs: 150 })
+    expect(r).toEqual([])
+    expect(Date.now() - t).toBeLessThan(260)
   })
 })

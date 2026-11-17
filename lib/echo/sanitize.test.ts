@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { extractCheckInTime } from './prompt'
 import { parseEchoContext, parseEchoRequest, REMINDER_DROPPED_TRACE, sanitizeEchoResponse, slugifyLabel } from './sanitize'
+import { CONNECTORS } from './connectors'
 
 const NOW = '2026-10-25T19:42:00+08:00'
 const base = { text: 'hello', clientTime: NOW, timeZone: 'Asia/Manila' }
@@ -28,9 +29,9 @@ describe('parseEchoRequest', () => {
       { id: 'nutrition', status: 'connected' },
       { id: 'web-search', status: 'not_connected' },
     ])
-    const many = Array.from({ length: 30 }, () => ({ id: 'nutrition', status: 'connected' }))
+    const many = Array.from({ length: 40 }, () => ({ id: 'nutrition', status: 'connected' }))
     const m = parseEchoRequest({ ...base, context: { connectors: many } })
-    if (!('error' in m)) expect(m.context.connectors).toHaveLength(10)
+    if (!('error' in m)) expect(m.context.connectors).toHaveLength(32)
   })
 
   it('accepts webSearchKey up to 8192 chars and ignores other values', () => {
@@ -505,5 +506,13 @@ describe('lookup action', () => {
   it('loses to saves and plays, like a search', () => {
     const out = resp([{ type: 'lookup', source: 'wikipedia', query: 'x' }, { type: 'note', title: 'Milk', body: 'buy milk' }])
     expect(out.actions.map((a) => a.type)).toEqual(['note'])
+  })
+})
+
+describe('connectors context', () => {
+  it('keeps every catalog connector state (the list outgrew 10)', () => {
+    const states = CONNECTORS.map((c) => ({ id: c.id, status: 'connected' }))
+    const parsed = parseEchoRequest({ ...base, context: { connectors: states } })
+    expect('error' in parsed ? [] : (parsed.context.connectors ?? []).map((c) => c.id)).toContain('holidays')
   })
 })

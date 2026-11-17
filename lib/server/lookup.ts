@@ -65,7 +65,10 @@ export async function resolveLookup(res: EchoResponse, deps: LookupDeps): Promis
   const toWebSearch = (why: string): EchoResponse => ({ ...res, actions: [...rest, { type: 'web_search', query: action.query }], trace: trace(why) })
   const name = nameOf(action.source)
 
-  if (deps.connectors && !isConnected(deps.connectors, action.source)) return toWebSearch(`${name} is off`)
+  // A state missing from the list (an older client) counts as the connector's default, like the prompt's CONNECTORS.
+  const state = deps.connectors?.find((c) => c.id === action.source)
+  const on = state ? isConnected(deps.connectors ?? [], action.source) : CONNECTORS.find((c) => c.id === action.source)?.defaultConnected !== false
+  if (!on) return toWebSearch(`${name} is off`)
   const remaining = () => (deps.deadline ?? Infinity) - now()
   if (remaining() < MIN_BUDGET_MS) return { ...res, actions: rest, reply: LOOKUP_FAILED_REPLY, trace: trace('No time left to look up') }
   if (!takeLookupSlot(deps.uid, now())) return toWebSearch('Lookup limit reached for this hour')

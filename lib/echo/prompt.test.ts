@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { APP_GUIDE } from './app-guide'
-import { buildUserContents, RESPONSE_SCHEMA, SYSTEM_INSTRUCTION } from './prompt'
+import { buildUserContents, renderConnectors, RESPONSE_SCHEMA, SYSTEM_INSTRUCTION } from './prompt'
 import type { EchoRequest } from './types'
 
 const req = (connectors?: EchoRequest['context']['connectors']): EchoRequest => ({
@@ -163,5 +163,13 @@ describe('lookup', () => {
   })
   it('prefers a connected free connector over web_search', () => {
     expect(SYSTEM_INSTRUCTION).toContain('prefer a lookup over web_search for those topics')
+  })
+})
+
+describe('renderConnectors', () => {
+  it('leaves out Music (ListenBrainz) until its listening data reaches Echo', () => {
+    const text = renderConnectors([{ id: 'music', status: 'connected' }])
+    expect(text).not.toContain('ListenBrainz')
+    expect(text).toContain('- Wikipedia: connected')
   })
 })

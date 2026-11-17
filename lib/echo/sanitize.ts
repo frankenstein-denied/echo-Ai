@@ -3,7 +3,7 @@ import { isMealType, isMoodTag, MOOD_SCORES } from './health-helpers'
 import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoRequest, EchoRequestMessage, EchoResponse, MemoryInput, MemoryType } from './types'
 
 export const LIMITS = {
-  connectors: 10,
+  connectors: 32,
   weather: 600,
   webSearchKey: 8192,
   text: 2000,

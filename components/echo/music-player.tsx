@@ -14,9 +14,10 @@ import { buttonClass } from '@/lib/echo/ui-classes'
 import { IconButton } from './ui'
 
 type PlayerTrack = MusicTrack & { autoplay: boolean; key: number }
-type MusicPlayerApi = { track: PlayerTrack | null; play: (track: MusicTrack, opts: { autoplay: boolean }) => void; close: () => void }
+/** available is false outside the provider (e.g. the floating chathead), where nothing can play. */
+type MusicPlayerApi = { available: boolean; track: PlayerTrack | null; play: (track: MusicTrack, opts: { autoplay: boolean }) => void; close: () => void }
 
-const NOOP: MusicPlayerApi = { track: null, play: () => undefined, close: () => undefined }
+const NOOP: MusicPlayerApi = { available: false, track: null, play: () => undefined, close: () => undefined }
 const MusicPlayerContext = createContext<MusicPlayerApi | null>(null)
 
 /** The shell's player; outside the provider it is a no-op (nothing opens). */
@@ -31,11 +32,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setTrack((prev) => ({ ...t, autoplay: opts.autoplay, key: (prev?.key ?? 0) + 1 }))
   }, [])
   const close = useCallback(() => setTrack(null), [])
-  const api = useMemo(() => ({ track, play, close }), [track, play, close])
+  const api = useMemo(() => ({ available: true, track, play, close }), [track, play, close])
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} onClose={close} />}
+      {/* Keyed per song, so a new song opens un-minimized. */}
+      {track && <DockedPlayer key={track.key} track={track} onClose={close} />}
     </MusicPlayerContext.Provider>
   )
 }
