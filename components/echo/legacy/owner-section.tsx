@@ -63,7 +63,15 @@ function VerifyBanner({ user }: { user: User }) {
       await user.reload()
       const fresh = auth.currentUser
       if (fresh?.emailVerified) {
-        await upsertDirectoryEntry(fresh).catch(() => null)
+        // The rules read email_verified from the ID token, which still says false until it is refreshed.
+        try {
+          await fresh.getIdToken(true)
+          await upsertDirectoryEntry(fresh)
+        } catch {
+          setError("Your email is verified, but we couldn't list you yet. Try again in a moment.")
+          setState('sent')
+          return
+        }
         setState('done')
       } else {
         setError("Your email isn't verified yet. Open the link in the email first.")
@@ -193,6 +201,9 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
   const [hasSettings, setHasSettings] = useState(false)
   const [saving, setSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
+  // A failed first load must not let a save overwrite the real settings with the defaults.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [links, setLinks] = useState<LegacyLink[] | null>(null)
   const [linksError, setLinksError] = useState('')
   const [removing, setRemoving] = useState<LegacyLink | null>(null)
@@ -201,6 +212,9 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
 
   useEffect(() => {
     let cancelled = false
+    setLoaded(false)
+    setLoadFailed(false)
+    setSettingsError('')
     getLegacySettings(uid)
       .then((s) => {
         if (cancelled) return
@@ -214,12 +228,13 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
       .catch(() => {
         if (cancelled) return
         setSettingsError("Couldn't load your Legacy settings.")
+        setLoadFailed(true)
         setLoaded(true)
       })
     return () => {
       cancelled = true
     }
-  }, [uid])
+  }, [uid, loadAttempt])
 
   useEffect(
     () =>
@@ -244,6 +259,7 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
   const label = options.find((o) => o.minutes === minutes)?.label ?? minutesLabel(minutes)
 
   async function save(next: { enabled: boolean; releaseAfterMinutes: number }) {
+    if (loadFailed) return
     const prev = { enabled, minutes }
     setEnabled(next.enabled)
     setMinutes(next.releaseAfterMinutes)
@@ -265,6 +281,7 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
   }
 
   function pickMinutes(m: number) {
+    if (loadFailed) return
     if (enabled || hasSettings) void save({ enabled, releaseAfterMinutes: m })
     else setMinutes(m)
   }
@@ -302,9 +319,9 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
                   Let the people you choose open your memories and talk with an Echo that types like you, if you stop using Echo.
                 </p>
               </div>
-              <Switch checked={enabled} onChange={(v) => void save({ enabled: v, releaseAfterMinutes: minutes })} label="Turn on Legacy" disabled={saving} />
+              <Switch checked={enabled} onChange={(v) => void save({ enabled: v, releaseAfterMinutes: minutes })} label="Turn on Legacy" disabled={saving || loadFailed} />
             </div>
-            <Select label="Release my legacy after" value={String(minutes)} onChange={(e) => pickMinutes(Number(e.target.value))} disabled={saving}>
+            <Select label="Release my legacy after" value={String(minutes)} onChange={(e) => pickMinutes(Number(e.target.value))} disabled={saving || loadFailed}>
               {options.map((o) => (
                 <option key={o.minutes} value={o.minutes}>
                   {o.label} with no activity
@@ -316,11 +333,19 @@ export function OwnerSection({ user, profile, onPreview }: { user: User; profile
             </p>
             {!enabled && <p className="text-xs text-muted-foreground">Legacy is off. Nothing is released while it&apos;s off.</p>}
             {settingsError && <Alert variant="danger">{settingsError}</Alert>}
+            {loadFailed && (
+              <div>
+                <Button size="sm" variant="secondary" onClick={() => setLoadAttempt((n) => n + 1)}>
+                  Retry
+                </Button>
+              </div>
+            )}
             {onPreview && (
               <div>
                 <Button variant="secondary" icon={MessageCircleHeart} onClick={onPreview}>
                   Talk to my legacy
                 </Button>
+                <p className="mt-1 text-xs text-muted-foreground">The preview uses everything you&apos;ve shared with Echo, not just what each person can open.</p>
               </div>
             )}
           </div>
