@@ -22,8 +22,7 @@ import { ANSWER_HINT, ANSWER_INVALID, INHERITOR_ERROR, KIND_LABEL, KindPicker, Q
 import { markLegacyProfileWritten } from './use-legacy-activity'
 import { VoiceCard } from './voice-card'
 
-// Thesis demo: always offer the 5-minute release option. Set back to the env check for production.
-const DEMO = true // process.env.NEXT_PUBLIC_LEGACY_DEMO === '1'
+const DEMO = process.env.NEXT_PUBLIC_LEGACY_DEMO === '1'
 const DEFAULT_MINUTES = monthsToMinutes(6)
 
 function minutesLabel(minutes: number): string {
