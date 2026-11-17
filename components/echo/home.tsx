@@ -24,12 +24,13 @@ import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
 import { TodayOrbWelcome } from './today-orb'
+import { LegacyReleaseBanner } from './legacy/release-banner'
 import { showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
 
-export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain'
+export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy'
 
 type ChatMessage = Message & { id: string }
 type Extras = { trace: string[]; saved: SavedItem[]; failed: string[] }
@@ -810,6 +811,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 py-6 max-lg:gap-4 max-lg:py-4">
+            {!embed && <LegacyReleaseBanner onOpen={() => onNavigate('Legacy')} />}
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
             {showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length && (
