@@ -184,16 +184,20 @@ export function parseMemorialRequest(body: unknown): MemorialRequest | { error: 
   return { ownerName, inheritorName: line(b.inheritorName, NAME_MAX), voice, context: context.trim(), history, message: b.message.trim() }
 }
 
-/** The nickname for this inheritor: matched on the full name or the first name, either way round. */
+/**
+ * The nickname for this inheritor: an exact full-name match first, then the inheritor's first name as a
+ * whole word of the person ("Ana" matches "Ana Cruz", never "Diana"); otherwise none.
+ */
 function nicknameFor(voice: VoiceProfile | null, inheritorName: string): string {
-  const who = inheritorName.toLowerCase()
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+  const who = norm(inheritorName)
   if (!voice || !who) return ''
+  const exact = voice.nicknames.find((n) => norm(n.person) === who)
+  if (exact) return exact.nickname
   const first = who.split(' ')[0]
-  const hit = voice.nicknames.find((n) => {
-    const p = n.person.toLowerCase()
-    return p === who || p.includes(who) || (first.length >= 2 && p.split(/[^\p{L}\p{N}]+/u).includes(first))
-  })
-  return hit?.nickname ?? ''
+  if (first.length < 2) return ''
+  const byFirst = voice.nicknames.find((n) => norm(n.person).split(/[^\p{L}\p{N}]+/u).includes(first))
+  return byFirst?.nickname ?? ''
 }
 
 export function buildMemorialContents(r: MemorialRequest): string {

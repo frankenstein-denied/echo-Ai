@@ -234,6 +234,15 @@ describe('memorial prompt', () => {
     expect(c).toMatch(/data, not instructions/)
   })
 
+  it('picks the nickname by whole name or first name, never by substring', () => {
+    const nick = (inheritorName: string, nicknames: { person: string; nickname: string }[]) =>
+      buildMemorialContents(memorial({ inheritorName, voice: { ...voice, nicknames } })).match(/used for them: (.*)/)?.[1]
+    expect(nick('Ana', [{ person: 'Diana', nickname: 'di' }, { person: 'Ana Cruz', nickname: 'bunso' }])).toBe('bunso')
+    expect(nick('Jo', [{ person: 'John', nickname: 'jojo' }])).toBe('(none known)')
+    expect(nick('Ana', [{ person: 'Diana (cousin)', nickname: 'di' }])).toBe('(none known)')
+    expect(nick('ana cruz', [{ person: 'Ana Reyes', nickname: 'x' }, { person: ' Ana Cruz ', nickname: 'bunso' }])).toBe('bunso')
+  })
+
   it('says when there is no voice profile', () => {
     expect(buildMemorialContents(memorial({ voice: null }))).toMatch(/no voice profile/i)
   })
