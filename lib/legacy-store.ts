@@ -34,6 +34,7 @@ import {
   TRY_WINDOW_MS,
   type LegacyKind,
 } from '@/lib/echo/legacy'
+import type { VoiceNickname, VoiceProfile } from '@/lib/echo/legacy-prompt'
 import { isValidEmail, normalizeEmail, validateNewInheritor, type NewInheritorError } from '@/lib/echo/legacy-validate'
 import type { DiaryPage, Goal, HealthLog, Meal, Memory, Note, UserProfile } from '@/lib/firestore'
 
@@ -42,8 +43,9 @@ import type { DiaryPage, Goal, HealthLog, Meal, Memory, Note, UserProfile } from
 export type LegacySettings = { enabled: boolean; releaseAfterMinutes: number; lastActiveAt: Timestamp; createdAt: Timestamp; updatedAt: Timestamp }
 export type LegacyBeacon = { ownerName: string; updatedAt: Timestamp }
 export type LegacyProfile = { displayName: string | null; preferredName: string; importantPeople: string[]; tone: string; language: string | null; updatedAt: Timestamp }
-export type LegacyNickname = { person: string; nickname: string }
-export type LegacyVoice = { summary: string; samples: string[]; nicknames: LegacyNickname[]; language: string | null; builtAt: Timestamp }
+export type LegacyNickname = VoiceNickname
+/** The stored voice doc: VoiceProfile (lib/echo/legacy-prompt) with a nullable language and a Timestamp builtAt. */
+export type LegacyVoice = Omit<VoiceProfile, 'language' | 'builtAt'> & { language: string | null; builtAt: Timestamp }
 export type LegacyStatus = 'pending' | 'accepted'
 export type LegacyLinkDoc = {
   ownerUid: string
