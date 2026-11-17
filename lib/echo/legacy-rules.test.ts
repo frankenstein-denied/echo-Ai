@@ -74,10 +74,11 @@ describe('firestore.rules: legacy collections', () => {
     expect(rules).toContain('match /legacyChats/{ownerUid}')
   })
 
-  it('never lets anyone read a secret', () => {
+  it('only the owner can get a secret; nobody lists them', () => {
     const secrets = block('/legacySecrets/{linkId}')
-    expect(secrets).toContain('allow read: if false')
-    expect(secrets).not.toMatch(/allow (get|list)/)
+    expect(allow(secrets, 'get')).toBe('allow get: if ownsLinkId(linkId);')
+    expect(secrets).not.toMatch(/allow (read|list)/)
+    expect(fn('ownsLinkId')).toContain("linkId.matches(request.auth.uid + '_.+')")
     expect(secrets).toContain("matches('^[0-9a-f]{64}$')")
   })
 
@@ -111,7 +112,10 @@ describe('firestore.rules: legacy collections', () => {
     expect(attempts).toContain(`count <= ${MAX_TRIES}`)
     expect(attempts).toContain(`duration.value(${TRY_WINDOW_MS / 1000}, 's')`)
     expect(attempts).toContain('lastAt == request.time')
-    expect(attempts).toContain('.data.answerHash')
+    expect(attempts).toContain("guessHash.matches('^[0-9a-f]{64}$')")
+    expect(attempts).not.toContain('correct')
+    expect(attempts).not.toContain('answerHash')
+    expect(attempts).not.toContain('legacySecrets')
     expect(attempts).toContain('released(')
     expect(attempts).toContain("status == 'accepted'")
   })
@@ -130,7 +134,9 @@ describe('firestore.rules: legacy collections', () => {
     const unlocked = fn('unlocked')
     expect(unlocked).toContain("status == 'accepted'")
     expect(unlocked).toContain('released(owner)')
-    expect(unlocked).toContain('correct == true')
+    expect(unlocked.replace(/\s+/g, ' ')).toContain('get(attemptsPath(owner)).data.guessHash == get(secretPath(owner)).data.answerHash')
+    expect(fn('secretPath')).toContain('/legacySecrets/')
+    expect(rules.replace(/\/\/.*$/gm, '')).not.toMatch(/\bcorrect\b/)
   })
 
   it('only gets the four legacy docs (link, settings, attempts, secret)', () => {

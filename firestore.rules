@@ -56,6 +56,9 @@ service cloud.firestore {
     function attemptsPath(owner) {
       return /databases/$(database)/documents/legacyAttempts/$(owner + '_' + request.auth.uid);
     }
+    function secretPath(owner) {
+      return /databases/$(database)/documents/legacySecrets/$(owner + '_' + request.auth.uid);
+    }
     // The signed-in user's link as inheritor of owner.
     function linkFor(owner) {
       return get(linkPath(owner));
@@ -67,11 +70,12 @@ service cloud.firestore {
       return s.enabled == true
         && request.time > s.lastActiveAt + duration.value(s.releaseAfterMinutes, 'm');
     }
+    // The last stored guess matches the answer. Guess writes never learn this, so the try limit holds.
     function unlocked(owner) {
       return request.auth != null
         && linkFor(owner).data.status == 'accepted'
         && released(owner)
-        && get(attemptsPath(owner)).data.correct == true;
+        && get(attemptsPath(owner)).data.guessHash == get(secretPath(owner)).data.answerHash;
     }
     function shares(owner, kind) {
       return kind in linkFor(owner).data.shared;
@@ -513,28 +517,29 @@ service cloud.firestore {
       return request.auth != null && linkId.matches('.+_' + request.auth.uid);
     }
 
-    // ---------- legacySecrets (answer hash; nobody reads it, rules get() it) ----------
+    // ---------- legacySecrets (answer hash; only the owner may get it, to count wrong tries) ----------
+    // Inheritors never read it; unlocked() compares hashes inside rules.
     match /legacySecrets/{linkId} {
       function validSecret(d) {
         return d.keys().hasOnly(['answerHash']) && d.keys().hasAll(['answerHash'])
           && d.answerHash is string && d.answerHash.matches('^[0-9a-f]{64}$');
       }
-      allow read: if false;
+      allow get: if ownsLinkId(linkId);
       allow create, update: if ownsLinkId(linkId) && validSecret(request.resource.data);
       allow delete: if ownsLinkId(linkId);
     }
 
     // ---------- legacyAttempts (guesses; the inheritor writes while the owner is released) ----------
     // A window lasts 24 hours from its first guess; after that the count starts over at 1.
+    // The write never looks at the secret, so allowed/denied can't reveal whether a guess is right.
     match /legacyAttempts/{linkId} {
       function windowExpired() {
         return resource == null || request.time > resource.data.windowStart + duration.value(86400, 's');
       }
       function validAttempt(d) {
-        return d.keys().hasOnly(['count', 'windowStart', 'guessHash', 'correct', 'lastAt'])
-          && d.keys().hasAll(['count', 'windowStart', 'guessHash', 'correct', 'lastAt'])
-          && d.guessHash is string && d.guessHash.size() == 64
-          && d.correct == (d.guessHash == get(/databases/$(database)/documents/legacySecrets/$(linkId)).data.answerHash)
+        return d.keys().hasOnly(['count', 'windowStart', 'guessHash', 'lastAt'])
+          && d.keys().hasAll(['count', 'windowStart', 'guessHash', 'lastAt'])
+          && d.guessHash is string && d.guessHash.matches('^[0-9a-f]{64}$')
           && d.lastAt == request.time
           && ((windowExpired() && d.count == 1 && d.windowStart == request.time)
             || (!windowExpired()
