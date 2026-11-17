@@ -28,7 +28,7 @@ export function ConnectorCard({ def, status, children }: { def: ConnectorDef; st
   const color = TILE_COLOR[def.id] ?? 'var(--color-accent)'
   return (
     <Card
-      className={`flex flex-col ${connected ? '' : 'border-dashed'} ${soon ? 'opacity-60' : ''}`}
+      className={`flex flex-col ${connected ? '' : 'border-dashed'}`}
       style={
         connected
           ? {
@@ -36,18 +36,23 @@ export function ConnectorCard({ def, status, children }: { def: ConnectorDef; st
               borderColor: `color-mix(in srgb, ${color} 35%, var(--color-border))`,
               boxShadow: `0 0 22px -12px ${color}`,
             }
-          : undefined
+          : soon
+            ? // Coming soon: recede via the surface and a dimmed icon; text stays full strength for AA contrast.
+              { background: 'var(--color-background)' }
+            : undefined
       }
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted-foreground" style={connected ? { color } : undefined}>
+          <span className={`grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted-foreground ${soon ? 'opacity-50' : ''}`} style={connected ? { color } : undefined}>
             <Icon size={18} aria-hidden="true" />
           </span>
           <h3 className="truncate text-base font-semibold text-foreground">{def.name}</h3>
         </div>
         {soon ? (
-          <Badge variant="neutral">Coming soon</Badge>
+          <span className="shrink-0 whitespace-nowrap">
+            <Badge variant="neutral">Coming soon</Badge>
+          </span>
         ) : connected ? (
           <span className="size-2 shrink-0 rounded-full bg-success" style={{ boxShadow: '0 0 8px var(--color-success)' }}>
             <span className="sr-only">Connected</span>
