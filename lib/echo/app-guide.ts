@@ -11,5 +11,6 @@ export const APP_GUIDE = `- About Echo: a virtual companion and diary you talk t
 - Check-ins (Android): the Echo bubble pops up short check-ins through the day and sleeps at night. Change the gap and sleep time in Settings > Echo check-ins.
 - 2nd Brain: each diary page is a glowing memory orb. Its colors show what's inside (blue notes, gold goals, amber reminders, green health, rose people, violet interests); bigger orbs mean more happened; glowing threads link pages that share a person, interest or goal. Filter by Today, This week, This month or All, search by name, and tap an orb for details.
 - Music: ask Echo to play a song, artist or mood, or paste a YouTube or YouTube Music link; it plays in a small player in Echo with "Open in app" (YouTube Music). In a call the player opens paused; tap play.
+- Free connectors: Wikipedia, News, Currency rates, Public holidays, Books, Movies & TV and Packaged food (Open Food Facts) are on by default; just ask, e.g. "50 euros in pesos" or "holidays in the Philippines this year". Turn any of them off in Connectors.
 - Connectors: the services Echo can use. Nutrition (USDA) is connected by default and can be disconnected; Web search needs "Log in with Tavily" (free); others are coming soon.
 - Settings: profile (name, email), Voice, Calorie tracking, and Account (sign out, install the app when the browser offers it).`

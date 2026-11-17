@@ -88,7 +88,7 @@ export function ConnectorsView({
           </>
         )}
         {!connected && <p className="mt-3 flex-1 text-sm text-muted-foreground">{c.description}</p>}
-        {c.id === 'nutrition' ? (
+        {c.kind === 'builtin' && c.id !== 'weather' ? (
           <Button variant={connected ? 'secondary' : 'primary'} loading={busy === c.id} onClick={() => toggle(c.id, c.name, !connected)} className="mt-4 w-full">
             {connected ? 'Disconnect' : 'Connect'}
           </Button>
