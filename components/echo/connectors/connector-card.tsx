@@ -10,6 +10,7 @@ const ICONS: Partial<Record<ConnectorId, LucideIcon>> = {
   nutrition: Apple,
   'web-search': Globe,
   weather: CloudSun,
+  music: Music,
   spotify: Music,
   'google-calendar': Calendar,
   gmail: Mail,

@@ -25,6 +25,7 @@ import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
 import { PermissionSetup } from './permission-setup'
 import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
+import { MusicPlayerProvider } from './music-player'
 import { useMobileViewportSync } from './use-mobile'
 
 export type View = NavName
@@ -172,6 +173,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   }
 
   return (
+    // One music player for the whole shell, so it keeps playing across views.
+    <MusicPlayerProvider>
     <GuideProvider value={openGuide}>
     <LegacyInboxContext.Provider value={legacyInbox}>
     <div className="flex min-h-screen bg-background">
@@ -210,5 +213,6 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     </div>
     </LegacyInboxContext.Provider>
     </GuideProvider>
+    </MusicPlayerProvider>
   )
 }

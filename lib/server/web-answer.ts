@@ -38,6 +38,22 @@ export function takeSearchSlot(uid: string, now = Date.now()): boolean {
   return true
 }
 
+/** Song searches (POST /api/music/search) have their own soft per-user limit; YouTube's daily quota is the real one. */
+export const MUSIC_LIMITS = { perHour: 30, windowMs: 3_600_000 } as const
+const musicSlots = new Map<string, number[]>()
+
+/** Records a song search for `uid` and returns true, or false when it already searched 30 times in the last hour. */
+export function takeMusicSlot(uid: string, now = Date.now()): boolean {
+  const recent = (musicSlots.get(uid) ?? []).filter((t) => now - t < MUSIC_LIMITS.windowMs)
+  if (recent.length >= MUSIC_LIMITS.perHour) {
+    musicSlots.set(uid, recent)
+    return false
+  }
+  recent.push(now)
+  musicSlots.set(uid, recent)
+  return true
+}
+
 // ---------- answer from the results ----------
 
 export const WEB_ANSWER_INSTRUCTION = `You are Echo, a warm, concise virtual companion. Answer the user's question from the web search results.

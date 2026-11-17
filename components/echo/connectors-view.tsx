@@ -11,10 +11,11 @@ import { Alert, Button, EmptyState, PageHeader, Skeleton } from './ui'
 import { ConnectorCard } from './connectors/connector-card'
 import { ConnectorFilters } from './connectors/connector-filters'
 import { WeatherBody, WeatherLive } from './connectors/weather-card'
+import { MusicBody } from './connectors/music-card'
 
 export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text: string }
 
-type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }
+type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number; service?: string; username?: string }
 
 const CHIPS = categoryChips(CONNECTORS)
 // Every section and card stays mounted; filtering only hides them, so Weather keeps its forecast and picker state.
@@ -44,7 +45,7 @@ export function ConnectorsView({
     return onSnapshot(
       connectorsCol(uid),
       (snap) => {
-        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon })))
+        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon, service: s.data().service, username: s.data().username })))
         setLoadError('')
       },
       (e) => {
@@ -106,6 +107,8 @@ export function ConnectorsView({
           )
         ) : c.id === 'weather' ? (
           <WeatherBody uid={uid} connected={connected} place={weatherDoc?.place} showPlace={false} />
+        ) : c.id === 'music' ? (
+          <MusicBody uid={uid} connected={connected} username={docOf('music')?.username} />
         ) : null}
       </>
     )

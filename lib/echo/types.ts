@@ -38,6 +38,8 @@ export type EchoAction =
   | { type: 'meal_delete'; ref: string }
   /** Resolved on the server (never reaches the browser): the reply is written from Tavily results. */
   | { type: 'web_search'; query: string }
+  /** Reaches the browser: it finds the song (a pasted YouTube link, or POST /api/music/search) and opens the player. */
+  | { type: 'play_music'; query: string }
 
 export type EchoActionType = EchoAction['type']
 export const DELETE_ACTION_TYPES = ['reminder_delete', 'note_delete', 'goal_delete', 'meal_delete'] as const

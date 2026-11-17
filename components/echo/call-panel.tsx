@@ -7,6 +7,7 @@ import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
+import { findTrack, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
@@ -128,6 +129,7 @@ export function useEchoCall({
   onDeleted,
   getPageId,
   prepareContext,
+  onPlayMusic,
 }: {
   user: User
   voice: string
@@ -146,6 +148,8 @@ export function useEchoCall({
   getPageId?: () => Promise<string | undefined>
   /** Warms what getContext needs (e.g. the weather) before a call; called by prepare(). */
   prepareContext?: () => unknown
+  /** play_music found a song: open the shell's player paused (never over the call audio). */
+  onPlayMusic?: (track: MusicTrack) => void
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -158,9 +162,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -294,6 +298,11 @@ export function useEchoCall({
             if (r.disconnect) cb.current.onWebSearchSecret?.(null)
             else if (r.resealed) cb.current.onWebSearchSecret?.(r.resealed)
             return r.output
+          },
+          play: async (q) => {
+            const r = await findTrack(cb.current.user, q)
+            if (r.ok) cb.current.onPlayMusic?.(r.track)
+            return musicToolOutput(r)
           },
         },
       )

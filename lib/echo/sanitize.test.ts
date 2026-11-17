@@ -427,3 +427,61 @@ describe('parseEchoContext weather', () => {
     expect(parseEchoContext({})).not.toHaveProperty('weather')
   })
 })
+
+describe('play_music action', () => {
+  it('keeps a lone play_music with its trimmed query', () => {
+    expect(resp([{ type: 'play_music', query: '  lofi beats  ' }]).actions).toEqual([{ type: 'play_music', query: 'lofi beats' }])
+  })
+  it('drops an empty query', () => {
+    expect(resp([{ type: 'play_music', query: '  ' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music' }]).actions).toEqual([])
+    expect(resp([{ type: 'play_music', query: 42 }]).actions).toEqual([])
+  })
+  it('cuts the query to 200 characters', () => {
+    expect(resp([{ type: 'play_music', query: 'q'.repeat(300) }]).actions).toEqual([{ type: 'play_music', query: 'q'.repeat(200) }])
+  })
+  it('keeps a pasted link as the query', () => {
+    expect(resp([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }]).actions).toEqual([{ type: 'play_music', query: 'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x' }])
+  })
+  it('stands alone: one play_music, over general, connector and web_search; memories kept', () => {
+    const out = sanitizeEchoResponse(
+      {
+        reply: 'Playing it.',
+        actions: [
+          { type: 'connector', provider: 'Spotify', request: 'play lofi' },
+          { type: 'play_music', query: 'lofi' },
+          { type: 'play_music', query: 'jazz' },
+          { type: 'web_search', query: 'lofi' },
+          { type: 'general' },
+        ],
+        memories: [{ label: 'Lofi', type: 'interest', links: [] }],
+        trace: [],
+      },
+      NOW,
+      '09:00',
+    )
+    expect(out.actions).toEqual([{ type: 'play_music', query: 'lofi' }])
+    expect(out.memories.map((m) => m.label)).toEqual(['Lofi'])
+  })
+  it('coexists with real saves: reminder + one play_music (play saves nothing)', () => {
+    const out = resp([
+      { type: 'reminder', title: 'Call Mama', dueAt: '2026-10-25T20:00:00+08:00' },
+      { type: 'play_music', query: 'lofi' },
+      { type: 'play_music', query: 'jazz' },
+      { type: 'web_search', query: 'lofi' },
+    ])
+    expect(out.actions.map((a) => a.type)).toEqual(['reminder', 'play_music'])
+    expect(out.actions[1]).toEqual({ type: 'play_music', query: 'lofi' })
+  })
+  it('is dropped when a delete needs confirming, so the question reaches the user', () => {
+    const out = sanitizeEchoResponse(
+      { reply: 'Deleted it and playing lofi.', actions: [{ type: 'reminder_delete', ref: 'r1' }, { type: 'play_music', query: 'lofi' }], memories: [], trace: [] },
+      NOW,
+      '09:00',
+      [],
+      { items: { reminders: [{ ref: 'r1', title: 'Stretch', due: 'Mon' }], goals: [], notes: [], health: '', meals: [], caloriesEnabled: true }, recentMessages: [] },
+    )
+    expect(out.actions.some((a) => a.type === 'play_music')).toBe(false)
+    expect(out.reply).not.toMatch(/playing/i)
+  })
+})

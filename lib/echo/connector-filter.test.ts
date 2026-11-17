@@ -29,7 +29,7 @@ describe('groupByCategory', () => {
   it('drops empty groups and keeps section order', () => {
     const groups = groupByCategory(CONNECTORS)
     expect(groups.map((g) => g.id)).toEqual(['music', 'health', 'productivity', 'live'])
-    expect(ids(groups.find((g) => g.id === 'music')!.items)).toEqual(['spotify'])
+    expect(ids(groups.find((g) => g.id === 'music')!.items)).toEqual(['music', 'spotify'])
     expect(groups.find((g) => g.id === 'health')!.label).toBe('Health & Fitness')
   })
   it('returns nothing for an empty list', () => {
