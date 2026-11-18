@@ -6,7 +6,7 @@ import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoReques
 export const LIMITS = {
   connectors: 32,
   weather: 600,
-  music: 2000,
+  music: 3000,
   webSearchKey: 8192,
   text: 2000,
   profile: 1500,

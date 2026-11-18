@@ -12,7 +12,8 @@ import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/se
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
-import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, resolveMusicControl, type ControlResult, type MusicTrack } from '@/lib/echo/music-play'
+import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, resolveMusicControl, type MusicTrack } from '@/lib/echo/music-play'
+import type { MusicCommand } from '@/lib/echo/types'
 import { renderMusicContext, toPlaylist, type Playlist } from '@/lib/echo/playlists'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
@@ -194,9 +195,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
-  const { play: playMusic, playTracks, pause: pauseMusic, control: musicControl, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
+  const { play: playMusic, playTracks, pause: pauseMusic, control: musicControl, nowPlaying, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
   // MUSIC context: the user's playlists (live) and the player's queue, read at send / call start.
-  const playlistsRef = useRef<Playlist[]>([])
+  // null until the first snapshot (or after an error): the MUSIC block then leaves playlists out instead of saying none.
+  const playlistsRef = useRef<Playlist[] | null>(null)
   useEffect(() => {
     return onSnapshot(
       playlistsCol(uid),
@@ -204,7 +206,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         playlistsRef.current = snap.docs.map((d) => toPlaylist(d.id, d.data())).filter((p): p is Playlist => p !== null)
       },
       () => {
-        playlistsRef.current = []
+        playlistsRef.current = null
       },
     )
   }, [uid])
@@ -550,8 +552,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         let queue: MusicTrack[] = []
         // music_control (next, pause, stop…) runs on the player now; if it can't, the reply says why.
         const control = res.actions.find((a) => a.type === 'music_control')
-        let controlled: ControlResult | null = null
-        const withControl = resolveMusicControl(res, (cmd) => (controlled = musicAvailable ? musicControl(cmd) : 'unavailable'))
+        const { res: withControl, result: controlled } = resolveMusicControl(res, (cmd) => (musicAvailable ? musicControl(cmd) : 'unavailable'))
         if (controlled === 'ok' && control && ['next', 'previous', 'resume'].includes(control.command)) songStarted = true
         const applied = await applyEchoResponseWithMusic(
           uid,
@@ -710,7 +711,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useEffect(() => {
     musicRef.current = musicTrack
   }, [musicTrack])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? (cmd) => controlToolOutput(musicControl(cmd)) : undefined })
+  // Calls: commands never start sound over Echo's voice, and the result says what's playing now (the call's MUSIC
+  // block was built when the call started).
+  const onCallMusicControl = useCallback((cmd: MusicCommand) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true })), ...nowPlaying() }), [musicControl, nowPlaying])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined })
   useCallFlag(call.active)
   useEffect(() => {
     const t = musicRef.current

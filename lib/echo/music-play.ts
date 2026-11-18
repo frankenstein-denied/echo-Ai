@@ -112,22 +112,24 @@ export async function findMusic(
 // ---------- player commands ----------
 
 /** What a player command did: ok, or why it couldn't. */
-export type ControlResult = 'ok' | 'nothing_playing' | 'no_next' | 'no_previous' | 'unavailable'
+export type ControlResult = 'ok' | 'nothing_playing' | 'no_next' | 'no_previous' | 'no_shuffle' | 'in_call' | 'unavailable'
 
 export const MUSIC_CONTROL_REPLIES: Record<Exclude<ControlResult, 'ok' | 'unavailable'>, string> = {
   nothing_playing: "Nothing is playing right now. Ask me to play a song or one of your playlists.",
   no_next: "That's the last song in the queue.",
   no_previous: "That's the first song in the queue.",
+  no_shuffle: "There's nothing left in the queue to shuffle.",
+  in_call: "It's ready in the player — tap play when you want it. I won't play music over our call.",
 }
 
 const controlReply = (r: Exclude<ControlResult, 'ok'>) => (r === 'unavailable' ? MUSIC_REPLIES.unavailable : MUSIC_CONTROL_REPLIES[r])
 
 /** Typed chat: runs a music_control action on the player; when it can't, the reply says why instead. */
-export function resolveMusicControl(res: EchoResponse, control: (command: MusicCommand) => ControlResult): EchoResponse {
+export function resolveMusicControl(res: EchoResponse, control: (command: MusicCommand) => ControlResult): { res: EchoResponse; result: ControlResult | null } {
   const action = res.actions.find((a) => a.type === 'music_control')
-  if (!action) return res
-  const r = control(action.command)
-  return r === 'ok' ? res : { ...res, reply: controlReply(r) }
+  if (!action) return { res, result: null }
+  const result = control(action.command)
+  return { res: result === 'ok' ? res : { ...res, reply: controlReply(result) }, result }
 }
 
 /** Calls: the music_control tool result. */

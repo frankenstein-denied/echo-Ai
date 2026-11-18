@@ -531,7 +531,7 @@ describe('music_control action', () => {
 
 describe('music context', () => {
   it('keeps the music summary, capped', () => {
-    const r = parseEchoRequest({ ...base, context: { music: 'x'.repeat(3000) } })
-    expect('error' in r ? '' : r.context.music).toHaveLength(2000)
+    const r = parseEchoRequest({ ...base, context: { music: 'x'.repeat(4000) } })
+    expect('error' in r ? '' : r.context.music).toHaveLength(3000)
   })
 })

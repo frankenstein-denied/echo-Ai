@@ -70,7 +70,7 @@ export function buildContext(profile: ProfileInput, messages: MessageInput[], me
   const memoryLabels = [...traits, ...others]
     .sort(byStrength)
     .map((m) => ({ label: m.label.trim().slice(0, LABEL_LEN), type: m.type, mentions: m.mentions ?? 1 }))
-  return { profile: buildProfileSummary(profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors: connectors.map(({ id, status }) => ({ id, status })) } : {}), ...(weather?.trim() ? { weather: weather.trim().slice(0, 600) } : {}), ...(music?.trim() ? { music: music.trim().slice(0, 2000) } : {}) }
+  return { profile: buildProfileSummary(profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors: connectors.map(({ id, status }) => ({ id, status })) } : {}), ...(weather?.trim() ? { weather: weather.trim().slice(0, 600) } : {}), ...(music?.trim() ? { music: music.trim().slice(0, 3000) } : {}) }
 }
 
 // ---------- short refs for existing items (typed chat context and the call instruction) ----------
