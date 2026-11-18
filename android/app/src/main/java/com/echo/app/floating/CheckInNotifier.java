@@ -15,7 +15,9 @@ import com.echo.app.echo.DeepLinks;
 /** The check-in notification, for when no bubble can show the message. One id, so a new one replaces the last and buzzes again. */
 public final class CheckInNotifier {
     private static final String TAG = "CheckInTiming";
-    private static final String CHANNEL_ID = "echo_checkins";
+    /** A channel keeps its first sound for good, so the warm chime needs a new id; the old channel is removed. */
+    static final String CHANNEL_ID = "echo_checkins_chime";
+    static final String OLD_CHANNEL_ID = "echo_checkins";
     private static final int NOTIFICATION_ID = 4204;
 
     private CheckInNotifier() {}
@@ -24,6 +26,7 @@ public final class CheckInNotifier {
     static void post(Context ctx, CheckInPlanner.Plan plan, int unread) {
         try {
             NotificationManagerCompat nm = NotificationManagerCompat.from(ctx);
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID); // the double-buzz channel; a no-op once gone
             nm.createNotificationChannel(
                 new NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
                     .setName(ctx.getString(R.string.check_in_channel_name))

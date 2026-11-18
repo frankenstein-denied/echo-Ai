@@ -15,11 +15,16 @@ import android.util.Log;
 import com.echo.app.R;
 import java.io.IOException;
 
-/** Echo's double buzz beside the small message. Respects silent mode and Do Not Disturb, and never gets in the way of the message. */
+/**
+ * Echo's chime beside the small message: two soft rising notes and two light taps, like a friend saying "hey!",
+ * never an alarm. Respects silent mode and Do Not Disturb, and never gets in the way of the message.
+ */
 final class EchoBuzz {
     private static final String TAG = "CheckInTiming";
-    /** Off, on, off, on: matches the two pulses in echo_buzz.wav. */
-    static final long[] VIBRATION = {0L, 120L, 60L, 120L};
+    /** Off, on, off, on: two light taps under the two notes of echo_chime.wav (a pattern, for channels). */
+    static final long[] VIBRATION = {0L, 35L, 95L, 55L};
+    /** The same taps, soft: Android 8+ plays these strengths (0-255) where the phone supports them. */
+    static final int[] AMPLITUDES = {0, 70, 0, 110};
 
     private static MediaPlayer player; // held so it can't be collected mid-sound; main thread only
 
@@ -27,7 +32,7 @@ final class EchoBuzz {
 
     /** By name, not id: a channel keeps this for good, and ids change between builds. */
     static Uri soundUri(Context ctx) {
-        return Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + ctx.getPackageName() + "/raw/echo_buzz");
+        return Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + ctx.getPackageName() + "/raw/echo_chime");
     }
 
     static AudioAttributes audioAttributes() {
@@ -56,7 +61,7 @@ final class EchoBuzz {
         release();
         MediaPlayer p = new MediaPlayer();
         player = p;
-        try (AssetFileDescriptor fd = ctx.getResources().openRawResourceFd(R.raw.echo_buzz)) {
+        try (AssetFileDescriptor fd = ctx.getResources().openRawResourceFd(R.raw.echo_chime)) {
             p.setAudioAttributes(audioAttributes());
             p.setDataSource(fd.getFileDescriptor(), fd.getStartOffset(), fd.getLength());
             p.setOnPreparedListener(MediaPlayer::start);
@@ -88,7 +93,10 @@ final class EchoBuzz {
         Vibrator vibrator = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator == null || !vibrator.hasVibrator()) return;
         if (Build.VERSION.SDK_INT >= 26) {
-            vibrator.vibrate(VibrationEffect.createWaveform(VIBRATION, -1), audioAttributes());
+            VibrationEffect effect = vibrator.hasAmplitudeControl()
+                ? VibrationEffect.createWaveform(VIBRATION, AMPLITUDES, -1)
+                : VibrationEffect.createWaveform(VIBRATION, -1);
+            vibrator.vibrate(effect, audioAttributes());
         } else {
             vibrator.vibrate(VIBRATION, -1);
         }
