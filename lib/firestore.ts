@@ -26,6 +26,8 @@ import { db } from '@/lib/firebase'
 import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
+import { toPlaylist, type Playlist } from '@/lib/echo/playlists'
+import type { MusicTrack } from '@/lib/echo/music-play'
 import { roundCoord } from '@/lib/echo/weather'
 import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { languageCode, type LanguageCode } from '@/lib/echo/languages'
@@ -91,6 +93,8 @@ export const diaryPagesCol = (uid: string) => sub<DiaryPage>(uid, 'diaryPages')
 export const pageMessagesCol = (uid: string, pageId: string) => collection(db, 'users', uid, 'diaryPages', pageId, 'messages') as CollectionReference<Message>
 export const connectorsCol = (uid: string) => sub<Connector>(uid, 'connectors')
 export const memoriesCol = (uid: string) => sub<Memory>(uid, 'memories')
+export type PlaylistDoc = { name: string; tracks: { videoId: string; title: string; channel?: string }[]; createdAt: Timestamp; updatedAt: Timestamp }
+export const playlistsCol = (uid: string) => sub<PlaylistDoc>(uid, 'playlists')
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = userDoc(user.uid)
@@ -193,6 +197,46 @@ export async function setMusicAccount(uid: string, service: 'listenbrainz', user
 /** Music: disconnects and removes the saved account. */
 export async function disconnectMusic(uid: string): Promise<void> {
   await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (ListenBrainz)', connected: false, updatedAt: serverTimestamp() } as never)
+}
+
+// ---------- playlists (Music page) ----------
+
+/** Firestore rejects undefined fields: keep channel only when there is one. */
+const plainTracks = (tracks: { videoId: string; title: string; channel?: string }[]) => tracks.map((t) => ({ videoId: t.videoId, title: t.title, ...(t.channel ? { channel: t.channel } : {}) }))
+
+export async function createPlaylist(uid: string, name: string, tracks: { videoId: string; title: string; channel?: string }[] = []): Promise<string> {
+  const ref = doc(playlistsCol(uid))
+  await setDoc(ref, { name, tracks: plainTracks(tracks), createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  return ref.id
+}
+
+export async function renamePlaylist(uid: string, id: string, name: string): Promise<void> {
+  await updateDoc(doc(playlistsCol(uid), id), { name, updatedAt: serverTimestamp() } as never)
+}
+
+/**
+ * Changes a playlist's songs from the latest stored list (a transaction), so an edit made meanwhile — on this page or
+ * another device — isn't overwritten by a stale copy.
+ */
+export async function updatePlaylistTracks(uid: string, id: string, change: (tracks: MusicTrack[]) => MusicTrack[]): Promise<MusicTrack[]> {
+  const ref = doc(playlistsCol(uid), id)
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    const current = snap.exists() ? (toPlaylist(id, snap.data())?.tracks ?? []) : []
+    const next = change(current)
+    tx.update(ref, { tracks: plainTracks(next), updatedAt: serverTimestamp() } as never)
+    return next
+  })
+}
+
+/** The user's playlists (bad docs skipped), for "play my gym playlist". */
+export async function loadPlaylists(uid: string): Promise<Playlist[]> {
+  const snap = await getDocs(playlistsCol(uid))
+  return snap.docs.map((d) => toPlaylist(d.id, d.data())).filter((p): p is Playlist => p !== null)
+}
+
+export async function deletePlaylist(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(playlistsCol(uid), id))
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {

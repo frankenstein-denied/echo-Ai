@@ -1,6 +1,7 @@
 // Browser-safe: find a song for the music player. A pasted YouTube / YouTube Music link plays directly (no API key, no
 // request); a song name goes through POST /api/music/search. Fixed replies per error; never logs the query.
 import { parseYoutubeLink } from './music'
+import { matchPlaylist, type Playlist } from './playlists'
 import { fetchWithTimeout } from './send-helpers'
 import type { EchoResponse } from './types'
 
@@ -77,4 +78,33 @@ export async function resolvePlayMusic(res: EchoResponse, find: (query: string) 
 /** Calls: the play_music tool result (the player opened paused). */
 export function musicToolOutput(out: FindOutcome): Record<string, unknown> {
   return out.ok ? { ok: true, title: out.track.title } : { error: out.error, tell_user: out.reply }
+}
+
+/**
+ * A play request: a saved playlist whose name matches ("my gym playlist") plays the whole list; anything else is a
+ * song search (findTrack). `queue` is what the player should play ([] on failure). Never throws.
+ */
+export async function findMusic(
+  query: string,
+  deps: { playlists: () => Promise<Playlist[]>; find: (query: string) => Promise<FindOutcome>; playlistTimeoutMs?: number },
+): Promise<{ outcome: FindOutcome; queue: MusicTrack[] }> {
+  let lists: Playlist[] = []
+  // A pasted link never names a playlist: don't wait on the read.
+  if (!parseYoutubeLink(query)) {
+    try {
+      // A slow or offline read shouldn't hold up the song (or a call's reply).
+      lists = await Promise.race([deps.playlists(), new Promise<Playlist[]>((resolve) => setTimeout(() => resolve([]), deps.playlistTimeoutMs ?? 1500))])
+    } catch {
+      // Offline or not signed in: just search.
+    }
+  }
+  const pl = matchPlaylist(query, lists)
+  if (pl) return { outcome: { ok: true, track: { videoId: pl.tracks[0].videoId, title: `${pl.name} playlist` } }, queue: pl.tracks }
+  let outcome: FindOutcome
+  try {
+    outcome = await deps.find(query)
+  } catch {
+    outcome = fail('failed')
+  }
+  return { outcome, queue: outcome.ok ? [outcome.track] : [] }
 }

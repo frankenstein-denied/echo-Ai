@@ -17,6 +17,7 @@ import { GoalsView } from './goals-view'
 import { HealthView } from './health-view'
 import { RemindersView } from './reminders-view'
 import { ConnectorsView, type ConnectorNotice } from './connectors-view'
+import { MusicView } from './music-view'
 import { BrainView } from './brain-view'
 import { LegacyView } from './legacy/legacy-view'
 import { useLegacyActivity } from './legacy/use-legacy-activity'
@@ -193,6 +194,8 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
             <HealthView uid={user.uid} onNavigate={navigate} />
           ) : view === 'Reminders' ? (
             <RemindersView uid={user.uid} />
+          ) : view === 'Music' ? (
+            <MusicView uid={user.uid} />
           ) : view === 'Connectors' ? (
             <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (

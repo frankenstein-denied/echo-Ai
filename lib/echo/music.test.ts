@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { formatListening, listenbrainzListening, listenbrainzUserExists, parseYoutubeLink, youtubeEmbedUrl, youtubeMusicUrl } from './music'
+import { fetchVideoInfo, formatListening, listenbrainzListening, listenbrainzUserExists, parseYoutubeLink, youtubeEmbedUrl, youtubeMusicUrl } from './music'
 
 const res = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as unknown as Response
 
@@ -8,6 +8,8 @@ describe('urls', () => {
     expect(youtubeEmbedUrl('abc', true)).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=1')
     expect(youtubeEmbedUrl('abc', false)).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=0')
     expect(youtubeMusicUrl('abc')).toBe('https://music.youtube.com/watch?v=abc')
+    // With the page origin the embed reports its state (used to play the next song when one ends).
+    expect(youtubeEmbedUrl('abc', true, 'https://echo.app')).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=1&enablejsapi=1&origin=https%3A%2F%2Fecho.app')
   })
 })
 
@@ -101,5 +103,17 @@ describe('parseYoutubeLink', () => {
   })
   it('ignores non-strings', () => {
     expect(parseYoutubeLink(undefined as unknown as string)).toBeNull()
+  })
+})
+
+describe('fetchVideoInfo', () => {
+  it('reads title and channel from YouTube oEmbed', async () => {
+    const f = vi.fn(async () => res({ title: ' Never Gonna Give You Up ', author_name: 'Rick Astley' }))
+    expect(await fetchVideoInfo('dQw4w9WgXcQ', f as never)).toEqual({ videoId: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', channel: 'Rick Astley' })
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ&format=json')
+  })
+  it('falls back to a plain title when the lookup fails', async () => {
+    expect(await fetchVideoInfo('dQw4w9WgXcQ', vi.fn(async () => res({}, 404)) as never)).toEqual({ videoId: 'dQw4w9WgXcQ', title: 'YouTube video' })
+    expect(await fetchVideoInfo('dQw4w9WgXcQ', vi.fn(async () => Promise.reject(new Error('x'))) as never)).toEqual({ videoId: 'dQw4w9WgXcQ', title: 'YouTube video' })
   })
 })
