@@ -24,6 +24,9 @@ describe('briefOutcome', () => {
   it('marks a brief the user talked over as partial', () => {
     expect(briefOutcome({ echoText: 'Morning!', completed: false, userSpoke: true })).toBe('partial')
   })
+  it('marks a completed brief the user also spoke during as partial', () => {
+    expect(briefOutcome({ echoText: 'Morning!', completed: true, userSpoke: true })).toBe('partial')
+  })
   it('skips a brief hung up before the turn completed', () => {
     expect(briefOutcome({ echoText: 'Morning!', completed: false, userSpoke: false })).toBe('skip')
   })
