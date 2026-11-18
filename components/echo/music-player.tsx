@@ -12,6 +12,8 @@ import { ChevronDown, ChevronUp, ExternalLink, Music, SkipBack, SkipForward, X }
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { isEndedMessage, queueReducer, type QueueAction, type QueueState } from '@/lib/echo/playlists'
+import { isPlayingMessage, listenOutcome } from '@/lib/echo/listening'
+import { finishListen, startListen } from '@/lib/firestore'
 import type { ControlResult } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
 import { buttonClass } from '@/lib/echo/ui-classes'
@@ -52,7 +54,8 @@ export function useMusicPlayer(): MusicPlayerApi {
   return useContext(MusicPlayerContext) ?? NOOP
 }
 
-export function MusicPlayerProvider({ children }: { children: ReactNode }) {
+/** `uid` turns on the listening history (the music pattern analyzer): each song YouTube reports playing is recorded. */
+export function MusicPlayerProvider({ uid, children }: { uid?: string; children: ReactNode }) {
   const [q, dispatch] = useReducer(queueReducer, EMPTY)
   // qRef mirrors the queue synchronously (same reducer, same actions), so a command run seconds after a send, or two
   // call tools in one batch, see the queue as it is now, not as it was when the callback was made.
@@ -71,7 +74,44 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const remove = useCallback((index: number) => act({ type: 'remove', index }), [act])
   const pause = useCallback(() => act({ type: 'pause' }), [act])
   const close = useCallback(() => act({ type: 'close' }), [act])
-  const ended = useCallback((key: number) => act({ type: 'ended', key }), [act])
+  // ---- listening history: one doc per song that actually played; its outcome is written when it leaves ----
+  const logRef = useRef<{ key: number; id: Promise<string | null>; startMs: number; ended: boolean } | null>(null)
+  const finalize = useCallback(() => {
+    const l = logRef.current
+    if (!l || !uid) return
+    logRef.current = null
+    const sec = (Date.now() - l.startMs) / 1000
+    void l.id.then((id) => (id ? finishListen(uid, id, listenOutcome(l.ended, sec), sec) : undefined)).catch(() => undefined)
+  }, [uid])
+  const playing = useCallback(
+    (key: number) => {
+      if (!uid || logRef.current?.key === key) return
+      const s = qRef.current
+      const t = s.key === key ? s.tracks[s.index] : undefined
+      if (!t) return
+      finalize()
+      logRef.current = { key, id: startListen(uid, t).catch(() => null), startMs: Date.now(), ended: false }
+    },
+    [uid, finalize],
+  )
+  // A song leaves the player when the queue moves on or closes, the provider unmounts, or the page is hidden.
+  useEffect(() => {
+    if (logRef.current && logRef.current.key !== q.key) finalize()
+  }, [q.key, finalize])
+  useEffect(() => {
+    window.addEventListener('pagehide', finalize)
+    return () => {
+      window.removeEventListener('pagehide', finalize)
+      finalize()
+    }
+  }, [finalize])
+  const ended = useCallback(
+    (key: number) => {
+      if (logRef.current?.key === key) logRef.current.ended = true
+      act({ type: 'ended', key })
+    },
+    [act],
+  )
   // The docked player registers how to command its embed, and whether the embed has answered yet (is listening).
   const embedRef = useRef<Embed | null>(null)
   const registerEmbed = useCallback((e: Embed | null) => {
@@ -129,12 +169,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} onRegister={registerEmbed} />}
+      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onPlaying={playing} onClose={close} onRegister={registerEmbed} />}
     </MusicPlayerContext.Provider>
   )
 }
 
-function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void; onRegister: (embed: Embed | null) => void }) {
+function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlaying, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onPlaying: (key: number) => void; onClose: () => void; onRegister: (embed: Embed | null) => void }) {
   // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
   const [minimized, setMinimized] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -162,10 +202,11 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose
       // Any message from this embed means its player is up and listening for commands.
       answered.current = key
       if (isEndedMessage(e.data)) onEnded(key)
+      else if (isPlayingMessage(e.data)) onPlaying(key)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onEnded, key])
+  }, [onEnded, onPlaying, key])
 
   // Let the provider pause/resume this embed (YouTube's postMessage commands).
   useEffect(() => {

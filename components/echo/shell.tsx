@@ -175,7 +175,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
 
   return (
     // One music player for the whole shell, so it keeps playing across views.
-    <MusicPlayerProvider>
+    <MusicPlayerProvider uid={user?.uid}>
     <GuideProvider value={openGuide}>
     <LegacyInboxContext.Provider value={legacyInbox}>
     <div className="flex min-h-screen bg-background">

@@ -2,6 +2,7 @@
 // request); a song name goes through POST /api/music/search. Fixed replies per error; never logs the query.
 import { parseYoutubeLink } from './music'
 import { matchPlaylist, type Playlist } from './playlists'
+import { matchHistory, type Listen } from './listening'
 import { fetchWithTimeout } from './send-helpers'
 import type { EchoResponse, MusicCommand } from './types'
 
@@ -86,7 +87,7 @@ export function musicToolOutput(out: FindOutcome): Record<string, unknown> {
  */
 export async function findMusic(
   query: string,
-  deps: { playlists: () => Promise<Playlist[]>; find: (query: string) => Promise<FindOutcome>; playlistTimeoutMs?: number },
+  deps: { playlists: () => Promise<Playlist[]>; find: (query: string) => Promise<FindOutcome>; playlistTimeoutMs?: number; history?: () => Listen[] },
 ): Promise<{ outcome: FindOutcome; queue: MusicTrack[] }> {
   let lists: Playlist[] = []
   // A pasted link never names a playlist: don't wait on the read.
@@ -100,6 +101,9 @@ export async function findMusic(
   }
   const pl = matchPlaylist(query, lists)
   if (pl) return { outcome: { ok: true, track: { videoId: pl.tracks[0].videoId, title: `${pl.name} playlist` } }, queue: pl.tracks }
+  // A song the user has played before replays from the history (no YouTube search quota).
+  const known = !parseYoutubeLink(query) && deps.history ? matchHistory(query, deps.history()) : null
+  if (known) return { outcome: { ok: true, track: known }, queue: [known] }
   let outcome: FindOutcome
   try {
     outcome = await deps.find(query)

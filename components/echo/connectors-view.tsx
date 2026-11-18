@@ -11,7 +11,6 @@ import { Alert, Button, EmptyState, PageHeader, Skeleton } from './ui'
 import { ConnectorCard } from './connectors/connector-card'
 import { ConnectorFilters } from './connectors/connector-filters'
 import { WeatherBody, WeatherLive } from './connectors/weather-card'
-import { MusicBody } from './connectors/music-card'
 
 export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text: string }
 
@@ -107,8 +106,6 @@ export function ConnectorsView({
           )
         ) : c.id === 'weather' ? (
           <WeatherBody uid={uid} connected={connected} place={weatherDoc?.place} showPlace={false} />
-        ) : c.id === 'music' ? (
-          <MusicBody uid={uid} connected={connected} username={docOf('music')?.username} />
         ) : null}
       </>
     )

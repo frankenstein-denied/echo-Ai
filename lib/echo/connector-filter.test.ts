@@ -28,8 +28,7 @@ describe('filterConnectors', () => {
 describe('groupByCategory', () => {
   it('drops empty groups and keeps section order', () => {
     const groups = groupByCategory(CONNECTORS)
-    expect(groups.map((g) => g.id)).toEqual(['music', 'health', 'productivity', 'knowledge', 'live'])
-    expect(ids(groups.find((g) => g.id === 'music')!.items)).toEqual(['music', 'spotify'])
+    expect(groups.map((g) => g.id)).toEqual(['health', 'productivity', 'knowledge', 'live'])
     expect(groups.find((g) => g.id === 'health')!.label).toBe('Health & Fitness')
   })
   it('returns nothing for an empty list', () => {
@@ -40,7 +39,7 @@ describe('groupByCategory', () => {
 describe('categoryChips', () => {
   it('starts with All and lists only non-empty categories', () => {
     const chips = categoryChips(CONNECTORS)
-    expect(chips.map((c) => c.id)).toEqual(['all', 'music', 'health', 'productivity', 'knowledge', 'live'])
+    expect(chips.map((c) => c.id)).toEqual(['all', 'health', 'productivity', 'knowledge', 'live'])
     expect(chips[0].label).toBe('All')
   })
 })
@@ -48,7 +47,7 @@ describe('categoryChips', () => {
 describe('emptyMessage', () => {
   it('names the query, and the category only when one is picked', () => {
     expect(emptyMessage({ category: 'all', query: ' zzz ' })).toBe('No connectors match “zzz”.')
-    expect(emptyMessage({ category: 'music', query: 'zzz' })).toBe('No connectors match “zzz” in Music.')
+    expect(emptyMessage({ category: 'health', query: 'zzz' })).toBe('No connectors match “zzz” in Health & Fitness.')
   })
   it('falls back when there is no query', () => {
     expect(emptyMessage({ category: 'ai', query: '  ' })).toBe('No connectors in AI models yet.')

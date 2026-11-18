@@ -28,3 +28,15 @@ describe('firestore.rules: playlists', () => {
     expect(b).not.toContain('unlocked(')
   })
 })
+
+describe('firestore.rules: listens', () => {
+  const b = block('/listens/{id}')
+  it('is owner-only, created as playing at server time, and only the outcome changes later', () => {
+    expect(b).toContain("d.keys().hasOnly(['videoId', 'title', 'channel', 'startedAt', 'outcome', 'listenedSec'])")
+    expect(b).toContain("d.videoId.matches('^[A-Za-z0-9_-]{11}$')")
+    expect(b).toContain("request.resource.data.outcome == 'playing'")
+    expect(b).toContain('request.resource.data.startedAt == request.time')
+    expect(b).toContain('request.resource.data.startedAt == resource.data.startedAt')
+    expect(b).toContain('allow read, delete: if isOwner(uid);')
+  })
+})

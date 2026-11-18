@@ -57,28 +57,8 @@ describe('isConnected', () => {
     expect(w([{ id: 'weather', connected: true, lat: 14.6, lon: 121 }])).toBe('connected')
     expect(w([{ id: 'weather', connected: true, lat: 0, lon: 0 }])).toBe('connected')
   })
-
-  it('catalogs music as available and keeps spotify coming soon', () => {
-    const m = CONNECTORS.find((c) => c.id === 'music')
-    expect(m?.name).toBe('Music (ListenBrainz)')
-    expect(m?.available).toBe(true)
-    expect(CONNECTORS.find((c) => c.id === 'spotify')?.available).toBe(false)
-  })
-
-  it('counts music as connected only with service listenbrainz and a username', () => {
-    const m = (docs: { id: string; connected?: boolean; service?: unknown; username?: unknown }[]) => status(docs, 'music')
-    expect(m([])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'listenbrainz' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'spotify', username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: '   ' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 5 }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: false, service: 'listenbrainz', username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'lastfm', username: 'bob' }])).toBe('not_connected')
-    expect(m([{ id: 'music', connected: true, service: 'listenbrainz', username: 'bob' }])).toBe('connected')
-  })
 })
+
 
 describe('free lookup connectors', () => {
   it('are built in, available and on by default, one per lookup source', () => {
@@ -96,6 +76,6 @@ describe('free lookup connectors', () => {
     expect(['wikipedia', 'books', 'movies'].map(cat)).toEqual(['knowledge', 'knowledge', 'knowledge'])
     expect(['news', 'currency', 'holidays'].map(cat)).toEqual(['live', 'live', 'live'])
     expect(cat('food-facts')).toBe('health')
-    expect(CONNECTOR_CATEGORIES.map((c) => c.id)).toEqual(['ai', 'music', 'health', 'productivity', 'knowledge', 'live'])
+    expect(CONNECTOR_CATEGORIES.map((c) => c.id)).toEqual(['ai', 'health', 'productivity', 'knowledge', 'live'])
   })
 })

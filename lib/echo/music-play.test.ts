@@ -200,3 +200,13 @@ describe('controlToolOutput', () => {
     expect(MUSIC_CONTROL_REPLIES.in_call).toMatch(/tap play/)
   })
 })
+
+describe('findMusic with listening history', () => {
+  it('replays a song from the history without a search', async () => {
+    const find = vi.fn()
+    const history = () => [{ videoId: 'ddddddddddd', title: 'Survivor - Eye Of The Tiger', channel: 'SurvivorVEVO', startedMs: 1, outcome: 'finished' as const }]
+    const r = await findMusic('eye of the tiger', { playlists: async () => [], find, history })
+    expect(find).not.toHaveBeenCalled()
+    expect(r.outcome).toEqual({ ok: true, track: { videoId: 'ddddddddddd', title: 'Survivor - Eye Of The Tiger', channel: 'SurvivorVEVO' } })
+  })
+})
