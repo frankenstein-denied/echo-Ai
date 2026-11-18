@@ -30,6 +30,7 @@ import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { toPlaylist, type Playlist } from '@/lib/echo/playlists'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { roundCoord } from '@/lib/echo/weather'
+import { clipBrief, recentBriefTexts, type BriefDoc } from '@/lib/echo/briefs'
 import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { languageCode, type LanguageCode } from '@/lib/echo/languages'
 import { BATCH_MAX, chunk, defaultPageTitle, MIGRATION_PAGE_ID, MIGRATION_PAGE_TITLE, normalizeTitle, planMigration, previewOf } from '@/lib/echo/diary'
@@ -98,6 +99,7 @@ export type PlaylistDoc = { name: string; tracks: { videoId: string; title: stri
 export const playlistsCol = (uid: string) => sub<PlaylistDoc>(uid, 'playlists')
 export type ListenDoc = { videoId: string; title: string; channel?: string; startedAt: Timestamp; outcome: 'playing' | 'finished' | 'skipped' | 'partial'; listenedSec?: number }
 export const listensCol = (uid: string) => sub<ListenDoc>(uid, 'listens')
+export const briefsCol = (uid: string) => sub<BriefDoc>(uid, 'briefs')
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = userDoc(user.uid)
@@ -245,6 +247,22 @@ export async function clearListens(uid: string): Promise<void> {
     for (const d of snap.docs) batch.delete(d.ref)
     await batch.commit()
   }
+}
+
+// ---------- briefs (users/{uid}/briefs/{day}; one daily voice brief per local day) ----------
+export async function saveBrief(uid: string, day: string, text: string, partial: boolean): Promise<void> {
+  await setDoc(doc(briefsCol(uid), day), { text: clipBrief(text), partial, createdAt: serverTimestamp() } as never)
+}
+
+/** The last few full briefs' texts, newest first. */
+export async function loadRecentBriefs(uid: string): Promise<string[]> {
+  const snap = await getDocs(query(briefsCol(uid), orderBy('createdAt', 'desc'), limit(6)))
+  return recentBriefTexts(snap.docs.map((d) => d.data()))
+}
+
+/** Live: whether today's brief (any outcome) is already stored. */
+export function watchBriefDone(uid: string, day: string, onData: (done: boolean) => void, onError: (e: Error) => void): Unsubscribe {
+  return onSnapshot(doc(briefsCol(uid), day), (snap) => onData(snap.exists()), onError)
 }
 
 /** The user's playlists (bad docs skipped), for "play my gym playlist". */

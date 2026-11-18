@@ -332,6 +332,21 @@ service cloud.firestore {
           && request.resource.data.videoId == resource.data.videoId;
       }
 
+      // ---------- briefs (daily voice brief; doc id = local day YYYY-MM-DD; owner-only) ----------
+      match /briefs/{day} {
+        function validBrief(d) {
+          return d.keys().hasOnly(['text', 'partial', 'createdAt'])
+            && d.keys().hasAll(['text', 'partial', 'createdAt'])
+            && isString(d.text, 1000)
+            && d.partial is bool;
+        }
+        allow read, delete: if isOwner(uid);
+        // Update lets a later full brief replace a partial one the same day.
+        allow create, update: if isOwner(uid) && validBrief(request.resource.data)
+          && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.createdAt == request.time;
+      }
+
       // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
       match /connectors/{provider} {
         function validConnector(d) {
