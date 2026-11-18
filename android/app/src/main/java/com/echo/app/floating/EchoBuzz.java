@@ -22,7 +22,7 @@ import java.io.IOException;
 final class EchoBuzz {
     private static final String TAG = "CheckInTiming";
     /** Off, on, off, on: two light taps under the two notes of echo_chime.wav (a pattern, for channels). */
-    static final long[] VIBRATION = {0L, 35L, 95L, 55L};
+    static final long[] VIBRATION = {0L, 50L, 90L, 70L};
     /** The same taps, soft: Android 8+ plays these strengths (0-255) where the phone supports them. */
     static final int[] AMPLITUDES = {0, 70, 0, 110};
 

@@ -141,14 +141,15 @@ public final class CheckInPlanner {
      * {when} is "at 4 PM" or "on Sat, Nov 7". The small message has no {time} beyond {when}, and its title is
      * cut to fit, built in {@link #reminderShort}.
      */
+    // Each line works for any title, a verb ("Call mom") or a thing ("Dentist"), and never makes a small task dramatic.
     private static final String[] REMINDER = {
-        "Hey{, name}! Just so it doesn't sneak up on you: {title} {when}. Need anything to get ready?",
-        "Thinking of you{, name}. {title} is coming up {when}. How are you feeling about it?",
-        "Psst{, name}, {title} {when}. You've got this!",
+        "Hey{, name}! {title} {when}, just so it doesn't sneak up on you.",
+        "Psst{, name}: {title} {when}. Anything I can do to help?",
+        "Quick one{, name}, so you don't have to remember: {title} {when}. How's the rest of your day looking?",
     };
     private static final String[] REMINDER_SHORT = {
-        "Hey, {title} {when}!",
-        "Psst… {title} {when}",
+        "Hey! {title} {when}",
+        "Psst, {title} {when}",
         "{title} {when}, remember?",
     };
 

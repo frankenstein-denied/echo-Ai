@@ -70,7 +70,7 @@ public class CheckInPlannerTest {
         s.openReminders.add(reminder("Dentist", now + 90 * MINUTE_MS));
         Plan p = plan(s, now);
         assertEquals(Topic.REMINDER, p.topic);
-        assertEquals("Hey, Dentist at 4 PM!", p.shortText);
+        assertEquals("Hey! Dentist at 4 PM", p.shortText);
     }
 
     @Test public void reminderAfterNextCheckInDoesNotCount() {
@@ -90,32 +90,32 @@ public class CheckInPlannerTest {
         s.openReminders.add(reminder("Dentist", at(16, 0) + DAY_MS));
         Plan p = plan(s, null, now, TWO_DAYS);
         assertEquals(Topic.REMINDER, p.topic);
-        assertEquals("Hey, Dentist on Sat, Nov 7!", p.shortText);
-        assertEquals("Hey! Just so it doesn't sneak up on you: Dentist on Sat, Nov 7 at 4 PM. Need anything to get ready?", p.fullText);
+        assertEquals("Hey! Dentist on Sat, Nov 7", p.shortText);
+        assertEquals("Hey! Dentist on Sat, Nov 7 at 4 PM, just so it doesn't sneak up on you.", p.fullText);
     }
 
     @Test public void reminderTomorrowAtAnEarlierClockTimeNamesItsDay() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(14, 0) + DAY_MS));
-        assertEquals("Hey, Dentist on Sat, Nov 7!", plan(s, null, at(14, 30), TWO_DAYS).shortText);
+        assertEquals("Hey! Dentist on Sat, Nov 7", plan(s, null, at(14, 30), TWO_DAYS).shortText);
     }
 
     @Test public void reminderTomorrowExactlyTwelveHoursAwayNamesItsDay() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(9, 0) + DAY_MS));
-        assertEquals("Hey, Dentist on Sat, Nov 7!", plan(s, null, at(21, 0), TWO_DAYS).shortText);
+        assertEquals("Hey! Dentist on Sat, Nov 7", plan(s, null, at(21, 0), TWO_DAYS).shortText);
     }
 
     @Test public void reminderTomorrowUnderTwelveHoursAwayKeepsTheTimeAlone() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(8, 59) + DAY_MS));
-        assertEquals("Hey, Dentist at 8:59 AM!", plan(s, null, at(21, 0), TWO_DAYS).shortText);
+        assertEquals("Hey! Dentist at 8:59 AM", plan(s, null, at(21, 0), TWO_DAYS).shortText);
     }
 
     @Test public void reminderLaterTodayKeepsTheTimeAloneHoweverFarOff() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(21, 0)));
-        assertEquals("Hey, Dentist at 9 PM!", plan(s, null, at(7, 30), TWO_DAYS).shortText);
+        assertEquals("Hey! Dentist at 9 PM", plan(s, null, at(7, 30), TWO_DAYS).shortText);
     }
 
     @Test public void reminderBeyondALongGapDoesNotCount() {
@@ -160,10 +160,10 @@ public class CheckInPlannerTest {
         long now = at(14, 30);
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(15, 0)));
-        assertEquals("Hey, Dentist at 3 PM!", CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 0, true, true).shortText);
-        assertEquals("Psst\u2026 Dentist at 3 PM", CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 120, true, true).shortText);
+        assertEquals("Hey! Dentist at 3 PM", CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 0, true, true).shortText);
+        assertEquals("Psst, Dentist at 3 PM", CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 120, true, true).shortText);
         assertEquals("Dentist at 3 PM, remember?", CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 240, true, true).shortText);
-        assertEquals("Thinking of you. Dentist is coming up at 3 PM. How are you feeling about it?",
+        assertEquals("Psst: Dentist at 3 PM. Anything I can do to help?",
             CheckInPlanner.plan(s, null, now, TZ, 120, SLEEP_START, SLEEP_END, 120, true, true).fullText);
     }
 
@@ -180,14 +180,14 @@ public class CheckInPlannerTest {
         s.openReminders.add(reminder("Pills", at(22, 30)));
         Plan p = plan(s, null, now, 30);
         assertEquals(Topic.REMINDER, p.topic);
-        assertEquals("Hey, Pills at 10:30 PM!", p.shortText);
+        assertEquals("Hey! Pills at 10:30 PM", p.shortText);
     }
 
     @Test public void earliestReminderIsChosen() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Later", at(15, 30)));
         s.openReminders.add(reminder("Sooner", at(15, 0)));
-        assertEquals("Hey, Sooner at 3 PM!", plan(s, at(14, 30)).shortText);
+        assertEquals("Hey! Sooner at 3 PM", plan(s, at(14, 30)).shortText);
     }
 
     @Test public void doneAndPastRemindersAreIgnored() {
@@ -462,17 +462,17 @@ public class CheckInPlannerTest {
         s.openReminders.add(reminder("Dentist", at(15, 0)));
         TimeZone tokyo = TimeZone.getTimeZone("Asia/Tokyo"); // one hour ahead of Manila
         Plan p = CheckInPlanner.plan(s, null, now, tokyo, 120, SLEEP_START, SLEEP_END, 0, true, true);
-        assertEquals("Hey, Dentist at 4 PM!", p.shortText);
+        assertEquals("Hey! Dentist at 4 PM", p.shortText);
     }
 
     @Test public void noonAndMidnightAreTwelve() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Lunch", at(12, 0)));
-        assertEquals("Hey, Lunch at 12 PM!", plan(s, at(11, 0)).shortText);
+        assertEquals("Hey! Lunch at 12 PM", plan(s, at(11, 0)).shortText);
 
         s.openReminders.clear();
         s.openReminders.add(reminder("Late", at(23, 59) + MINUTE_MS + 15 * MINUTE_MS));
-        assertEquals("Hey, Late at 12:15 AM!", plan(s, null, at(21, 50), 30).shortText);
+        assertEquals("Hey! Late at 12:15 AM", plan(s, null, at(21, 50), 30).shortText);
     }
 
     @Test public void clockHoursFollowDaylightSaving() {
@@ -493,20 +493,20 @@ public class CheckInPlannerTest {
         s.openReminders.add(reminder(title, at(15, 30)));
         Plan p = plan(s, at(14, 30));
         assertTrue(p.shortText.length() <= 40);
-        assertEquals("Hey, " + title.substring(0, 22) + "… at 3:30 PM!", p.shortText);
+        assertEquals("Hey! " + title.substring(0, 23) + "… at 3:30 PM", p.shortText);
         assertTrue(p.fullText.contains(title)); // the chat message is never cut
     }
 
     @Test public void titleOfExactlyTheLimitIsNotCut() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("123456789012345678901234", at(15, 0)));
-        assertEquals("Hey, 123456789012345678901234 at 3 PM!", plan(s, at(14, 30)).shortText);
+        assertEquals("Hey! 123456789012345678901234 at 3 PM", plan(s, at(14, 30)).shortText);
     }
 
     @Test public void cuttingNeverSplitsAnEmoji() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("12345678901234567890123😀 and more", at(15, 0)));
-        assertEquals("Hey, 12345678901234567890123… at 3 PM!", plan(s, at(14, 30)).shortText);
+        assertEquals("Hey! 12345678901234567890123… at 3 PM", plan(s, at(14, 30)).shortText);
     }
 
     // ---- the voice ----
@@ -654,8 +654,8 @@ public class CheckInPlannerTest {
     @Test public void reminderLinesNameTheTitleAndTime() {
         TodaySnapshot s = allLogged();
         s.openReminders.add(reminder("Dentist", at(15, 30)));
-        assertEquals("Hey! Just so it doesn't sneak up on you: Dentist at 3:30 PM. Need anything to get ready?", voiced(s, at(14, 30), 0).fullText);
-        assertEquals("Thinking of you. Dentist is coming up at 3:30 PM. How are you feeling about it?", voiced(s, at(14, 30), 1).fullText);
-        assertEquals("Psst, Dentist at 3:30 PM. You've got this!", voiced(s, at(14, 30), 2).fullText);
+        assertEquals("Hey! Dentist at 3:30 PM, just so it doesn't sneak up on you.", voiced(s, at(14, 30), 0).fullText);
+        assertEquals("Psst: Dentist at 3:30 PM. Anything I can do to help?", voiced(s, at(14, 30), 1).fullText);
+        assertEquals("Quick one, so you don't have to remember: Dentist at 3:30 PM. How's the rest of your day looking?", voiced(s, at(14, 30), 2).fullText);
     }
 }

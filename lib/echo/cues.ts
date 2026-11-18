@@ -81,6 +81,7 @@ export function saveSoundPrefs(prefs: SoundPrefs, storage: StorageLike | null = 
 // ---------- playback ----------
 
 let ctx: AudioContext | null = null
+let lastEnd = 0 // when the latest scheduled cue finishes, on the context clock
 
 function audio(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -95,6 +96,26 @@ function audio(): AudioContext | null {
   } catch {
     return null
   }
+}
+
+let primed = false
+
+/**
+ * Browsers that only allow sound after a tap (iOS Safari) keep a context made later suspended, so the first
+ * tap or key press anywhere creates it. Call once when the app mounts; safe to call again.
+ */
+export function primeCues(): void {
+  if (primed || typeof window === 'undefined') return
+  primed = true
+  const unlock = () => {
+    window.removeEventListener('pointerdown', unlock, true)
+    window.removeEventListener('keydown', unlock, true)
+    const ac = audio()
+    // Wake it inside the gesture, then let it sleep until a cue needs it.
+    if (ac) void ac.resume().then(() => ac.suspend()).catch(() => undefined)
+  }
+  window.addEventListener('pointerdown', unlock, true)
+  window.addEventListener('keydown', unlock, true)
 }
 
 /**
@@ -131,7 +152,12 @@ export function playCue(kind: CueKind, opts: { force?: boolean } = {}): void {
         osc.stop(end)
       }
     }
-    setTimeout(() => out.disconnect(), (end - ac.currentTime) * 1000 + 100)
+    setTimeout(() => {
+      out.disconnect()
+      // Sleep between cues (battery); the next cue wakes it. Another cue still playing keeps it awake.
+      if (ac.currentTime >= lastEnd) void ac.suspend().catch(() => undefined)
+    }, (end - ac.currentTime) * 1000 + 100)
+    lastEnd = Math.max(lastEnd, end)
   } catch {
     // Sound is a nicety; ignore any failure.
   }

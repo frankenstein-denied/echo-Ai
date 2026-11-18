@@ -101,9 +101,14 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
     return () => s.flush()
   }, [uid, goal.id, onError])
 
-  const saveMilestones = (milestones: Goal['milestones']) => {
-    if (newlyDone(goal.milestones, milestones)) playCue('goal')
-    return updateGoal(uid, goal.id, { milestones }).catch((e) => onError(e instanceof Error ? e.message : 'Could not save milestones.'))
+  const saveMilestones = (milestones: Goal['milestones']) =>
+    updateGoal(uid, goal.id, { milestones }).catch((e) => onError(e instanceof Error ? e.message : 'Could not save milestones.'))
+
+  // Only a tick chimes: removing a milestone shifts the others, so it must never look like one got done.
+  const toggle = (i: number) => {
+    const next = toggleMilestone(goal.milestones, i, Date.now())
+    if (newlyDone(goal.milestones, next)) playCue('goal')
+    void saveMilestones(next)
   }
 
   const addMilestone = () => {
@@ -152,7 +157,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
           className="mt-3 w-full accent-primary max-lg:mt-1 max-lg:h-11"
         />
       </div>
-      {goal.milestones.length > 0 && <MilestonePath milestones={goal.milestones} onToggle={(i) => saveMilestones(toggleMilestone(goal.milestones, i, Date.now()))} />}
+      {goal.milestones.length > 0 && <MilestonePath milestones={goal.milestones} onToggle={toggle} />}
       <ul className="mt-4 flex flex-col gap-2 text-sm">
         {goal.milestones.map((m, i) => (
           <li key={i} className="flex items-center gap-2">
@@ -163,7 +168,7 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
                 aria-label={`Milestone: ${m.text}`}
                 className="size-4 shrink-0 accent-primary max-lg:size-5"
                 checked={m.done}
-                onChange={() => saveMilestones(toggleMilestone(goal.milestones, i, Date.now()))}
+                onChange={() => toggle(i)}
               />
               <span className={`min-w-0 flex-1 break-words ${m.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{m.text}</span>
             </HitRow>
