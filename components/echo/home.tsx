@@ -779,6 +779,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     })
   }
   const startBrief = () => startCall('brief')
+  // Today's brief is still owed on this page: only today's page may start (and store) it.
+  const briefOwed = isTodayPage && briefDone === false
 
   // Floating call (/?embed=call): start once today's page is picked and its messages, the memories and the voice prefs
   // have loaded (or failed to: a load error still starts, and native's connect timeout covers a load that never answers).
@@ -906,8 +908,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const voiceEntry = embed !== 'chat' && !!prefs?.enabled && !disabled
   const pinnedBriefOrb = showPinnedBriefOrb({ isTodayPage, briefDone, welcomeShown, callActive: call.active, voiceEnabled: !!prefs?.enabled, embed })
   // The speaking orb during a brief call: in the chat column on desktop, in CallScreen on touch. One at a time,
-  // so the orb's shared SVG ids never resolve into a hidden copy.
-  const briefOrb = call.active && call.mode === 'brief' ? <BriefOrb uid={uid} pageId={pageId ?? undefined} getLevel={call.getOutputLevel} speaking={call.phase === 'speaking'} reducedMotion={reducedMotion} size={160} /> : null
+  // so the orb's shared SVG ids never resolve into a hidden copy. Only until the brief turn is finalized: after
+  // that the call looks like a normal call (saved turns no longer jump above the orb).
+  const briefOrb = call.active && call.mode === 'brief' && call.briefPending ? <BriefOrb uid={uid} pageId={pageId ?? undefined} getLevel={call.getOutputLevel} speaking={call.phase === 'speaking'} reducedMotion={reducedMotion} size={160} /> : null
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1">
@@ -943,8 +946,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 hint={hint}
                 onAsk={ask}
                 onFillComposer={fillComposer}
-                onOrbTap={voiceEntry ? (briefDone === false ? startBrief : () => startCall('greeting')) : undefined}
-                orbLabel={voiceEntry ? (briefDone === false ? "Play today's brief" : 'Talk to Echo') : undefined}
+                onOrbTap={voiceEntry ? (briefOwed ? startBrief : () => startCall('greeting')) : undefined}
+                orbLabel={voiceEntry ? (briefOwed ? "Play today's brief" : 'Talk to Echo') : undefined}
                 callButton={
                   embed === 'chat' ? null : prefs?.enabled ? (
                     <Button icon={Phone} onClick={() => startCall()} disabled={disabled || thinking} className="h-12 rounded-full px-6 text-base">
@@ -1017,7 +1020,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 <Alert variant={call.error.kind === 'quota' || call.error.kind === 'limit' ? 'warning' : 'danger'}>{call.error.message}</Alert>
                 <div className="flex gap-2">
                   {embed !== 'chat' && (
-                    <Button size="sm" icon={Phone} onClick={() => startCall()} disabled={disabled || thinking}>
+                    <Button size="sm" icon={Phone} onClick={() => startCall(briefOwed ? 'brief' : 'greeting')} disabled={disabled || thinking}>
                       {call.error.kind === 'limit' ? 'Start new call' : 'Retry call'}
                     </Button>
                   )}

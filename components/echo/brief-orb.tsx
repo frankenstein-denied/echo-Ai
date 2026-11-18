@@ -34,7 +34,7 @@ export function BriefOrb({ uid, pageId, getLevel, speaking, reducedMotion, size 
   }, [speaking, reducedMotion, getLevel])
 
   const inset = `${((1 - ORB_SHARE) / 2) * 100}%`
-  const glow = speaking && reducedMotion ? 'drop-shadow(0 0 18px rgba(45, 212, 191, 0.45))' : undefined
+  const glow = speaking && reducedMotion ? 'drop-shadow(0 0 18px color-mix(in srgb, var(--color-primary) 45%, transparent))' : undefined
   return (
     <div aria-hidden="true" className="relative shrink-0" style={{ width: size, height: size }}>
       {speaking && !reducedMotion

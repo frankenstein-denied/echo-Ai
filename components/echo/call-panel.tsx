@@ -176,6 +176,8 @@ export function useEchoCall({
   const [live, setLive] = useState<LiveBubble | null>(null)
   const [error, setError] = useState<CallError | null>(null)
   const [mode, setMode] = useState<CallMode | null>(null)
+  // True from a brief call's start until its first turn (the brief) is finalized or the call ends.
+  const [briefPending, setBriefPending] = useState(false)
   const res = useRef<Resources>({ session: null, ctx: null, stream: null, source: null, node: null, sink: null, analyser: null, workletUrl: null, sources: new Set(), tick: null })
   const callId = useRef(0)
   const turn = useRef<Turn>(newTurn())
@@ -226,6 +228,7 @@ export function useEchoCall({
     const brief = pendingBrief.current
     if (brief) {
       pendingBrief.current = null
+      setBriefPending(false)
       const b = briefTurnResult({ echoText, revealedOnly, interrupted: t.interrupted, userText, userCut, modelComplete: t.complete, playing: sched.current.isPlaying(now()) })
       if (b) {
         try {
@@ -261,6 +264,7 @@ export function useEchoCall({
       callId.current++
       pendingBrief.current = null
       setMode(null)
+      setBriefPending(false)
       setPhase('idle')
       return
     }
@@ -272,6 +276,7 @@ export function useEchoCall({
     setMuted(false)
     setStartedAt(null)
     setMode(null)
+    setBriefPending(false)
     setPhase('idle')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -284,6 +289,7 @@ export function useEchoCall({
     setMuted(false)
     setStartedAt(null)
     setMode(null)
+    setBriefPending(false)
     setPhase('idle')
     setError(e)
   }
@@ -405,7 +411,8 @@ export function useEchoCall({
     if (input) {
       let t = turn.current
       if (t.modelStarted && (t.interrupted || t.complete)) {
-        finalize(true, { userCut: !t.interrupted })
+        // Only a cut while the reply still plays: speech just after playback ended doesn't shorten a full brief.
+        finalize(true, { userCut: !t.interrupted && sched.current.isPlaying(now()) })
         t = turn.current
       }
       t.user += input
@@ -515,6 +522,7 @@ export function useEchoCall({
     setError(null)
     setMode(callMode)
     pendingBrief.current = callMode === 'brief' ? { day: briefDayKey(new Date()) } : null
+    setBriefPending(callMode === 'brief')
     setPhase('connecting')
     turn.current = newTurn()
     lastLive.current = ''
@@ -731,7 +739,7 @@ export function useEchoCall({
   // Always release the mic, audio and socket on unmount (page switch, sign-out, navigation).
   useEffect(() => end, [end])
 
-  return { phase, active, mode, muted, startedAt, live, error, start, prepare, getOutputLevel, end, toggleMute, clearError: () => setError(null) }
+  return { phase, active, mode, briefPending, muted, startedAt, live, error, start, prepare, getOutputLevel, end, toggleMute, clearError: () => setError(null) }
 }
 
 const PHASE_LABEL: Record<CallPhase, string> = {
