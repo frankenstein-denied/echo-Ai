@@ -14,7 +14,7 @@ function subscribeReduce(cb: () => void) {
   mq.addEventListener('change', cb)
   return () => mq.removeEventListener('change', cb)
 }
-function usePrefersReducedMotion(): boolean {
+export function usePrefersReducedMotion(): boolean {
   return useSyncExternalStore(subscribeReduce, () => window.matchMedia(REDUCE_QUERY).matches, () => false)
 }
 
@@ -23,7 +23,7 @@ const ORB_BOX = 160 // viewBox size; the halo may spill past it (overflow visibl
 
 const chipTint = (c: string): CSSProperties => ({ borderColor: `color-mix(in srgb, ${c} 40%, var(--color-border))`, boxShadow: `0 0 12px -4px color-mix(in srgb, ${c} 55%, transparent)` })
 
-/** Welcome on a page with no user message yet: today's orb, the greeting, quick-start chips and the call button. */
+/** Welcome on a page with no user message yet: today's orb, the greeting, quick-start chips and the call button. With `onOrbTap` the orb is a button labelled `orbLabel`. */
 export function TodayOrbWelcome({
   uid,
   pageId,
@@ -32,6 +32,8 @@ export function TodayOrbWelcome({
   onAsk,
   onFillComposer,
   callButton,
+  onOrbTap,
+  orbLabel: tapLabel,
 }: {
   uid: string
   pageId: string | undefined
@@ -40,6 +42,9 @@ export function TodayOrbWelcome({
   onAsk: (text: string) => void
   onFillComposer: (text: string) => void
   callButton?: ReactNode
+  onOrbTap?: () => void
+  /** The orb's label when it is a button (e.g. "Play today's brief"). */
+  orbLabel?: string
 }) {
   const orb = usePageOrb(uid, pageId)
   const reduced = usePrefersReducedMotion()
@@ -73,16 +78,26 @@ export function TodayOrbWelcome({
     }
   }
 
+  const orbSvg = (
+    <svg role={onOrbTap ? undefined : 'img'} aria-label={onOrbTap ? undefined : orbLabel} aria-hidden={onOrbTap ? true : undefined} viewBox={`${-ORB_BOX / 2} ${-ORB_BOX / 2} ${ORB_BOX} ${ORB_BOX}`} overflow="visible" className="block size-40 overflow-visible max-lg:size-[130px]">
+      <OrbDefs />
+      <MemoryOrb orb={orb} reducedMotion={reduced} />
+    </svg>
+  )
+
   const chip =
     'inline-flex h-10 items-center justify-center gap-1.5 rounded-full border bg-surface-2 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60 max-lg:h-11'
 
   return (
     <div className="flex flex-col items-center py-8 text-center max-lg:py-4">
       <div className={`my-6 max-lg:my-4 ${empty && !reduced ? 'orb-breathe' : ''}`}>
-        <svg role="img" aria-label={orbLabel} viewBox={`${-ORB_BOX / 2} ${-ORB_BOX / 2} ${ORB_BOX} ${ORB_BOX}`} overflow="visible" className="block size-40 overflow-visible max-lg:size-[130px]">
-          <OrbDefs />
-          <MemoryOrb orb={orb} reducedMotion={reduced} />
-        </svg>
+        {onOrbTap ? (
+          <button type="button" aria-label={tapLabel ?? orbLabel} onClick={onOrbTap} className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+            {orbSvg}
+          </button>
+        ) : (
+          orbSvg
+        )}
       </div>
       <p className="text-xl font-semibold text-foreground">{greeting}</p>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">This is today&apos;s orb. It fills with color as you tell me about your day.</p>

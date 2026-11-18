@@ -581,7 +581,7 @@ export function DiaryView({
           )}
           {!embed && list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
-            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} />
+            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} isTodayPage={sel.id === null || isFromToday(active?.createdAt?.toMillis?.())} />
           </div>
         </div>
       )}

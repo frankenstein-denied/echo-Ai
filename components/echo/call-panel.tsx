@@ -763,7 +763,7 @@ function Elapsed({ since }: { since: number | null }) {
  * Full-screen call view for touch layouts (< lg): large Echo mark, state text, scrolling live transcript (children),
  * and big Mute / End buttons at the bottom within thumb reach. Desktop keeps the CallBar.
  */
-export function CallScreen({ phase, muted, startedAt, onMute, onEnd, scrollKey, children, alerts, onClosed }: { phase: CallPhase; muted: boolean; startedAt: number | null; onMute: () => void; onEnd: () => void; scrollKey: string; children: ReactNode; alerts?: ReactNode; onClosed?: () => void }) {
+export function CallScreen({ phase, muted, startedAt, onMute, onEnd, scrollKey, children, alerts, onClosed, mark }: { phase: CallPhase; muted: boolean; startedAt: number | null; onMute: () => void; onEnd: () => void; scrollKey: string; children: ReactNode; alerts?: ReactNode; onClosed?: () => void; /** Replaces the Echo mark (the brief's speaking orb). */ mark?: ReactNode }) {
   const status = muted && phase === 'listening' ? 'Muted' : PHASE_LABEL[phase]
   const scroller = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLButtonElement>(null)
@@ -810,7 +810,7 @@ export function CallScreen({ phase, muted, startedAt, onMute, onEnd, scrollKey, 
         <Elapsed since={startedAt} />
       </div>
       <div className="flex shrink-0 flex-col items-center gap-3 px-6 pb-4 pt-4">
-        <EchoMark state={callMarkState(phase, muted)} />
+        {mark ?? <EchoMark state={callMarkState(phase, muted)} />}
         <p role="status" aria-live="polite" className="mt-2 text-lg font-semibold text-foreground">
           {status}
         </p>
