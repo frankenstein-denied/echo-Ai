@@ -5,8 +5,9 @@ import type { User } from 'firebase/auth'
 import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
-import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
-import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
+import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, rmsLevel, TranscriptSync } from '@/lib/echo/call-audio'
+import { briefDayKey, briefOutcome } from '@/lib/echo/briefs'
+import { briefKickoff, extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
 import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
 import type { Listen } from '@/lib/echo/listening'
@@ -23,6 +24,10 @@ export type CallTurn = { id: number; userText: string; echoText: string; saved: 
 export type LateResult = { saved: SavedItem[]; failed: string[] }
 export type LiveBubble = { user: string; echo: string; saved: SavedItem[] }
 export type CallError = { kind: 'quota' | 'mic' | 'failed' | 'dropped' | 'limit'; message: string }
+/** 'brief': Echo opens with today's spoken brief, then the call goes on as usual. */
+export type CallMode = 'greeting' | 'brief'
+/** The brief Echo spoke, for the page to store (partial when the user talked during it). */
+export type CallBrief = { day: string; text: string; partial: boolean }
 
 const WORKLET =
   "class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(1024);this.n=0}process(i){const c=i[0]&&i[0][0];if(c){for(let k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===1024){this.port.postMessage(this.b.slice(0));this.n=0}}}return true}}registerProcessor('echo-call-capture',P)"
@@ -110,6 +115,8 @@ type Resources = {
   source: MediaStreamAudioSourceNode | null
   node: AudioNode | null
   sink: AudioNode | null
+  /** Playback goes through it so the UI can read Echo's voice level. */
+  analyser: AnalyserNode | null
   workletUrl: string | null
   sources: Set<AudioBufferSourceNode>
   tick: ReturnType<typeof setInterval> | null
@@ -135,6 +142,7 @@ export function useEchoCall({
   onPlayMusic,
   onMusicControl,
   getListenHistory,
+  onBrief,
 }: {
   user: User
   voice: string
@@ -159,21 +167,24 @@ export function useEchoCall({
   onMusicControl?: (command: MusicCommand, seconds?: number) => Record<string, unknown>
   /** Songs played before, so play_music can replay one without a YouTube search. */
   getListenHistory?: () => Listen[]
+  /** A brief call's opening brief finished (or the user talked during it): at most once per call. */
+  onBrief?: (b: CallBrief) => void
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [live, setLive] = useState<LiveBubble | null>(null)
   const [error, setError] = useState<CallError | null>(null)
-  const res = useRef<Resources>({ session: null, ctx: null, stream: null, source: null, node: null, sink: null, workletUrl: null, sources: new Set(), tick: null })
+  const [mode, setMode] = useState<CallMode | null>(null)
+  const res = useRef<Resources>({ session: null, ctx: null, stream: null, source: null, node: null, sink: null, analyser: null, workletUrl: null, sources: new Set(), tick: null })
   const callId = useRef(0)
   const turn = useRef<Turn>(newTurn())
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, onBrief, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, onBrief, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -183,6 +194,9 @@ export function useEchoCall({
   const lastEcho = useRef('')
   // [call-timing] marks for the call being connected (logcat shows them through the WebView on Android).
   const timing = useRef<{ id: number; mark: (step: string) => void; firstAudio: boolean } | null>(null)
+  // Set by a brief call until its first turn is finalized: that turn is the brief.
+  const pendingBrief = useRef<{ day: string } | null>(null)
+  const levelBuf = useRef<Float32Array<ArrayBuffer> | null>(null)
 
   const now = () => res.current.ctx?.currentTime ?? 0
 
@@ -208,6 +222,16 @@ export function useEchoCall({
     const saved = (t.saved as Tagged[]).filter(notCancelled(t)).map(untag)
     if (echoText) lastEcho.current = echoText
     if (userText || echoText) cb.current.onTurn({ id: t.id, userText, echoText, saved, failed: t.failed })
+    const brief = pendingBrief.current
+    if (brief) {
+      pendingBrief.current = null
+      const outcome = briefOutcome({ echoText, completed: !revealedOnly && !t.interrupted, userSpoke: !!userText || t.interrupted })
+      if (outcome !== 'skip') {
+        try {
+          cb.current.onBrief?.({ day: brief.day, text: echoText, partial: outcome === 'partial' })
+        } catch {}
+      }
+    }
   }
 
   const release = () => {
@@ -220,6 +244,7 @@ export function useEchoCall({
     try {
       r.node?.disconnect()
       r.sink?.disconnect()
+      r.analyser?.disconnect()
     } catch {}
     try {
       r.source?.disconnect()
@@ -227,12 +252,14 @@ export function useEchoCall({
     r.stream?.getTracks().forEach((t) => t.stop())
     if (r.ctx && r.ctx.state !== 'closed') void r.ctx.close().catch(() => undefined)
     if (r.workletUrl) URL.revokeObjectURL(r.workletUrl)
-    res.current = { session: null, ctx: null, stream: null, source: null, node: null, sink: null, workletUrl: null, sources: new Set(), tick: null }
+    res.current = { session: null, ctx: null, stream: null, source: null, node: null, sink: null, analyser: null, workletUrl: null, sources: new Set(), tick: null }
   }
 
   const end = useCallback(() => {
     if (!res.current.session && !res.current.ctx && !res.current.stream) {
       callId.current++
+      pendingBrief.current = null
+      setMode(null)
       setPhase('idle')
       return
     }
@@ -243,6 +270,7 @@ export function useEchoCall({
     mutedRef.current = false
     setMuted(false)
     setStartedAt(null)
+    setMode(null)
     setPhase('idle')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -254,6 +282,7 @@ export function useEchoCall({
     mutedRef.current = false
     setMuted(false)
     setStartedAt(null)
+    setMode(null)
     setPhase('idle')
     setError(e)
   }
@@ -395,7 +424,7 @@ export function useEchoCall({
       buf.getChannelData(0).set(samples)
       const src = ctx.createBufferSource()
       src.buffer = buf
-      src.connect(ctx.destination)
+      src.connect(res.current.analyser ?? ctx.destination)
       const start = sched.current.schedule(ctx.currentTime, buf.duration)
       src.start(start)
       res.current.sources.add(src)
@@ -469,8 +498,9 @@ export function useEchoCall({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (requested?: CallMode) => {
     if (res.current.session || res.current.ctx) return
+    const callMode: CallMode = requested === 'brief' ? 'brief' : 'greeting'
     const id = ++callId.current
     const tap = performance.now()
     const mark = (step: string) => {
@@ -482,6 +512,8 @@ export function useEchoCall({
     limitReached.current = false
     lastActivity.current = Date.now()
     setError(null)
+    setMode(callMode)
+    pendingBrief.current = callMode === 'brief' ? { day: briefDayKey(new Date()) } : null
     setPhase('connecting')
     turn.current = newTurn()
     lastLive.current = ''
@@ -492,14 +524,28 @@ export function useEchoCall({
       const Ctx: typeof AudioContext = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       r.ctx = new Ctx()
       if (r.ctx.state === 'suspended') void r.ctx.resume()
+      try {
+        const analyser = r.ctx.createAnalyser()
+        analyser.fftSize = 512
+        analyser.connect(r.ctx.destination)
+        r.analyser = analyser
+      } catch {}
     } catch {
       fail({ kind: 'failed', message: 'This browser cannot play audio for calls.' })
       return
     }
     const tz = tzNow()
     // Everything independent starts now and runs side by side: the snapshot (prefetched when fresh), the context,
-    // the mic, the capture worklet and the SDK chunks. The session request waits only on the context and snapshot.
+    // the mic, the capture worklet and the SDK chunks. The session request waits only on the context and snapshot
+    // (plus the recent briefs on a brief call).
     const snapshotP = takeSnapshot(tz)
+    const uid = cb.current.user.uid
+    const recentBriefsP: Promise<string[] | undefined> =
+      callMode === 'brief'
+        ? import('@/lib/firestore')
+            .then((m) => m.loadRecentBriefs(uid))
+            .catch(() => [])
+        : Promise.resolve(undefined)
     const workletP = loadWorklet(r)
     const contextP = Promise.resolve()
       .then(() => cb.current.getContext())
@@ -531,8 +577,8 @@ export function useEchoCall({
         mark('mic ready')
         return stream
       })
-    const sessionP = Promise.all([contextP, snapshotP]).then(([context, snapshot]) =>
-      requestLiveSession(cb.current.user, { clientTime: localIsoWithOffset(), timeZone: tz, voice: cb.current.voice, context, snapshot }).then((s) => {
+    const sessionP = Promise.all([contextP, snapshotP, recentBriefsP]).then(([context, snapshot, recentBriefs]) =>
+      requestLiveSession(cb.current.user, { clientTime: localIsoWithOffset(), timeZone: tz, voice: cb.current.voice, context, snapshot, ...(recentBriefs ? { recentBriefs } : {}) }).then((s) => {
         mark('session token')
         return s
       }),
@@ -580,9 +626,10 @@ export function useEchoCall({
       setPhase('listening')
       mark('listening')
       // Echo speaks first: a hidden text kickoff (no input transcription, so no user bubble); the greeting
-      // arrives as a normal model turn and is saved as an assistant message.
+      // (or the brief) arrives as a normal model turn and is saved as an assistant message.
       try {
-        session.sendRealtimeInput({ text: greetingKickoff(localIsoWithOffset()) })
+        const kickoff = callMode === 'brief' ? briefKickoff : greetingKickoff
+        session.sendRealtimeInput({ text: kickoff(localIsoWithOffset()) })
       } catch {}
     } catch (e) {
       if (id !== callId.current) return
@@ -663,6 +710,16 @@ export function useEchoCall({
     }
   }, [])
 
+  /** Echo's current voice level, 0..1 (0 when no call is playing). */
+  const getOutputLevel = useCallback(() => {
+    const a = res.current.analyser
+    if (!a) return 0
+    let buf = levelBuf.current
+    if (!buf || buf.length !== a.fftSize) buf = levelBuf.current = new Float32Array(a.fftSize)
+    a.getFloatTimeDomainData(buf)
+    return rmsLevel(buf)
+  }, [])
+
   const active = phase !== 'idle'
 
   // Esc ends the call.
@@ -678,7 +735,7 @@ export function useEchoCall({
   // Always release the mic, audio and socket on unmount (page switch, sign-out, navigation).
   useEffect(() => end, [end])
 
-  return { phase, active, muted, startedAt, live, error, start, prepare, end, toggleMute, clearError: () => setError(null) }
+  return { phase, active, mode, muted, startedAt, live, error, start, prepare, getOutputLevel, end, toggleMute, clearError: () => setError(null) }
 }
 
 const PHASE_LABEL: Record<CallPhase, string> = {
