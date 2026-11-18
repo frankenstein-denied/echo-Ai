@@ -196,3 +196,14 @@ describe('queue moves without autoplay (calls)', () => {
     expect(queueReducer(s, { type: 'jump', index: 1, autoplay: false }).autoplay).toBe(false)
   })
 })
+
+describe('renderMusicContext with listening habits', () => {
+  it('puts the habits before the playlists and keeps within the cap', () => {
+    const habits = 'Listening habits (last 60 days, 15 plays):\n- Most played: Lofi (Lofi Girl, 7)'
+    const lists = [{ id: '1', name: 'Gym', tracks: [t(A, 'Eye of the Tiger')] }]
+    const text = renderMusicContext({ playlists: lists, queue: { tracks: [], index: 0 }, player: true, habits })
+    expect(text.indexOf('Listening habits')).toBeGreaterThan(-1)
+    expect(text.indexOf('Listening habits')).toBeLessThan(text.indexOf('Playlists ('))
+    expect(text).toContain('- Gym (1 song): Eye of the Tiger')
+  })
+})

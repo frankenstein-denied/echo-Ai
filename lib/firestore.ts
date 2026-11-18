@@ -10,6 +10,7 @@ import {
   getDoc,
   getDocs,
   orderBy,
+  limit,
   query,
   increment,
   runTransaction,
@@ -95,6 +96,8 @@ export const connectorsCol = (uid: string) => sub<Connector>(uid, 'connectors')
 export const memoriesCol = (uid: string) => sub<Memory>(uid, 'memories')
 export type PlaylistDoc = { name: string; tracks: { videoId: string; title: string; channel?: string }[]; createdAt: Timestamp; updatedAt: Timestamp }
 export const playlistsCol = (uid: string) => sub<PlaylistDoc>(uid, 'playlists')
+export type ListenDoc = { videoId: string; title: string; channel?: string; startedAt: Timestamp; outcome: 'playing' | 'finished' | 'skipped' | 'partial'; listenedSec?: number }
+export const listensCol = (uid: string) => sub<ListenDoc>(uid, 'listens')
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = userDoc(user.uid)
@@ -151,7 +154,7 @@ export async function completeOnboarding(uid: string, answers: OnboardingAnswers
   dueAt.setHours(Number.isFinite(hh) ? hh : 20, Number.isFinite(mm) ? mm : 30, 0, 0)
   batch.set(doc(remindersCol(uid)), { title: 'Daily check-in', dueAt: Timestamp.fromDate(dueAt), done: false, source: 'routine', createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
   batch.set(doc(routinesCol(uid)), { title: 'Daily check-in', cadence: 'Daily', confidence: 0.5, createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
-  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['music', 'Music (ListenBrainz)'], ['weather', 'Weather'], ['nutrition', 'Nutrition (USDA)'], ['web-search', 'Web search (Tavily)']]
+  const connectors: [string, string][] = [['google-calendar', 'Google Calendar'], ['gmail', 'Gmail'], ['github', 'GitHub'], ['notion', 'Notion'], ['weather', 'Weather'], ['nutrition', 'Nutrition (USDA)'], ['web-search', 'Web search (Tavily)']]
   for (const [id, name] of connectors) {
     batch.set(doc(connectorsCol(uid), id), { name, connected: id === 'nutrition', updatedAt: serverTimestamp() } as never)
   }
@@ -189,16 +192,6 @@ export async function disconnectWeather(uid: string): Promise<void> {
   await setDoc(doc(connectorsCol(uid), 'weather'), { name: 'Weather', connected: false, place: deleteField(), lat: deleteField(), lon: deleteField(), updatedAt: serverTimestamp() } as never, { merge: true })
 }
 
-/** Music: saves the ListenBrainz account and connects. Replaces the doc. */
-export async function setMusicAccount(uid: string, service: 'listenbrainz', username: string): Promise<void> {
-  await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (ListenBrainz)', connected: true, service, username: username.trim().slice(0, 100), updatedAt: serverTimestamp() } as never)
-}
-
-/** Music: disconnects and removes the saved account. */
-export async function disconnectMusic(uid: string): Promise<void> {
-  await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (ListenBrainz)', connected: false, updatedAt: serverTimestamp() } as never)
-}
-
 // ---------- playlists (Music page) ----------
 
 /** Firestore rejects undefined fields: keep channel only when there is one. */
@@ -227,6 +220,31 @@ export async function updatePlaylistTracks(uid: string, id: string, change: (tra
     tx.update(ref, { tracks: plainTracks(next), updatedAt: serverTimestamp() } as never)
     return next
   })
+}
+
+// ---------- listening history (the music pattern analyzer) ----------
+
+/** Records that Echo's player started playing a song; returns the doc id for finishListen. */
+export async function startListen(uid: string, track: { videoId: string; title: string; channel?: string }): Promise<string> {
+  const ref = doc(listensCol(uid))
+  await setDoc(ref, { videoId: track.videoId, title: track.title.slice(0, 200), ...(track.channel ? { channel: track.channel.slice(0, 200) } : {}), startedAt: serverTimestamp(), outcome: 'playing' } as never)
+  return ref.id
+}
+
+/** How the song went when it left the player. */
+export async function finishListen(uid: string, id: string, outcome: 'finished' | 'skipped' | 'partial', listenedSec: number): Promise<void> {
+  await updateDoc(doc(listensCol(uid), id), { outcome, listenedSec: Math.max(0, Math.min(86400, Math.round(listenedSec))) } as never)
+}
+
+/** Deletes the whole listening history (in batches of 400). */
+export async function clearListens(uid: string): Promise<void> {
+  for (;;) {
+    const snap = await getDocs(query(listensCol(uid), limit(400)))
+    if (snap.empty) return
+    const batch = writeBatch(db)
+    for (const d of snap.docs) batch.delete(d.ref)
+    await batch.commit()
+  }
 }
 
 /** The user's playlists (bad docs skipped), for "play my gym playlist". */

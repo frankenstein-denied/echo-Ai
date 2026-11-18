@@ -158,11 +158,12 @@ const TITLES_PER_PLAYLIST = 15
 const TITLE_MAX = 70
 
 /** A title or name made safe for a delimited prompt block: one line, no "===", no YouTube video-type suffixes. */
-function promptTitle(s: string): string {
+export function promptTitle(s: string): string {
   return s
     .replace(/[\r\n]+/g, ' ')
     .replace(/={2,}/g, '=')
-    .replace(/\s*[([](official\s+)?(music\s+)?(video|audio|lyric(s)?(\s+video)?|visuali[sz]er|hd|4k|remaster(ed)?)[)\]]/gi, '')
+    // Any bracketed note about the upload itself: (Official HD Video), [Lyrics], (4K Remaster)…
+    .replace(/\s*[([][^)\]]*\b(official|video|audio|lyrics?|visuali[sz]er|remaster(ed)?|hd|4k)\b[^)\]]*[)\]]/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, TITLE_MAX)
@@ -173,7 +174,7 @@ function promptTitle(s: string): string {
  * titles as fit (shared fairly across playlists), so Echo can answer "what's in my gym playlist?" and control the
  * player. `playlists` is null while they load (the line is left out). `player` is false where nothing can play.
  */
-export function renderMusicContext({ playlists, queue, player }: { playlists: Playlist[] | null; queue: { tracks: MusicTrack[]; index: number }; player: boolean }): string {
+export function renderMusicContext({ playlists, queue, player, habits }: { playlists: Playlist[] | null; queue: { tracks: MusicTrack[]; index: number }; player: boolean; habits?: string }): string {
   const lines: string[] = []
   const current = queue.tracks[queue.index]
   if (!player) lines.push('There is no music player here (the floating bubble); open Echo to play music.')
@@ -183,6 +184,8 @@ export function renderMusicContext({ playlists, queue, player }: { playlists: Pl
     const next = queue.tracks.slice(queue.index + 1, queue.index + 4).map((x) => promptTitle(x.title))
     if (next.length) lines.push(`Up next: ${next.join('; ')}${queue.tracks.length - queue.index - 1 > next.length ? '; …' : ''}.`)
   }
+  // Listening habits (renderListeningHabits) come before playlists, so the title budget accounts for them.
+  if (habits) lines.push(habits)
   if (playlists && !playlists.length) lines.push('No playlists yet.')
   if (playlists?.length) {
     const sorted = [...playlists].sort((a, b) => a.name.localeCompare(b.name))

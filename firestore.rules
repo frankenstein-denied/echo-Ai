@@ -312,6 +312,26 @@ service cloud.firestore {
         allow update: if isOwner(uid) && validPlaylist(request.resource.data) && updateStamps(request.resource.data);
       }
 
+      // ---------- listens (Music: songs Echo's player actually played; owner-only) ----------
+      match /listens/{id} {
+        function validListen(d) {
+          return d.keys().hasOnly(['videoId', 'title', 'channel', 'startedAt', 'outcome', 'listenedSec'])
+            && d.keys().hasAll(['videoId', 'title', 'startedAt', 'outcome'])
+            && d.videoId is string && d.videoId.matches('^[A-Za-z0-9_-]{11}$')
+            && isString(d.title, 200)
+            && (!('channel' in d) || isString(d.channel, 200))
+            && d.outcome in ['playing', 'finished', 'skipped', 'partial']
+            && (!('listenedSec' in d) || (d.listenedSec is int && d.listenedSec >= 0 && d.listenedSec <= 86400));
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validListen(request.resource.data)
+          && request.resource.data.outcome == 'playing'
+          && request.resource.data.startedAt == request.time;
+        allow update: if isOwner(uid) && validListen(request.resource.data)
+          && request.resource.data.startedAt == resource.data.startedAt
+          && request.resource.data.videoId == resource.data.videoId;
+      }
+
       // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
       match /connectors/{provider} {
         function validConnector(d) {

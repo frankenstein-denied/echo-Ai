@@ -9,6 +9,7 @@ import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackS
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
 import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
+import type { Listen } from '@/lib/echo/listening'
 import { loadPlaylists } from '@/lib/firestore'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
@@ -133,6 +134,7 @@ export function useEchoCall({
   prepareContext,
   onPlayMusic,
   onMusicControl,
+  getListenHistory,
 }: {
   user: User
   voice: string
@@ -155,6 +157,8 @@ export function useEchoCall({
   onPlayMusic?: (tracks: MusicTrack[]) => void
   /** music_control tool: runs next/pause/stop… on the shell's player; absent where there is no player. */
   onMusicControl?: (command: MusicCommand) => Record<string, unknown>
+  /** Songs played before, so play_music can replay one without a YouTube search. */
+  getListenHistory?: () => Listen[]
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -167,9 +171,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, getListenHistory, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -310,7 +314,7 @@ export function useEchoCall({
             // No player in this view (the chathead): tell the user instead of finding a song that can't open.
             if (!cb.current.onPlayMusic) return musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })
             // A saved playlist's name opens the whole list; anything else is a song search.
-            const r = await findMusic(q, { playlists: () => loadPlaylists(cb.current.user.uid), find: (x) => findTrack(cb.current.user, x) })
+            const r = await findMusic(q, { playlists: () => loadPlaylists(cb.current.user.uid), history: () => cb.current.getListenHistory?.() ?? [], find: (x) => findTrack(cb.current.user, x) })
             if (r.outcome.ok) cb.current.onPlayMusic?.(r.queue)
             return musicToolOutput(r.outcome)
           },

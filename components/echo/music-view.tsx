@@ -6,9 +6,10 @@
  * player (useMusicPlayer); asking Echo "play my <name> playlist" plays a saved list too.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { onSnapshot } from 'firebase/firestore'
-import { ListMusic, Pencil, Play, Plus, Shuffle, Trash2, X } from 'lucide-react'
-import { createPlaylist, deletePlaylist, playlistsCol, renamePlaylist, updatePlaylistTracks } from '@/lib/firestore'
+import { limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
+import { BarChart3, ListMusic, Pencil, Play, Plus, Shuffle, Trash2, X } from 'lucide-react'
+import { clearListens, createPlaylist, deletePlaylist, listensCol, playlistsCol, renamePlaylist, updatePlaylistTracks } from '@/lib/firestore'
+import { analyzeListening, LISTEN_WINDOW_DAYS, toListen, type Listen, type ListeningAnalysis } from '@/lib/echo/listening'
 import { isPermissionDenied } from '@/lib/echo/diary'
 import { fetchVideoInfo } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
@@ -53,6 +54,7 @@ export function MusicView({ uid }: { uid: string }) {
         <PasteLinks />
         <UpNext uid={uid} playlistCount={playlists?.length ?? 0} />
       </div>
+      <YourListening uid={uid} />
       <section aria-labelledby="playlists-heading" className="mt-6">
         <h2 id="playlists-heading" className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Playlists
@@ -403,6 +405,114 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
           busy={busy}
           onCancel={() => setConfirming(false)}
           onConfirm={() => void run(() => deletePlaylist(uid, playlist.id), 'Could not delete. Please try again.').then(() => setConfirming(false))}
+        />
+      )}
+    </Card>
+  )
+}
+
+/** "Your listening": what Echo has learned from its own player (last 60 days), and a way to clear it. */
+function YourListening({ uid }: { uid: string }) {
+  const player = useMusicPlayer()
+  const [listens, setListens] = useState<Listen[] | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const since = Timestamp.fromMillis(Date.now() - LISTEN_WINDOW_DAYS * 86_400_000)
+    return onSnapshot(
+      query(listensCol(uid), where('startedAt', '>=', since), orderBy('startedAt', 'desc'), limit(500)),
+      (snap) => setListens(snap.docs.map((d) => toListen(d.data())).filter((l): l is Listen => l !== null)),
+      () => setListens([]),
+    )
+  }, [uid])
+  const a: ListeningAnalysis | null = useMemo(() => (listens ? analyzeListening(listens, new Date()) : null), [listens])
+
+  async function clear() {
+    setBusy(true)
+    setError(null)
+    try {
+      await clearListens(uid)
+      setConfirming(false)
+    } catch {
+      setError('Could not clear your listening history. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="mt-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <BarChart3 size={18} aria-hidden="true" className="text-primary" />
+          Your listening
+        </h2>
+        {a && a.plays > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+            Clear history
+          </Button>
+        )}
+      </div>
+      {!a ? (
+        <Skeleton className="mt-3 h-16" />
+      ) : a.plays === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">Play some music and Echo learns what you like. Then ask &quot;play my usual&quot; or &quot;what do I listen to most?&quot;.</p>
+      ) : (
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Most played</h3>
+            <ol className="mt-2 space-y-1">
+              {a.topSongs.slice(0, 5).map((s) => (
+                <li key={s.videoId} className="flex items-center gap-2">
+                  <IconButton icon={Play} label={`Play ${s.title}`} size="sm" onClick={() => player.play({ videoId: s.videoId, title: s.title, ...(s.artist ? { channel: s.artist } : {}) }, { autoplay: true })} />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{s.title}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{s.plays}×</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              {a.plays} plays in the last {LISTEN_WINDOW_DAYS} days.
+            </p>
+            {a.topArtists.length > 0 && (
+              <p>
+                <span className="font-medium text-foreground">Top artists: </span>
+                <span className="text-muted-foreground">{a.topArtists.slice(0, 5).map((x) => x.name).join(', ')}</span>
+              </p>
+            )}
+            {a.habits.slice(0, 3).map((h) => (
+              <p key={h.when}>
+                <span className="font-medium capitalize text-foreground">{h.when}: </span>
+                <span className="text-muted-foreground">{h.title}</span>
+              </p>
+            ))}
+            {a.newThisWeek.length > 0 && (
+              <p>
+                <span className="font-medium text-foreground">New this week: </span>
+                <span className="text-muted-foreground">{a.newThisWeek.map((s) => s.title).join('; ')}</span>
+              </p>
+            )}
+            {a.oftenSkipped.length > 0 && (
+              <p>
+                <span className="font-medium text-foreground">Usually skipped: </span>
+                <span className="text-muted-foreground">{a.oftenSkipped.map((s) => s.title).join('; ')}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title="Clear your listening history?"
+          body="Echo forgets what you have played and your listening habits. Your playlists stay."
+          confirmLabel="Clear history"
+          busy={busy}
+          error={error}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void clear()}
         />
       )}
     </Card>
