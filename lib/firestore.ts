@@ -26,6 +26,7 @@ import { db } from '@/lib/firebase'
 import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
+import { toPlaylist, type Playlist } from '@/lib/echo/playlists'
 import { roundCoord } from '@/lib/echo/weather'
 import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { languageCode, type LanguageCode } from '@/lib/echo/languages'
@@ -214,6 +215,12 @@ export async function renamePlaylist(uid: string, id: string, name: string): Pro
 
 export async function setPlaylistTracks(uid: string, id: string, tracks: { videoId: string; title: string; channel?: string }[]): Promise<void> {
   await updateDoc(doc(playlistsCol(uid), id), { tracks: plainTracks(tracks), updatedAt: serverTimestamp() } as never)
+}
+
+/** The user's playlists (bad docs skipped), for "play my gym playlist". */
+export async function loadPlaylists(uid: string): Promise<Playlist[]> {
+  const snap = await getDocs(playlistsCol(uid))
+  return snap.docs.map((d) => toPlaylist(d.id, d.data())).filter((p): p is Playlist => p !== null)
 }
 
 export async function deletePlaylist(uid: string, id: string): Promise<void> {

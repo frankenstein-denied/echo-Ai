@@ -7,7 +7,8 @@ import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
-import { findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
+import { findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
+import { loadPlaylists } from '@/lib/firestore'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
@@ -149,7 +150,7 @@ export function useEchoCall({
   /** Warms what getContext needs (e.g. the weather) before a call; called by prepare(). */
   prepareContext?: () => unknown
   /** play_music found a song: open the shell's player paused (never over the call audio). */
-  onPlayMusic?: (track: MusicTrack) => void
+  onPlayMusic?: (tracks: MusicTrack[]) => void
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -303,9 +304,10 @@ export function useEchoCall({
           play: async (q) => {
             // No player in this view (the chathead): tell the user instead of finding a song that can't open.
             if (!cb.current.onPlayMusic) return musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })
-            const r = await findTrack(cb.current.user, q)
-            if (r.ok) cb.current.onPlayMusic?.(r.track)
-            return musicToolOutput(r)
+            // A saved playlist's name opens the whole list; anything else is a song search.
+            const r = await findMusic(q, { playlists: () => loadPlaylists(cb.current.user.uid), find: (x) => findTrack(cb.current.user, x) })
+            if (r.outcome.ok) cb.current.onPlayMusic?.(r.queue)
+            return musicToolOutput(r.outcome)
           },
         },
       )

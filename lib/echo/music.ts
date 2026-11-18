@@ -33,8 +33,9 @@ export function formatListening({ recent, topArtists }: Listening): string {
 
 export const MUSIC_USERNAME_MAX = 100
 
-export const youtubeEmbedUrl = (id: string, autoplay: boolean) =>
-  `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=${autoplay ? 1 : 0}`
+/** With `origin` (the page's), the embed accepts postMessage listeners and reports its state, e.g. when a song ends. */
+export const youtubeEmbedUrl = (id: string, autoplay: boolean, origin?: string) =>
+  `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=${autoplay ? 1 : 0}${origin ? `&enablejsapi=1&origin=${encodeURIComponent(origin)}` : ''}`
 
 export const youtubeMusicUrl = (id: string) => `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`
 

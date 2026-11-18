@@ -8,6 +8,8 @@ describe('urls', () => {
     expect(youtubeEmbedUrl('abc', true)).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=1')
     expect(youtubeEmbedUrl('abc', false)).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=0')
     expect(youtubeMusicUrl('abc')).toBe('https://music.youtube.com/watch?v=abc')
+    // With the page origin the embed reports its state (used to play the next song when one ends).
+    expect(youtubeEmbedUrl('abc', true, 'https://echo.app')).toBe('https://www.youtube-nocookie.com/embed/abc?autoplay=1&enablejsapi=1&origin=https%3A%2F%2Fecho.app')
   })
 })
 

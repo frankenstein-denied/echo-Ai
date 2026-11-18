@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { findTrack, LINK_TITLE, MUSIC_REPLIES, musicToolOutput, resolvePlayMusic } from './music-play'
+import { findMusic, findTrack, LINK_TITLE, MUSIC_REPLIES, musicToolOutput, resolvePlayMusic } from './music-play'
 import type { EchoResponse } from './types'
 
 const user = { getIdToken: async () => 'tok' }
@@ -134,5 +134,30 @@ describe('music where there is no player', () => {
   it('has a reply for the bubble and a tool output that says so', () => {
     expect(MUSIC_REPLIES.unavailable).toMatch(/Open Echo/)
     expect(musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })).toEqual({ error: 'unavailable', tell_user: MUSIC_REPLIES.unavailable })
+  })
+})
+
+describe('findMusic', () => {
+  const songs = [
+    { videoId: 'aaaaaaaaaaa', title: 'One' },
+    { videoId: 'bbbbbbbbbbb', title: 'Two' },
+  ]
+  const lists = async () => [{ id: 'p1', name: 'Gym', tracks: songs }]
+  it('plays a saved playlist by name, without a song search', async () => {
+    const find = vi.fn()
+    const r = await findMusic('my gym playlist', { playlists: lists, find })
+    expect(find).not.toHaveBeenCalled()
+    expect(r.queue).toEqual(songs)
+    expect(r.outcome).toEqual({ ok: true, track: { videoId: 'aaaaaaaaaaa', title: 'Gym playlist' } })
+  })
+  it('falls back to a song search, also when playlists cannot load', async () => {
+    const hit = { ok: true as const, track: { videoId: 'ccccccccccc', title: 'Lofi' } }
+    const find = vi.fn(async () => hit)
+    expect(await findMusic('lofi', { playlists: lists, find })).toEqual({ outcome: hit, queue: [hit.track] })
+    expect(await findMusic('gym', { playlists: async () => Promise.reject(new Error('offline')), find })).toEqual({ outcome: hit, queue: [hit.track] })
+  })
+  it('passes a failed search through with no queue', async () => {
+    const miss = { ok: false as const, error: 'not_found' as const, reply: MUSIC_REPLIES.not_found }
+    expect(await findMusic('zzz', { playlists: lists, find: async () => miss })).toEqual({ outcome: miss, queue: [] })
   })
 })
