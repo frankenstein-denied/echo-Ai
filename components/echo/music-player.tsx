@@ -15,7 +15,7 @@ import { isEndedMessage, queueReducer, type QueueState } from '@/lib/echo/playli
 import { buttonClass } from '@/lib/echo/ui-classes'
 import { IconButton } from './ui'
 
-type PlayerTrack = MusicTrack & { autoplay: boolean; key: number }
+type PlayerTrack = MusicTrack & { autoplay: boolean; key: number; cause: 'user' | 'ended' }
 type MusicPlayerApi = {
   /** False outside the provider (e.g. the floating chathead), where nothing can play. */
   available: boolean
@@ -37,7 +37,7 @@ type MusicPlayerApi = {
 const noop = () => undefined
 const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop }
 const MusicPlayerContext = createContext<MusicPlayerApi | null>(null)
-const EMPTY: QueueState = { tracks: [], index: 0, autoplay: false, key: 0 }
+const EMPTY: QueueState = { tracks: [], index: 0, autoplay: false, key: 0, cause: 'user' }
 
 /** The shell's player; outside the provider it is a no-op (nothing opens). */
 export function useMusicPlayer(): MusicPlayerApi {
@@ -56,8 +56,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const remove = useCallback((index: number) => dispatch({ type: 'remove', index }), [])
   const pause = useCallback(() => dispatch({ type: 'pause' }), [])
   const close = useCallback(() => dispatch({ type: 'close' }), [])
+  const ended = useCallback((key: number) => dispatch({ type: 'ended', key }), [])
   const current = q.tracks[q.index]
-  const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key } : null), [current, q.autoplay, q.key])
+  const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key, cause: q.cause } : null), [current, q.autoplay, q.key, q.cause])
   const queue = useMemo(() => ({ tracks: q.tracks, index: q.index }), [q.tracks, q.index])
   const api = useMemo(
     () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close }),
@@ -66,36 +67,45 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onClose={close} />}
+      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} />}
     </MusicPlayerContext.Provider>
   )
 }
 
-function DockedPlayer({ track, position, total, onPrev, onNext, onClose }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onClose: () => void }) {
+function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void }) {
   // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
   const [minimized, setMinimized] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
   const origin = typeof window === 'undefined' ? undefined : window.location.origin
 
-  // A new song opens the player un-minimized (so a blocked autoplay's play button is visible).
+  // A song the user started opens the player un-minimized (so a blocked autoplay's play button is visible);
+  // auto-advance to the next song leaves it as it was.
   const [shownKey, setShownKey] = useState(track.key)
   if (shownKey !== track.key) {
     setShownKey(track.key)
-    setMinimized(false)
+    if (track.cause === 'user') setMinimized(false)
   }
 
-  // When the embed says the song ended, play the next one.
+  // When this song's embed says it ended, play the next one. The key makes a repeated "ended" a no-op.
+  const key = track.key
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow) return
-      if (isEndedMessage(e.data)) onNext()
+      if (isEndedMessage(e.data)) onEnded(key)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onNext])
+  }, [onEnded, key])
 
-  /** Ask the embed to report its state (YouTube's iframe postMessage protocol). */
-  const listen = () => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: track.key, channel: 'widget' }), 'https://www.youtube-nocookie.com')
+  // Ask the embed to report its state (YouTube's iframe postMessage protocol). Its player may start after the
+  // iframe's load event, so ask a few times.
+  const timers = useRef<number[]>([])
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [key])
+  const listen = () => {
+    const send = () => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: key, channel: 'widget' }), 'https://www.youtube-nocookie.com')
+    send()
+    timers.current = [1000, 2500, 5000].map((ms) => window.setTimeout(send, ms))
+  }
 
   return (
     <section
@@ -127,8 +137,13 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onClose }: { tra
         {total > 1 ? (
           <div className="flex items-center gap-1">
             <IconButton icon={SkipBack} label="Previous song" size="sm" onClick={onPrev} disabled={position <= 1} />
-            <span className="text-xs tabular-nums text-muted-foreground" aria-label={`Song ${position} of ${total}`}>
-              {position}/{total}
+            <span className="text-xs tabular-nums text-muted-foreground">
+              <span aria-hidden="true">
+                {position}/{total}
+              </span>
+              <span className="sr-only">
+                Song {position} of {total}
+              </span>
             </span>
             <IconButton icon={SkipForward} label="Next song" size="sm" onClick={onNext} disabled={position >= total} />
           </div>
@@ -137,9 +152,10 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onClose }: { tra
         ) : (
           <span />
         )}
-        <a href={youtubeMusicUrl(track.videoId)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm', 'shrink-0 gap-1.5')}>
+        {/* With next/previous on a narrow phone player, the link shows only its icon. */}
+        <a href={youtubeMusicUrl(track.videoId)} target="_blank" rel="noopener noreferrer" aria-label="Open in app" className={buttonClass('secondary', 'sm', 'shrink-0 gap-1.5')}>
           <ExternalLink size={16} aria-hidden="true" />
-          Open in app
+          <span className={total > 1 ? 'max-lg:hidden' : ''}>Open in app</span>
         </a>
       </div>
     </section>

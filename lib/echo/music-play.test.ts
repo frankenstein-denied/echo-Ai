@@ -156,6 +156,18 @@ describe('findMusic', () => {
     expect(await findMusic('lofi', { playlists: lists, find })).toEqual({ outcome: hit, queue: [hit.track] })
     expect(await findMusic('gym', { playlists: async () => Promise.reject(new Error('offline')), find })).toEqual({ outcome: hit, queue: [hit.track] })
   })
+  it('a pasted link never waits for playlists', async () => {
+    const playlists = vi.fn(lists)
+    const hit = { ok: true as const, track: { videoId: 'ccccccccccc', title: 'YouTube video' } }
+    await findMusic('https://youtu.be/ccccccccccc', { playlists, find: async () => hit })
+    expect(playlists).not.toHaveBeenCalled()
+  })
+  it('a slow playlist read gives up and searches', async () => {
+    const hit = { ok: true as const, track: { videoId: 'ccccccccccc', title: 'Lofi' } }
+    const slow = () => new Promise<never>(() => {})
+    const r = await findMusic('gym', { playlists: slow, find: async () => hit, playlistTimeoutMs: 20 })
+    expect(r.outcome).toBe(hit)
+  })
   it('passes a failed search through with no queue', async () => {
     const miss = { ok: false as const, error: 'not_found' as const, reply: MUSIC_REPLIES.not_found }
     expect(await findMusic('zzz', { playlists: lists, find: async () => miss })).toEqual({ outcome: miss, queue: [] })

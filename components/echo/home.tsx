@@ -544,7 +544,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               : Promise.resolve({ ok: false as const, error: 'unavailable' as const, reply: MUSIC_REPLIES.unavailable }),
           (t) => {
             songStarted = true
-            if (queue.length > 1) playTracks(queue, { autoplay: true })
+            // The queue holds the real songs (a playlist's "track" here is only its name for the reply).
+            if (queue.length) playTracks(queue, { autoplay: true })
             else playMusic(t, { autoplay: true })
           },
           { refs: built?.refs, source: 'chat', onDeleted: pushUndo },

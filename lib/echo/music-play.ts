@@ -86,13 +86,17 @@ export function musicToolOutput(out: FindOutcome): Record<string, unknown> {
  */
 export async function findMusic(
   query: string,
-  deps: { playlists: () => Promise<Playlist[]>; find: (query: string) => Promise<FindOutcome> },
+  deps: { playlists: () => Promise<Playlist[]>; find: (query: string) => Promise<FindOutcome>; playlistTimeoutMs?: number },
 ): Promise<{ outcome: FindOutcome; queue: MusicTrack[] }> {
   let lists: Playlist[] = []
-  try {
-    lists = await deps.playlists()
-  } catch {
-    // Offline or not signed in: just search.
+  // A pasted link never names a playlist: don't wait on the read.
+  if (!parseYoutubeLink(query)) {
+    try {
+      // A slow or offline read shouldn't hold up the song (or a call's reply).
+      lists = await Promise.race([deps.playlists(), new Promise<Playlist[]>((resolve) => setTimeout(() => resolve([]), deps.playlistTimeoutMs ?? 1500))])
+    } catch {
+      // Offline or not signed in: just search.
+    }
   }
   const pl = matchPlaylist(query, lists)
   if (pl) return { outcome: { ok: true, track: { videoId: pl.tracks[0].videoId, title: `${pl.name} playlist` } }, queue: pl.tracks }

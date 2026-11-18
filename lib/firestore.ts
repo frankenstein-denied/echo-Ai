@@ -27,6 +27,7 @@ import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { slugifyLabel } from '@/lib/echo/sanitize'
 import { CONNECTORS, type ConnectorId } from '@/lib/echo/connectors'
 import { toPlaylist, type Playlist } from '@/lib/echo/playlists'
+import type { MusicTrack } from '@/lib/echo/music-play'
 import { roundCoord } from '@/lib/echo/weather'
 import { resolveCheckInSettings, type CheckInSettings } from '@/lib/echo/check-ins'
 import { languageCode, type LanguageCode } from '@/lib/echo/languages'
@@ -213,8 +214,19 @@ export async function renamePlaylist(uid: string, id: string, name: string): Pro
   await updateDoc(doc(playlistsCol(uid), id), { name, updatedAt: serverTimestamp() } as never)
 }
 
-export async function setPlaylistTracks(uid: string, id: string, tracks: { videoId: string; title: string; channel?: string }[]): Promise<void> {
-  await updateDoc(doc(playlistsCol(uid), id), { tracks: plainTracks(tracks), updatedAt: serverTimestamp() } as never)
+/**
+ * Changes a playlist's songs from the latest stored list (a transaction), so an edit made meanwhile — on this page or
+ * another device — isn't overwritten by a stale copy.
+ */
+export async function updatePlaylistTracks(uid: string, id: string, change: (tracks: MusicTrack[]) => MusicTrack[]): Promise<MusicTrack[]> {
+  const ref = doc(playlistsCol(uid), id)
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    const current = snap.exists() ? (toPlaylist(id, snap.data())?.tracks ?? []) : []
+    const next = change(current)
+    tx.update(ref, { tracks: plainTracks(next), updatedAt: serverTimestamp() } as never)
+    return next
+  })
 }
 
 /** The user's playlists (bad docs skipped), for "play my gym playlist". */

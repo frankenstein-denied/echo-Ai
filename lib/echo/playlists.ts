@@ -78,12 +78,17 @@ export function shuffled<T>(items: T[], rand: () => number = Math.random): T[] {
 
 // ---------- the player's queue ----------
 
-/** `key` changes whenever the embed must (re)load: a new current track, or reopening it paused. */
-export type QueueState = { tracks: MusicTrack[]; index: number; autoplay: boolean; key: number }
+/**
+ * `key` changes whenever the embed must (re)load: a new current track, or reopening it paused. `cause` says why the
+ * current track started: 'ended' when the previous song finished (the player stays minimized), else 'user'.
+ */
+export type QueueState = { tracks: MusicTrack[]; index: number; autoplay: boolean; key: number; cause: 'user' | 'ended' }
 export type QueueAction =
   | { type: 'play'; tracks: MusicTrack[]; start: number; autoplay: boolean }
   | { type: 'enqueue'; tracks: MusicTrack[] }
   | { type: 'next' }
+  /** The embed with this key reported the song ended. Stale keys are ignored (YouTube can report one end twice). */
+  | { type: 'ended'; key: number }
   | { type: 'prev' }
   | { type: 'jump'; index: number }
   | { type: 'remove'; index: number }
@@ -97,19 +102,21 @@ export function queueReducer(s: QueueState, a: QueueAction): QueueState {
     case 'play': {
       const tracks = a.tracks.slice(0, MAX_QUEUE)
       if (!tracks.length) return s
-      return { tracks, index: Math.min(Math.max(0, a.start), tracks.length - 1), autoplay: a.autoplay, key: s.key + 1 }
+      return { tracks, index: Math.min(Math.max(0, a.start), tracks.length - 1), autoplay: a.autoplay, key: s.key + 1, cause: 'user' }
     }
     case 'enqueue': {
       if (!a.tracks.length) return s
-      if (!s.tracks.length) return { tracks: a.tracks.slice(0, MAX_QUEUE), index: 0, autoplay: true, key: s.key + 1 }
+      if (!s.tracks.length) return { tracks: a.tracks.slice(0, MAX_QUEUE), index: 0, autoplay: true, key: s.key + 1, cause: 'user' }
       return { ...s, tracks: [...s.tracks, ...a.tracks].slice(0, MAX_QUEUE) }
     }
     case 'next':
-      return s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: true, key: s.key + 1 } : s
+      return s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: true, key: s.key + 1, cause: 'user' } : s
+    case 'ended':
+      return a.key === s.key && s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: true, key: s.key + 1, cause: 'ended' } : s
     case 'prev':
-      return s.index > 0 ? { ...s, index: s.index - 1, autoplay: true, key: s.key + 1 } : s
+      return s.index > 0 ? { ...s, index: s.index - 1, autoplay: true, key: s.key + 1, cause: 'user' } : s
     case 'jump':
-      return a.index >= 0 && a.index < s.tracks.length ? { ...s, index: a.index, autoplay: true, key: s.key + 1 } : s
+      return a.index >= 0 && a.index < s.tracks.length ? { ...s, index: a.index, autoplay: true, key: s.key + 1, cause: 'user' } : s
     case 'remove': {
       if (a.index < 0 || a.index >= s.tracks.length) return s
       const tracks = s.tracks.filter((_, i) => i !== a.index)
@@ -117,12 +124,12 @@ export function queueReducer(s: QueueState, a: QueueAction): QueueState {
       if (a.index < s.index) return { ...s, tracks, index: s.index - 1 }
       if (a.index > s.index) return { ...s, tracks }
       // Removing the current track plays the one that took its place.
-      return { ...s, tracks, index: Math.min(s.index, tracks.length - 1), key: s.key + 1 }
+      return { ...s, tracks, index: Math.min(s.index, tracks.length - 1), key: s.key + 1, cause: 'user' }
     }
     case 'pause':
-      return s.tracks.length ? { ...s, autoplay: false, key: s.key + 1 } : s
+      return s.tracks.length ? { ...s, autoplay: false, key: s.key + 1, cause: 'user' } : s
     case 'close':
-      return { tracks: [], index: 0, autoplay: false, key: s.key + 1 }
+      return { tracks: [], index: 0, autoplay: false, key: s.key + 1, cause: 'user' }
   }
 }
 

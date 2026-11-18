@@ -8,7 +8,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { ListMusic, Pencil, Play, Plus, Shuffle, Trash2, X } from 'lucide-react'
-import { createPlaylist, deletePlaylist, playlistsCol, renamePlaylist, setPlaylistTracks } from '@/lib/firestore'
+import { createPlaylist, deletePlaylist, playlistsCol, renamePlaylist, updatePlaylistTracks } from '@/lib/firestore'
+import { isPermissionDenied } from '@/lib/echo/diary'
 import { fetchVideoInfo } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { addTracks, cleanPlaylistName, parseYoutubeLinks, PLAYLIST_LIMITS, shuffled, toPlaylist, type Playlist } from '@/lib/echo/playlists'
@@ -40,7 +41,7 @@ export function MusicView({ uid }: { uid: string }) {
       },
       (e) => {
         setPlaylists([])
-        setLoadError(e.message || 'Could not load your playlists.')
+        setLoadError(isPermissionDenied(e) ? 'Playlists need the updated Firestore rules. Deploy firestore.rules, then reload.' : 'Could not load your playlists.')
       },
     )
   }, [uid])
@@ -148,10 +149,11 @@ function UpNext({ uid, playlistCount }: { uid: string; playlistCount: number }) 
     setBusy(true)
     setMessage('')
     try {
-      await createPlaylist(uid, clean, addTracks([], queue.tracks))
+      const tracks = addTracks([], queue.tracks)
+      await createPlaylist(uid, clean, tracks)
       setSaving(false)
       setName('')
-      setMessage(`Saved as "${clean}".`)
+      setMessage(tracks.length < queue.tracks.length ? `Saved as "${clean}" with ${tracks.length} songs (duplicates and songs past ${PLAYLIST_LIMITS.tracks} were left out).` : `Saved as "${clean}".`)
     } catch {
       setMessage('Could not save the playlist. Please try again.')
     } finally {
@@ -208,7 +210,7 @@ function UpNext({ uid, playlistCount }: { uid: string; playlistCount: number }) 
   )
 }
 
-function TrackRow({ track, index, current = false, onPlay, onRemove }: { track: MusicTrack; index: number; current?: boolean; onPlay: () => void; onRemove: () => void }) {
+function TrackRow({ track, index, current = false, removeDisabled = false, onPlay, onRemove }: { track: MusicTrack; index: number; current?: boolean; removeDisabled?: boolean; onPlay: () => void; onRemove: () => void }) {
   return (
     <li className={`flex items-center gap-1 rounded-lg pl-1 ${current ? 'bg-primary-soft' : ''}`} aria-current={current ? 'true' : undefined}>
       <button type="button" onClick={onPlay} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-surface-2 max-lg:min-h-11" aria-label={`Play ${track.title}`}>
@@ -218,7 +220,7 @@ function TrackRow({ track, index, current = false, onPlay, onRemove }: { track: 
           {track.channel && <span className="block truncate text-xs text-muted-foreground">{track.channel}</span>}
         </span>
       </button>
-      <IconButton icon={X} label={`Remove ${track.title}`} size="sm" onClick={onRemove} />
+      <IconButton icon={X} label={`Remove ${track.title}`} size="sm" onClick={onRemove} disabled={removeDisabled} />
     </li>
   )
 }
@@ -301,10 +303,13 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
     }
     await run(async () => {
       const more = await tracksFromText(links)
-      const next = addTracks(playlist.tracks, more)
-      await setPlaylistTracks(uid, playlist.id, next)
+      let before = 0
+      const next = await updatePlaylistTracks(uid, playlist.id, (latest) => {
+        before = latest.length
+        return addTracks(latest, more)
+      })
       setLinks('')
-      const added = next.length - count
+      const added = next.length - before
       setMessage(added ? `Added ${added} ${added === 1 ? 'song' : 'songs'}.` : next.length >= PLAYLIST_LIMITS.tracks ? `This playlist is full (${PLAYLIST_LIMITS.tracks} songs).` : 'Those songs are already in this playlist.')
     }, 'Could not add the songs. Please try again.')
   }
@@ -317,7 +322,15 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
           <p className="text-sm text-muted-foreground">{summary}</p>
         </div>
         <div className="flex shrink-0 gap-1">
-          <IconButton icon={Pencil} label={`Rename ${playlist.name}`} size="sm" onClick={() => setRenaming((r) => !r)} />
+          <IconButton
+            icon={Pencil}
+            label={`Rename ${playlist.name}`}
+            size="sm"
+            onClick={() => {
+              setName(playlist.name)
+              setRenaming((r) => !r)
+            }}
+          />
           <IconButton icon={Trash2} label={`Delete ${playlist.name}`} size="sm" onClick={() => setConfirming(true)} />
         </div>
       </div>
@@ -365,11 +378,12 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
             <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label={`Songs in ${playlist.name}`}>
               {playlist.tracks.map((t, i) => (
                 <TrackRow
-                  key={t.videoId}
+                  key={`${t.videoId}-${i}`}
                   track={t}
                   index={i}
                   onPlay={() => onPlay(playlist.tracks, i)}
-                  onRemove={() => void run(() => setPlaylistTracks(uid, playlist.id, playlist.tracks.filter((_, j) => j !== i)), 'Could not remove the song. Please try again.')}
+                  removeDisabled={busy}
+                  onRemove={() => void run(() => updatePlaylistTracks(uid, playlist.id, (latest) => latest.filter((x) => x.videoId !== t.videoId)).then(() => undefined), 'Could not remove the song. Please try again.')}
                 />
               ))}
             </ol>

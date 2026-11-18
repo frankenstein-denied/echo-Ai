@@ -80,10 +80,10 @@ describe('shuffled', () => {
 })
 
 describe('queueReducer', () => {
-  const empty: QueueState = { tracks: [], index: 0, autoplay: false, key: 0 }
+  const empty: QueueState = { tracks: [], index: 0, autoplay: false, key: 0, cause: 'user' }
   it('play replaces the queue and starts at the given track', () => {
     const s = queueReducer(empty, { type: 'play', tracks: [t(A), t(B)], start: 1, autoplay: true })
-    expect(s).toEqual({ tracks: [t(A), t(B)], index: 1, autoplay: true, key: 1 })
+    expect(s).toEqual({ tracks: [t(A), t(B)], index: 1, autoplay: true, key: 1, cause: 'user' })
   })
   it('enqueue appends, and starts playing when nothing is queued', () => {
     const s1 = queueReducer(empty, { type: 'enqueue', tracks: [t(A)] })
@@ -108,6 +108,13 @@ describe('queueReducer', () => {
     expect([r.index, r.key]).toEqual([1, s.key])
     const before = queueReducer(s, { type: 'remove', index: 0 })
     expect([before.index, before.key]).toEqual([0, s.key])
+  })
+  it('ended advances once per song, even when YouTube reports the end twice', () => {
+    const s = queueReducer(empty, { type: 'play', tracks: [t(A), t(B), t(C)], start: 0, autoplay: true })
+    const once = queueReducer(s, { type: 'ended', key: s.key })
+    expect([once.index, once.cause]).toEqual([1, 'ended'])
+    expect(queueReducer(once, { type: 'ended', key: s.key })).toBe(once)
+    expect(queueReducer(queueReducer(once, { type: 'next' }), { type: 'ended', key: s.key }).index).toBe(2)
   })
   it('pause reopens the current track paused; close empties the queue', () => {
     const s = queueReducer(empty, { type: 'play', tracks: [t(A)], start: 0, autoplay: true })
