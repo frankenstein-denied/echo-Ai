@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Apple, BookOpen, Calendar, CalendarDays, Clapperboard, CloudSun, Coins, FileText, GitBranch, Globe, Library, Mail, Newspaper, Plug, ScanBarcode, type LucideIcon } from 'lucide-react'
+import { Activity, Apple, BookOpen, Bot, Dumbbell, HeartPulse, Route, Search, Sparkles, Zap, Calendar, CalendarDays, Clapperboard, CloudSun, Coins, FileText, GitBranch, Globe, Library, Mail, Newspaper, Plug, ScanBarcode, type LucideIcon } from 'lucide-react'
 import { TILE_COLOR } from '@/lib/echo/connector-tiles'
 import type { ConnectorDef, ConnectorId, ConnectorStatus } from '@/lib/echo/connectors'
 import { Badge, Card } from '../ui'
@@ -21,6 +21,15 @@ const ICONS: Partial<Record<ConnectorId, LucideIcon>> = {
   books: BookOpen,
   movies: Clapperboard,
   'food-facts': ScanBarcode,
+  claude: Sparkles,
+  chatgpt: Bot,
+  gemini: Sparkles,
+  perplexity: Search,
+  groq: Zap,
+  openrouter: Route,
+  wger: Dumbbell,
+  strava: Activity,
+  'health-connect': HeartPulse,
 }
 
 /**

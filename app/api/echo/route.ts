@@ -9,6 +9,7 @@ import { estimateNutrition, looksLikeMeal, resolveMeals, withSpeculative } from 
 import { verifyUser } from '@/lib/server/verify-user'
 import { answerFromWeb, resolveWebSearch } from '@/lib/server/web-answer'
 import { resolveLookup } from '@/lib/server/lookup'
+import { resolveAskModel } from '@/lib/server/ask-model'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -87,8 +88,10 @@ export async function POST(req: Request) {
       deadline,
       answer: (q, results, ctx) => answerFromWeb(ai, q, results, ctx, { deadline }),
     })
+    // Ask another AI model with the user's own key.
+    const asked = await resolveAskModel(looked, { uid: user.uid, aiKeys: parsed.aiKeys, deadline })
     const webConnected = !connectors || isConnected(connectors, 'web-search')
-    const searched = await resolveWebSearch(looked, {
+    const searched = await resolveWebSearch(asked, {
       uid: user.uid,
       sealed: webConnected ? parsed.webSearchKey : undefined,
       question: parsed.text,

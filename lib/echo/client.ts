@@ -55,7 +55,7 @@ export function localIsoWithOffset(d: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
 }
 
-export async function sendToEcho(user: User, text: string, context: EchoRequest['context'], webSearchKey?: string): Promise<EchoResponse> {
+export async function sendToEcho(user: User, text: string, context: EchoRequest['context'], webSearchKey?: string, aiKeys?: Record<string, string>): Promise<EchoResponse> {
   const token = await user.getIdToken()
   const body: EchoRequest = {
     text,
@@ -63,6 +63,7 @@ export async function sendToEcho(user: User, text: string, context: EchoRequest[
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     context,
     ...(webSearchKey ? { webSearchKey } : {}),
+    ...(aiKeys && Object.keys(aiKeys).length ? { aiKeys } : {}),
   }
   // A web search answer can take most of the route's 30 s, so wait a little longer than that.
   const res = await fetchWithTimeout(

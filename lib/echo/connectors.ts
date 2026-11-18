@@ -4,7 +4,11 @@
 export const LOOKUP_SOURCES = ['wikipedia', 'news', 'currency', 'holidays', 'books', 'movies', 'food-facts'] as const
 export type LookupSource = (typeof LOOKUP_SOURCES)[number]
 
-export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'google-calendar' | 'gmail' | 'github' | 'notion' | LookupSource
+/** Other AI models the user can ask with their own API key ("ask Claude…"); the key is sealed on the server. */
+export const AI_PROVIDERS = ['claude', 'chatgpt', 'gemini', 'perplexity', 'groq', 'openrouter'] as const
+export type AiProvider = (typeof AI_PROVIDERS)[number]
+
+export type ConnectorId = 'nutrition' | 'web-search' | 'weather' | 'google-calendar' | 'gmail' | 'github' | 'notion' | 'wger' | 'strava' | 'health-connect' | LookupSource | AiProvider
 export type ConnectorStatus = 'connected' | 'not_connected' | 'coming_soon'
 export type ConnectorCategory = 'ai' | 'health' | 'productivity' | 'knowledge' | 'live'
 
@@ -33,6 +37,15 @@ export const CONNECTORS: readonly ConnectorDef[] = [
   { id: 'nutrition', name: 'Nutrition (USDA)', description: 'Look up calories and macros in the USDA food database.', kind: 'builtin', category: 'health', available: true, defaultConnected: true, topics: 'food calories and macros' },
   { id: 'web-search', name: 'Web search (Tavily)', description: 'Search the web when Echo and your connectors do not know.', kind: 'oauth', category: 'live', available: true, defaultConnected: false, topics: 'current events and facts from the web' },
   { id: 'weather', name: 'Weather', description: 'Local forecast via Open-Meteo. No account needed.', kind: 'builtin', category: 'live', available: true, defaultConnected: false, topics: 'weather and forecasts' },
+  { id: 'claude', name: 'Claude (Anthropic)', description: 'Ask Claude with your own Anthropic API key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'a second opinion from Claude when the user asks for it' },
+  { id: 'chatgpt', name: 'ChatGPT (OpenAI)', description: 'Ask ChatGPT with your own OpenAI API key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'a second opinion from ChatGPT when the user asks for it' },
+  { id: 'gemini', name: 'Gemini (Google)', description: 'Ask Gemini with your own Google AI Studio key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'a second opinion from Gemini when the user asks for it' },
+  { id: 'perplexity', name: 'Perplexity', description: 'Ask Perplexity (answers with web sources) with your own key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'Perplexity answers with web sources when the user asks for it' },
+  { id: 'groq', name: 'Groq', description: 'Fast open models (Llama) with your own Groq key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'a fast open-model answer when the user asks for it' },
+  { id: 'openrouter', name: 'OpenRouter', description: 'Many models with one OpenRouter key.', kind: 'key', category: 'ai', available: true, defaultConnected: false, topics: 'an answer from OpenRouter when the user asks for it' },
+  { id: 'wger', name: 'Workouts (wger)', description: 'Exercise library and workout ideas.', kind: 'builtin', category: 'health', available: false, defaultConnected: false, topics: 'exercises and workouts' },
+  { id: 'strava', name: 'Strava', description: 'Your runs and rides.', kind: 'oauth', category: 'health', available: false, defaultConnected: false, topics: 'runs, rides and activities' },
+  { id: 'health-connect', name: 'Health Connect (Android)', description: 'Steps, sleep, heart rate and workouts from your phone.', kind: 'oauth', category: 'health', available: false, defaultConnected: false, topics: 'steps, sleep, heart rate and workouts' },
   { id: 'food-facts', name: 'Packaged food (Open Food Facts)', description: 'Nutrition and ingredients of packaged food by name or barcode number. Free, no account.', kind: 'builtin', category: 'health', available: true, defaultConnected: true, topics: 'packaged food products: nutrition per 100 g, ingredients, Nutri-Score (by name or barcode number)' },
   { id: 'wikipedia', name: 'Wikipedia', description: 'Facts about people, places, history and topics. Free, no account.', kind: 'builtin', category: 'knowledge', available: true, defaultConnected: true, topics: 'encyclopedia facts about people, places, history, science and topics' },
   { id: 'books', name: 'Books (Open Library)', description: 'Find books, authors and when they were published. Free, no account.', kind: 'builtin', category: 'knowledge', available: true, defaultConnected: true, topics: 'books and authors' },

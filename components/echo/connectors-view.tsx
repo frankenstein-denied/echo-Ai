@@ -6,15 +6,16 @@ import { Search } from 'lucide-react'
 import { connectorsCol, setConnectorConnected } from '@/lib/firestore'
 import { connectedSummary } from '@/lib/echo/connector-tiles'
 import { categoryChips, emptyMessage, filterConnectors, groupByCategory, shownCountText, type CategoryFilter } from '@/lib/echo/connector-filter'
-import { CONNECTORS, connectorStatuses, type ConnectorDef, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
+import { AI_PROVIDERS, CONNECTORS, connectorStatuses, type AiProvider, type ConnectorDef, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { Alert, Button, EmptyState, PageHeader, Skeleton } from './ui'
 import { ConnectorCard } from './connectors/connector-card'
 import { ConnectorFilters } from './connectors/connector-filters'
 import { WeatherBody, WeatherLive } from './connectors/weather-card'
+import { AiKeyBody } from './connectors/ai-key-card'
 
 export type ConnectorNotice = { variant: 'success' | 'warning' | 'danger'; text: string }
 
-type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number; service?: string; username?: string }
+type ConnectorDoc = { id: string; connected?: boolean; sealed?: string; place?: string; lat?: number; lon?: number }
 
 const CHIPS = categoryChips(CONNECTORS)
 // Every section and card stays mounted; filtering only hides them, so Weather keeps its forecast and picker state.
@@ -44,7 +45,7 @@ export function ConnectorsView({
     return onSnapshot(
       connectorsCol(uid),
       (snap) => {
-        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon, service: s.data().service, username: s.data().username })))
+        setDocs(snap.docs.map((s) => ({ id: s.id, connected: s.data().connected, sealed: s.data().sealed, place: s.data().place, lat: s.data().lat, lon: s.data().lon })))
         setLoadError('')
       },
       (e) => {
@@ -71,10 +72,31 @@ export function ConnectorsView({
   const toggle = (id: ConnectorId, name: string, connected: boolean) => run(id, () => setConnectorConnected(uid, id, name, connected))
   const statusOf = (id: ConnectorId): ConnectorStatus => statuses.find((s) => s.id === id)?.status ?? 'coming_soon'
   const docOf = (id: ConnectorId) => docs?.find((d) => d.id === id)
+  // News and Movies need a server API key; until it is set they show "Needs setup", never "Ready".
+  const [serverKeys, setServerKeys] = useState<{ news?: boolean; movies?: boolean } | null>(null)
+  useEffect(() => {
+    let live = true
+    fetch('/api/connectors/config')
+      .then((r) => r.json())
+      .then((d) => live && setServerKeys(d))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
+  const needsSetup = (id: ConnectorId) => (id === 'news' || id === 'movies') && serverKeys !== null && !serverKeys[id]
 
   /** Live data and actions inside one card. Connect flows are unchanged from the single-grid page. */
   function body(c: ConnectorDef, status: ConnectorStatus) {
     if (status === 'coming_soon') return null
+    if ((AI_PROVIDERS as readonly string[]).includes(c.id)) return <AiKeyBody uid={uid} provider={c.id as AiProvider} name={c.name} connected={status === 'connected'} />
+    if (needsSetup(c.id))
+      return (
+        <>
+          <p className="mt-4 text-lg font-semibold text-foreground">Needs setup</p>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{c.description} Not available yet: the server's API key isn't set. Echo uses web search for these questions meanwhile.</p>
+        </>
+      )
     const connected = status === 'connected'
     const weatherDoc = docOf('weather')
     return (
@@ -164,7 +186,7 @@ export function ConnectorsView({
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {g.items.map((c) => {
-                    const status = statusOf(c.id)
+                    const status = needsSetup(c.id) ? 'not_connected' : statusOf(c.id)
                     return (
                       <div key={c.id} className="grid" hidden={!visible.has(c.id)}>
                         <ConnectorCard def={c} status={status}>
