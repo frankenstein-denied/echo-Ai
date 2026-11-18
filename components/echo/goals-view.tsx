@@ -14,6 +14,7 @@ import { KindTag, ProgressRing } from './glow'
 import { ORB_COLOR } from '@/lib/echo/orbs'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { milestonePath, milestonesDoneThisWeek, overallProgress, paceLine, periodWord, toggleMilestone } from '@/lib/echo/goals-helpers'
+import { newlyDone, playCue } from '@/lib/echo/cues'
 
 type GoalRow = Goal & { id: string }
 
@@ -100,8 +101,10 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
     return () => s.flush()
   }, [uid, goal.id, onError])
 
-  const saveMilestones = (milestones: Goal['milestones']) =>
-    updateGoal(uid, goal.id, { milestones }).catch((e) => onError(e instanceof Error ? e.message : 'Could not save milestones.'))
+  const saveMilestones = (milestones: Goal['milestones']) => {
+    if (newlyDone(goal.milestones, milestones)) playCue('goal')
+    return updateGoal(uid, goal.id, { milestones }).catch((e) => onError(e instanceof Error ? e.message : 'Could not save milestones.'))
+  }
 
   const addMilestone = () => {
     const t = text.trim()

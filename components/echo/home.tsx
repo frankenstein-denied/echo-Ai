@@ -20,6 +20,7 @@ import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { cueForSaved, playCue } from '@/lib/echo/cues'
 import { Alert, Button, IconButton, Skeleton } from './ui'
 import { kindForCategory } from '@/lib/echo/glow'
 import { KindTag } from './glow'
@@ -610,8 +611,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           },
           { refs: built?.refs, source: 'chat', onDeleted: pushUndo },
         )
-        // Don't read the reply aloud over the start of the song.
-        if (!songStarted) void speakReply(applied.reply)
+        // Don't read the reply aloud, or chime, over the start of the song.
+        if (!songStarted) {
+          if (applied.reply) playCue(cueForSaved(applied.saved))
+          void speakReply(applied.reply)
+        }
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
           setExtras((x) => ({ ...x, [applied.messageId as string]: { ...ex, failed: applied.failed } }))
