@@ -7,6 +7,8 @@ import {
   parseYoutubeLinks,
   PLAYLIST_LIMITS,
   queueReducer,
+  renderMusicContext,
+  MUSIC_CONTEXT_MAX,
   shuffled,
   toPlaylist,
   type QueueState,
@@ -130,5 +132,39 @@ describe('isEndedMessage', () => {
     expect(isEndedMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }))).toBe(false)
     expect(isEndedMessage('not json')).toBe(false)
     expect(isEndedMessage({ event: 'onStateChange', info: 0 })).toBe(false)
+  })
+})
+
+describe('shuffleRest', () => {
+  it('shuffles only the songs after the current one', () => {
+    const s: QueueState = { tracks: [t(A), t(B), t(C), t('ddddddddddd')], index: 1, autoplay: true, key: 3, cause: 'user' }
+    const r = queueReducer(s, { type: 'shuffleRest', rand: () => 0 })
+    expect(r.tracks.slice(0, 2)).toEqual([t(A), t(B)])
+    expect(r.tracks.slice(2).map((x) => x.videoId).sort()).toEqual([C, 'ddddddddddd'])
+    expect(r.tracks.slice(2)).not.toEqual([t(C), t('ddddddddddd')])
+    expect(r.key).toBe(3)
+  })
+})
+
+describe('renderMusicContext', () => {
+  const lists = [
+    { id: '1', name: 'Gym', tracks: [t(A, 'Eye of the Tiger'), t(B, 'Stronger')] },
+    { id: '2', name: 'Empty', tracks: [] },
+  ]
+  it('says what is playing, what is next and what each playlist holds', () => {
+    const text = renderMusicContext({ playlists: lists, queue: { tracks: [t(A, 'Eye of the Tiger'), t(B, 'Stronger')], index: 0 }, player: true })
+    expect(text).toContain('Now playing: Eye of the Tiger (song 1 of 2 in the queue)')
+    expect(text).toContain('Up next: Stronger')
+    expect(text).toContain('- Gym (2 songs): Eye of the Tiger; Stronger')
+    expect(text).toContain('- Empty (0 songs)')
+  })
+  it('says when nothing plays, when there is no player, and caps long lists', () => {
+    expect(renderMusicContext({ playlists: [], queue: { tracks: [], index: 0 }, player: true })).toContain('Nothing is playing.')
+    expect(renderMusicContext({ playlists: [], queue: { tracks: [], index: 0 }, player: true })).toContain('No playlists yet.')
+    expect(renderMusicContext({ playlists: [], queue: { tracks: [], index: 0 }, player: false })).toContain('no music player here')
+    const many = [{ id: 'x', name: 'Big', tracks: Array.from({ length: 40 }, (_, i) => t(String(i).padStart(11, 'z'), `Song ${i}`)) }]
+    const text = renderMusicContext({ playlists: many, queue: { tracks: [], index: 0 }, player: true })
+    expect(text).toContain('…and 25 more')
+    expect(text.length).toBeLessThanOrEqual(MUSIC_CONTEXT_MAX)
   })
 })

@@ -93,6 +93,8 @@ export type QueueAction =
   | { type: 'jump'; index: number }
   | { type: 'remove'; index: number }
   | { type: 'pause' }
+  /** Shuffle the songs after the current one (the current song keeps playing). */
+  | { type: 'shuffleRest'; rand?: () => number }
   | { type: 'close' }
 
 const MAX_QUEUE = 200
@@ -128,6 +130,8 @@ export function queueReducer(s: QueueState, a: QueueAction): QueueState {
     }
     case 'pause':
       return s.tracks.length ? { ...s, autoplay: false, key: s.key + 1, cause: 'user' } : s
+    case 'shuffleRest':
+      return s.index + 2 < s.tracks.length ? { ...s, tracks: [...s.tracks.slice(0, s.index + 1), ...shuffled(s.tracks.slice(s.index + 1), a.rand)] } : s
     case 'close':
       return { tracks: [], index: 0, autoplay: false, key: s.key + 1, cause: 'user' }
   }
@@ -144,4 +148,37 @@ export function isEndedMessage(data: unknown): boolean {
     // not ours
   }
   return false
+}
+
+// ---------- what Echo is told about music ----------
+
+export const MUSIC_CONTEXT_MAX = 2000
+const TITLES_PER_PLAYLIST = 15
+
+/**
+ * The MUSIC block for Echo's context: what's playing, what's next, and each playlist's songs (capped), so Echo can
+ * answer "what's in my gym playlist?" and control the player. `player` is false where nothing can play (the chathead).
+ */
+export function renderMusicContext({ playlists, queue, player }: { playlists: Playlist[]; queue: { tracks: MusicTrack[]; index: number }; player: boolean }): string {
+  const lines: string[] = []
+  const current = queue.tracks[queue.index]
+  if (!player) lines.push('There is no music player here (the floating bubble); open Echo to play music.')
+  else if (!current) lines.push('Nothing is playing.')
+  else {
+    lines.push(`Now playing: ${current.title} (song ${queue.index + 1} of ${queue.tracks.length} in the queue).`)
+    const next = queue.tracks.slice(queue.index + 1, queue.index + 6).map((x) => x.title)
+    if (next.length) lines.push(`Up next: ${next.join('; ')}${queue.tracks.length - queue.index - 1 > next.length ? '; …' : ''}.`)
+  }
+  if (!playlists.length) lines.push('No playlists yet.')
+  else {
+    lines.push(`Playlists (${playlists.length}):`)
+    for (const p of playlists) {
+      const n = p.tracks.length
+      const titles = p.tracks.slice(0, TITLES_PER_PLAYLIST).map((x) => x.title)
+      const more = n > TITLES_PER_PLAYLIST ? `; …and ${n - TITLES_PER_PLAYLIST} more` : ''
+      lines.push(`- ${p.name} (${n} ${n === 1 ? 'song' : 'songs'})${titles.length ? `: ${titles.join('; ')}${more}` : ''}`)
+    }
+  }
+  const text = lines.join('\n')
+  return text.length > MUSIC_CONTEXT_MAX ? `${text.slice(0, MUSIC_CONTEXT_MAX - 1)}…` : text
 }

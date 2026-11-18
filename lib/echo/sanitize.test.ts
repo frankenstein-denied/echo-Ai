@@ -516,3 +516,22 @@ describe('connectors context', () => {
     expect('error' in parsed ? [] : (parsed.context.connectors ?? []).map((c) => c.id)).toContain('holidays')
   })
 })
+
+describe('music_control action', () => {
+  it('keeps a known command, drops others', () => {
+    expect(resp([{ type: 'music_control', command: 'next' }]).actions).toEqual([{ type: 'music_control', command: 'next' }])
+    expect(resp([{ type: 'music_control', command: 'explode' }]).actions).toEqual([])
+  })
+  it('may come with saves, never with a search, and one music action at most', () => {
+    const out = resp([{ type: 'note', title: 'Milk', body: 'buy milk' }, { type: 'music_control', command: 'pause' }, { type: 'web_search', query: 'x' }])
+    expect(out.actions.map((a) => a.type)).toEqual(['note', 'music_control'])
+    expect(resp([{ type: 'play_music', query: 'lofi' }, { type: 'music_control', command: 'next' }]).actions).toHaveLength(1)
+  })
+})
+
+describe('music context', () => {
+  it('keeps the music summary, capped', () => {
+    const r = parseEchoRequest({ ...base, context: { music: 'x'.repeat(3000) } })
+    expect('error' in r ? '' : r.context.music).toHaveLength(2000)
+  })
+})

@@ -7,7 +7,8 @@ import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, TranscriptSync } from '@/lib/echo/call-audio'
 import { extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
-import { findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
+import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
+import type { MusicCommand } from '@/lib/echo/types'
 import { loadPlaylists } from '@/lib/firestore'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
@@ -131,6 +132,7 @@ export function useEchoCall({
   getPageId,
   prepareContext,
   onPlayMusic,
+  onMusicControl,
 }: {
   user: User
   voice: string
@@ -151,6 +153,8 @@ export function useEchoCall({
   prepareContext?: () => unknown
   /** play_music found a song: open the shell's player paused (never over the call audio). */
   onPlayMusic?: (tracks: MusicTrack[]) => void
+  /** music_control tool: runs next/pause/stop… on the shell's player; absent where there is no player. */
+  onMusicControl?: (command: MusicCommand) => Record<string, unknown>
 }) {
   const [phase, setPhase] = useState<CallPhase>('idle')
   const [muted, setMuted] = useState(false)
@@ -163,9 +167,9 @@ export function useEchoCall({
   const sched = useRef(new PlaybackScheduler())
   const mutedRef = useRef(false)
   const userEnded = useRef(false)
-  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, user, voice })
+  const cb = useRef({ onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, user, voice })
   useEffect(() => {
-    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, user, voice }
+    cb.current = { onTurn, onLateResult, onDeleted, getPageId, getContext, getRefs, getWebSearchKey, onWebSearchSecret, prepareContext, onPlayMusic, onMusicControl, user, voice }
   })
   const lastActivity = useRef(0)
   const limitReached = useRef(false)
@@ -301,6 +305,7 @@ export function useEchoCall({
             return r.output
           },
           lookup: (source, q) => lookupViaApi(cb.current.user, source, q),
+          control: async (cmd) => (cb.current.onMusicControl ? cb.current.onMusicControl(cmd) : controlToolOutput('unavailable')),
           play: async (q) => {
             // No player in this view (the chathead): tell the user instead of finding a song that can't open.
             if (!cb.current.onPlayMusic) return musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })

@@ -12,6 +12,8 @@ import { ChevronDown, ChevronUp, ExternalLink, Music, SkipBack, SkipForward, X }
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { isEndedMessage, queueReducer, type QueueState } from '@/lib/echo/playlists'
+import type { ControlResult } from '@/lib/echo/music-play'
+import type { MusicCommand } from '@/lib/echo/types'
 import { buttonClass } from '@/lib/echo/ui-classes'
 import { IconButton } from './ui'
 
@@ -32,10 +34,12 @@ type MusicPlayerApi = {
   /** Reopens the current song paused (e.g. a call started). */
   pause: () => void
   close: () => void
+  /** A player command from Echo (chat or call): what it did, or why it couldn't. */
+  control: (command: MusicCommand) => ControlResult
 }
 
 const noop = () => undefined
-const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop }
+const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop, control: () => 'unavailable' }
 const MusicPlayerContext = createContext<MusicPlayerApi | null>(null)
 const EMPTY: QueueState = { tracks: [], index: 0, autoplay: false, key: 0, cause: 'user' }
 
@@ -57,22 +61,56 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const pause = useCallback(() => dispatch({ type: 'pause' }), [])
   const close = useCallback(() => dispatch({ type: 'close' }), [])
   const ended = useCallback((key: number) => dispatch({ type: 'ended', key }), [])
+  // The docked player registers how to send YouTube player commands (pause/resume) to its embed.
+  const sendRef = useRef<((func: 'pauseVideo' | 'playVideo') => void) | null>(null)
+  const registerSender = useCallback((send: ((func: 'pauseVideo' | 'playVideo') => void) | null) => {
+    sendRef.current = send
+  }, [])
+  const control = useCallback(
+    (command: MusicCommand): ControlResult => {
+      if (!q.tracks[q.index]) return 'nothing_playing'
+      switch (command) {
+        case 'next':
+          if (q.index + 1 >= q.tracks.length) return 'no_next'
+          dispatch({ type: 'next' })
+          return 'ok'
+        case 'previous':
+          if (q.index === 0) return 'no_previous'
+          dispatch({ type: 'prev' })
+          return 'ok'
+        case 'pause':
+        case 'resume':
+          // Without the embed's channel, reopening covers pause (paused) and resume (playing).
+          if (sendRef.current) sendRef.current(command === 'pause' ? 'pauseVideo' : 'playVideo')
+          else if (command === 'pause') dispatch({ type: 'pause' })
+          else dispatch({ type: 'jump', index: q.index })
+          return 'ok'
+        case 'stop':
+          dispatch({ type: 'close' })
+          return 'ok'
+        case 'shuffle':
+          dispatch({ type: 'shuffleRest' })
+          return 'ok'
+      }
+    },
+    [q.tracks, q.index],
+  )
   const current = q.tracks[q.index]
   const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key, cause: q.cause } : null), [current, q.autoplay, q.key, q.cause])
   const queue = useMemo(() => ({ tracks: q.tracks, index: q.index }), [q.tracks, q.index])
   const api = useMemo(
-    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close }),
-    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close],
+    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control }),
+    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control],
   )
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} />}
+      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} onRegister={registerSender} />}
     </MusicPlayerContext.Provider>
   )
 }
 
-function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void }) {
+function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void; onRegister: (send: ((func: 'pauseVideo' | 'playVideo') => void) | null) => void }) {
   // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
   const [minimized, setMinimized] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -96,6 +134,12 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [onEnded, key])
+
+  // Let the provider pause/resume this embed (YouTube's postMessage commands).
+  useEffect(() => {
+    onRegister((func) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), 'https://www.youtube-nocookie.com'))
+    return () => onRegister(null)
+  }, [onRegister])
 
   // Ask the embed to report its state (YouTube's iframe postMessage protocol). Its player may start after the
   // iframe's load event, so ask a few times.
