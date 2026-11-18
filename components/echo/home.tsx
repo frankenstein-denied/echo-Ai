@@ -10,7 +10,7 @@ import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
-import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
+import { connectorStatuses, isConnected, type ConnectorState, AI_PROVIDERS } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
 import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, resolveMusicControl, type MusicTrack } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
@@ -408,7 +408,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [uid])
 
   // Connector states and the sealed Web search tokens, kept in refs for the request and call paths.
-  const connectorsRef = useRef<{ statuses: ConnectorState[]; sealed: string }>({ statuses: connectorStatuses([]), sealed: '' })
+  const connectorsRef = useRef<{ statuses: ConnectorState[]; sealed: string; aiKeys: Record<string, string> }>({ statuses: connectorStatuses([]), sealed: '', aiKeys: {} })
   // Saved Weather location (only while Weather is connected) and the forecast text cached per location.
   const weatherLocRef = useRef<{ place: string; lat: number; lon: number } | null>(null)
   const weatherCacheRef = useRef<{ key: string; text: string; at: number } | null>(null)
@@ -419,7 +419,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       (snap) => {
         const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
         const web = docs.find((d) => d.id === 'web-search')
-        connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '' }
+        // Sealed AI model keys (ask Claude…), sent with each message; only the server can open them.
+        const aiKeys = Object.fromEntries(docs.filter((d) => (AI_PROVIDERS as readonly string[]).includes(d.id) && d.connected && typeof d.sealed === 'string' && d.sealed).map((d) => [d.id, d.sealed as string]))
+        connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '', aiKeys }
         const wx = docs.find((d) => d.id === 'weather')
         weatherLocRef.current =
           isConnected(connectorsRef.current.statuses, 'weather') && typeof wx?.lat === 'number' && typeof wx?.lon === 'number'
@@ -546,7 +548,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
         const built = buildItems()
         const weather = await getWeather()
-        const echoP = sendToEcho(user, msg, buildContext({ ...profile, language: languageRef.current }, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather, getMusic()), webSearchKey())
+        const echoP = sendToEcho(user, msg, buildContext({ ...profile, language: languageRef.current }, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather, getMusic()), webSearchKey(), connectorsRef.current.aiKeys)
         echoP.catch(() => undefined)
         try {
           await userP

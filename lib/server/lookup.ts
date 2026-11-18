@@ -53,6 +53,12 @@ export type LookupDeps = {
   fetch?: (source: Parameters<typeof fetchLookup>[0], query: string, opts: LookupOptions) => Promise<WebResult[]>
 }
 
+/** The user's local date (from their clientTime, e.g. '2026-11-18T10:00:00+08:00'), so "this year" is their year. */
+function userNow(clientTime: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(clientTime)
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)) : new Date()
+}
+
 const nameOf = (id: ConnectorId) => CONNECTORS.find((c) => c.id === id)?.name.replace(/ \(.*\)$/, '') ?? id
 
 export async function resolveLookup(res: EchoResponse, deps: LookupDeps): Promise<EchoResponse> {
@@ -75,7 +81,7 @@ export async function resolveLookup(res: EchoResponse, deps: LookupDeps): Promis
 
   let results: WebResult[]
   try {
-    results = await (deps.fetch ?? fetchLookup)(action.source, action.query, { timeoutMs: Math.min(FETCH_TIMEOUT_MS, remaining() - ANSWER_RESERVE_MS) })
+    results = await (deps.fetch ?? fetchLookup)(action.source, action.query, { timeoutMs: Math.min(FETCH_TIMEOUT_MS, remaining() - ANSWER_RESERVE_MS), now: userNow(deps.clientTime) })
   } catch (err) {
     const kind = err instanceof LookupError ? err.kind : ((err as { name?: string })?.name ?? 'unknown')
     if (kind === 'not_configured') console.error(`[echo] ${name} lookup is not configured (missing API key)`)

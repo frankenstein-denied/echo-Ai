@@ -1,4 +1,4 @@
-import { CONNECTORS, LOOKUP_SOURCES, type ConnectorStatus, type LookupSource } from './connectors'
+import { AI_PROVIDERS, CONNECTORS, LOOKUP_SOURCES, type AiProvider, type ConnectorStatus, type LookupSource } from './connectors'
 import { isMealType, isMoodTag, MOOD_SCORES } from './health-helpers'
 import { MUSIC_COMMANDS, type MusicCommand } from './types'
 import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoRequest, EchoRequestMessage, EchoResponse, MemoryInput, MemoryType } from './types'
@@ -230,12 +230,16 @@ export function parseEchoRequest(body: unknown): EchoRequest | { error: string }
   }
   const context = parseEchoContext(body.context)
   const webSearchKey = typeof body.webSearchKey === 'string' && body.webSearchKey.length <= LIMITS.webSearchKey ? body.webSearchKey : ''
+  const rawKeys = isObj(body.aiKeys) ? body.aiKeys : {}
+  const aiKeyList = AI_PROVIDERS.flatMap((p) => (typeof rawKeys[p] === 'string' && (rawKeys[p] as string).length <= LIMITS.webSearchKey ? [[p, rawKeys[p] as string] as const] : []))
+  const aiKeys = aiKeyList.length ? (Object.fromEntries(aiKeyList) as Partial<Record<AiProvider, string>>) : undefined
   return {
     text,
     clientTime: body.clientTime,
     timeZone: body.timeZone.trim(),
     context,
     ...(webSearchKey ? { webSearchKey } : {}),
+    ...(aiKeys ? { aiKeys } : {}),
   }
 }
 
@@ -359,6 +363,11 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
     case 'web_search': {
       const query = str(a.query, LIMITS.searchQuery)
       return query ? { type: 'web_search', query } : null
+    }
+    case 'ask_model': {
+      const provider = (AI_PROVIDERS as readonly string[]).includes(a.provider as string) ? (a.provider as AiProvider) : null
+      const question = str(a.question, 2000)
+      return provider && question ? { type: 'ask_model', provider, question } : null
     }
     case 'lookup': {
       const source = (LOOKUP_SOURCES as readonly string[]).includes(a.source as string) ? (a.source as LookupSource) : null
@@ -622,10 +631,10 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
   // A web search or lookup stands alone (only memories may come with it): their answers never save items.
   // A free lookup wins over a web search (it is the connector that covers the question).
   // One play_music may come with saves (it saves nothing and runs in the browser); it wins over a search.
-  const searches = [...actions.filter((a) => a.type === 'lookup'), ...actions.filter((a) => a.type === 'web_search')]
+  const searches = [...actions.filter((a) => a.type === 'ask_model'), ...actions.filter((a) => a.type === 'lookup'), ...actions.filter((a) => a.type === 'web_search')]
   // One music action (play or control) at most.
   const plays = actions.filter((a) => a.type === 'play_music' || a.type === 'music_control').slice(0, 1)
-  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'lookup' && a.type !== 'play_music' && a.type !== 'music_control')
+  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'lookup' && a.type !== 'ask_model' && a.type !== 'play_music' && a.type !== 'music_control')
   // A connector action next to a search or a play means a missing connector: search or play instead.
   if ((searches.length || plays.length) && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
   // A pending delete confirmation drops searches and plays, so the question reaches the user.

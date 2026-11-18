@@ -1,4 +1,4 @@
-import type { ConnectorStatus, LookupSource } from './connectors'
+import type { AiProvider, ConnectorStatus, LookupSource } from './connectors'
 export type EchoCategory = 'note' | 'goal' | 'health' | 'reminder' | 'connector' | 'general'
 
 export type MemoryType = 'diary' | 'task' | 'goal' | 'health' | 'person' | 'connector' | 'interest' | 'topic' | 'trait'
@@ -38,6 +38,8 @@ export type EchoAction =
   | { type: 'meal_delete'; ref: string }
   /** Resolved on the server (never reaches the browser): the reply is written from Tavily results. */
   | { type: 'web_search'; query: string }
+  /** Resolved on the server: asks another AI model with the user's own (sealed) API key. */
+  | { type: 'ask_model'; provider: AiProvider; question: string }
   /** Resolved on the server (never reaches the browser): the reply is written from a free connector's data. */
   | { type: 'lookup'; source: LookupSource; query: string }
   /** Reaches the browser: controls the music player (next, previous, pause, resume, stop, shuffle the rest). */
@@ -96,6 +98,8 @@ export type EchoRequest = {
   }
   /** Sealed Tavily tokens from the Web search connector doc; sent only when Web search is connected. */
   webSearchKey?: string
+  /** Sealed API keys of the user's AI model connectors (ask_model). */
+  aiKeys?: Partial<Record<AiProvider, string>>
 }
 
 export type EchoResponse = {

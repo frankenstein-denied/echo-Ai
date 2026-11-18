@@ -77,7 +77,7 @@ export type Routine = { title: string; cadence: string; confidence: number; crea
 export type Message = { role: 'user' | 'assistant'; text: string; category?: EchoCategory; sources?: { title: string; url: string }[]; checkIn?: boolean; createdAt: Timestamp }
 export type PageMix = Partial<Record<'note' | 'goal' | 'reminder' | 'health', number>>
 export type DiaryPage = { mix?: PageMix; title: string; preview: string; messageCount: number; createdAt: Timestamp; updatedAt: Timestamp; lastMessageAt: Timestamp }
-export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number; service?: 'listenbrainz'; username?: string }
+export type Connector = { name: string; connected: boolean; updatedAt: Timestamp; sealed?: string; place?: string; lat?: number; lon?: number }
 export type Memory = { label: string; type: MemoryType; links: string[]; mentions: number; createdAt: Timestamp; lastSeenAt: Timestamp; pages?: string[] }
 
 const sub = <T>(uid: string, name: string) => collection(db, 'users', uid, name) as CollectionReference<T>
