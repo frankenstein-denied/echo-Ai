@@ -6,12 +6,12 @@ import type { LiveServerMessage, Session } from '@google/genai'
 import { Mic, MicOff, PhoneOff } from 'lucide-react'
 import { applyActions, estimateMealViaApi, localIsoWithOffset, lookupViaApi, searchWebViaApi, type SavedItem } from '@/lib/echo/client'
 import { CaptureEncoder, decodeServerAudio, formatElapsed, INPUT_MIME, PlaybackScheduler, rmsLevel, TranscriptSync } from '@/lib/echo/call-audio'
-import { briefDayKey, briefOutcome } from '@/lib/echo/briefs'
+import { briefDayKey, briefTurnResult } from '@/lib/echo/briefs'
 import { briefKickoff, extractCheckInTime, greetingKickoff, type RefMap } from '@/lib/echo/context'
 import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, musicToolOutput, type MusicTrack } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
 import type { Listen } from '@/lib/echo/listening'
-import { loadPlaylists } from '@/lib/firestore'
+import { loadPlaylists, loadRecentBriefs } from '@/lib/firestore'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
@@ -211,7 +211,8 @@ export function useEchoCall({
   }
 
   // Hand a finished turn to the page; `revealedOnly` keeps only what Echo actually said (barge-in / hang-up).
-  const finalize = (revealedOnly: boolean) => {
+  // `userCut`: the user started talking after the model finished but before its reply played out.
+  const finalize = (revealedOnly: boolean, { userCut = false }: { userCut?: boolean } = {}) => {
     const t = turn.current
     turn.current = newTurn()
     t.handedOff = true
@@ -225,10 +226,10 @@ export function useEchoCall({
     const brief = pendingBrief.current
     if (brief) {
       pendingBrief.current = null
-      const outcome = briefOutcome({ echoText, completed: !revealedOnly && !t.interrupted, userSpoke: !!userText || t.interrupted })
-      if (outcome !== 'skip') {
+      const b = briefTurnResult({ echoText, revealedOnly, interrupted: t.interrupted, userText, userCut, modelComplete: t.complete, playing: sched.current.isPlaying(now()) })
+      if (b) {
         try {
-          cb.current.onBrief?.({ day: brief.day, text: echoText, partial: outcome === 'partial' })
+          cb.current.onBrief?.({ day: brief.day, ...b })
         } catch {}
       }
     }
@@ -404,7 +405,7 @@ export function useEchoCall({
     if (input) {
       let t = turn.current
       if (t.modelStarted && (t.interrupted || t.complete)) {
-        finalize(true)
+        finalize(true, { userCut: !t.interrupted })
         t = turn.current
       }
       t.user += input
@@ -540,12 +541,7 @@ export function useEchoCall({
     // (plus the recent briefs on a brief call).
     const snapshotP = takeSnapshot(tz)
     const uid = cb.current.user.uid
-    const recentBriefsP: Promise<string[] | undefined> =
-      callMode === 'brief'
-        ? import('@/lib/firestore')
-            .then((m) => m.loadRecentBriefs(uid))
-            .catch(() => [])
-        : Promise.resolve(undefined)
+    const recentBriefsP: Promise<string[] | undefined> = callMode === 'brief' ? loadRecentBriefs(uid).catch(() => []) : Promise.resolve(undefined)
     const workletP = loadWorklet(r)
     const contextP = Promise.resolve()
       .then(() => cb.current.getContext())

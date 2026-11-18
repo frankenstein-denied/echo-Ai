@@ -22,6 +22,26 @@ export function briefOutcome(e: { echoText: string; completed: boolean; userSpok
   return e.completed ? 'save' : 'skip'
 }
 
+/**
+ * The brief from a brief call's first finalized turn, or null when nothing should be stored.
+ * `revealedOnly`: the turn closed early (hang-up, barge-in, user speech); `userCut`: the user spoke after the
+ * model finished but while the brief was still playing out. A hang-up once the brief fully played still counts.
+ */
+export function briefTurnResult(f: {
+  echoText: string
+  revealedOnly: boolean
+  interrupted: boolean
+  userText: string
+  userCut: boolean
+  modelComplete: boolean
+  playing: boolean
+}): { text: string; partial: boolean } | null {
+  const completed = (!f.revealedOnly || (f.modelComplete && !f.playing)) && !f.interrupted
+  const userSpoke = !!f.userText.trim() || f.interrupted || f.userCut
+  const outcome = briefOutcome({ echoText: f.echoText, completed, userSpoke })
+  return outcome === 'skip' ? null : { text: f.echoText, partial: outcome === 'partial' }
+}
+
 /** The last few full briefs' texts, newest first, so a new brief can avoid repeating them. */
 export function recentBriefTexts(docs: BriefDoc[]): string[] {
   const millis = (d: BriefDoc) => d.createdAt?.toMillis?.() ?? 0
