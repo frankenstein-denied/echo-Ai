@@ -276,7 +276,7 @@ describe('music_control tool', () => {
     expect(mapToolCall('music_control', { command: 'explode' }, ctx()).ok).toBe(false)
     const control = vi.fn(async () => ({ ok: true }))
     const out = await executeToolCalls([{ id: 'a', name: 'music_control', args: { command: 'next' } }], ctx(), vi.fn() as never, { control })
-    expect(control).toHaveBeenCalledWith('next')
+    expect(control).toHaveBeenCalledWith('next', undefined)
     expect(out.responses[0].response.output).toEqual({ ok: true })
   })
   it('without a player says so', async () => {

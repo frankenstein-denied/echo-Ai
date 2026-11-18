@@ -215,3 +215,18 @@ export function renderMusicContext({ playlists, queue, player, habits }: { playl
   }
   return lines.join('\n').slice(0, MUSIC_CONTEXT_MAX)
 }
+
+/** The embed's playback position (and length) from its info messages, or null for other messages. */
+export function readPlayerTime(data: unknown): { currentTime: number; duration?: number } | null {
+  if (typeof data !== 'string') return null
+  try {
+    const m = JSON.parse(data) as { event?: unknown; info?: { currentTime?: unknown; duration?: unknown } }
+    if (m?.event !== 'infoDelivery' || !m.info || typeof m.info !== 'object') return null
+    const t = m.info.currentTime
+    if (typeof t !== 'number' || !Number.isFinite(t)) return null
+    const d = m.info.duration
+    return { currentTime: t, ...(typeof d === 'number' && Number.isFinite(d) && d > 0 ? { duration: d } : {}) }
+  } catch {
+    return null
+  }
+}

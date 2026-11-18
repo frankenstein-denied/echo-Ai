@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeListening, artistOf, isPlayingMessage, matchHistory, renderListeningHabits, toListen, type Listen } from './listening'
+import { analyzeListening, artistOf, isPausedMessage, isPlayingMessage, listenOutcome, matchHistory, renderListeningHabits, toListen, type Listen } from './listening'
 
 // Tue 2026-11-17 (local time); history goes back from here.
 const NOW = new Date(2026, 10, 17, 20, 0)
@@ -70,6 +70,9 @@ describe('renderListeningHabits', () => {
     expect(text).not.toContain('(Official HD Video)')
     expect(text.length).toBeLessThanOrEqual(900)
   })
+  it('opens with the only-when-asked rule', () => {
+    expect(renderListeningHabits(analyzeListening(history(), NOW))).toContain('use only when the user asks about or for their music; never bring it up yourself')
+  })
   it('says nothing without plays', () => {
     expect(renderListeningHabits(analyzeListening([], NOW))).toBe('')
   })
@@ -78,7 +81,15 @@ describe('renderListeningHabits', () => {
 describe('matchHistory', () => {
   it('replays a song the user played before, by title words, most played first', () => {
     expect(matchHistory('eye of the tiger', history())?.videoId).toBe(TIGER)
-    expect(matchHistory('lofi', history())?.videoId).toBe(LOFI)
+    expect(matchHistory('lofi hip hop', history())?.videoId).toBe(LOFI)
+  })
+  it('never hijacks generic or one-word mood requests (those still search)', () => {
+    const withBoilerplate = [...history(), L('ofc00000000', 'Big Hit (Official Music Video)', 'Star', at(1, 10))]
+    for (const q of ['music', 'some music', 'play something', 'video', 'lofi', 'jazz', 'official music video']) expect(matchHistory(q, withBoilerplate)).toBeNull()
+  })
+  it('matches title plus artist, and a cut-off last word', () => {
+    expect(matchHistory('Eye of the Tiger Survivor', history())?.videoId).toBe(TIGER)
+    expect(matchHistory('lofi hip hop radio beats to rel', history())?.videoId).toBe(LOFI)
   })
   it('ignores short or unknown queries', () => {
     expect(matchHistory('a', history())).toBeNull()
@@ -100,5 +111,21 @@ describe('isPlayingMessage', () => {
     expect(isPlayingMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }))).toBe(true)
     expect(isPlayingMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 2 } }))).toBe(false)
     expect(isPlayingMessage('x')).toBe(false)
+  })
+})
+
+describe('listenOutcome', () => {
+  it('a call interrupting a song is never a skip', () => {
+    expect(listenOutcome(false, 5, true)).toBe('partial')
+    expect(listenOutcome(false, 5)).toBe('skipped')
+    expect(listenOutcome(true, 5)).toBe('finished')
+  })
+})
+
+describe('isPausedMessage', () => {
+  it('reads the YouTube embed "paused" state', () => {
+    expect(isPausedMessage(JSON.stringify({ event: 'onStateChange', info: 2 }))).toBe(true)
+    expect(isPausedMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 2 } }))).toBe(true)
+    expect(isPausedMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }))).toBe(false)
   })
 })

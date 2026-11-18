@@ -31,9 +31,9 @@ export function toListen(data: unknown): Listen | null {
   }
 }
 
-/** How a song that is leaving the player went. */
-export function listenOutcome(ended: boolean, listenedSec: number): Exclude<ListenOutcome, 'playing'> {
-  return ended ? 'finished' : listenedSec < SKIP_UNDER_SEC ? 'skipped' : 'partial'
+/** How a song that is leaving the player went. A call interrupting it (`interrupted`) is never a skip. */
+export function listenOutcome(ended: boolean, listenedSec: number, interrupted = false): Exclude<ListenOutcome, 'playing'> {
+  return ended ? 'finished' : !interrupted && listenedSec < SKIP_UNDER_SEC ? 'skipped' : 'partial'
 }
 
 /** The artist behind a YouTube channel name ("SurvivorVEVO" -> "Survivor", "X - Topic" -> "X"). */
@@ -117,7 +117,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 export function renderListeningHabits(a: ListeningAnalysis): string {
   if (!a.plays) return ''
   const song = (s: { title: string; artist: string }, n?: number) => `${promptTitle(s.title)}${s.artist || n !== undefined ? ` (${[promptTitle(s.artist), n].filter((x) => x !== '' && x !== undefined).join(', ')})` : ''}`
-  const lines = [`Listening habits (last ${LISTEN_WINDOW_DAYS} days, ${a.plays} plays):`]
+  const lines = [`Listening habits (last ${LISTEN_WINDOW_DAYS} days, ${a.plays} plays) — use only when the user asks about or for their music; never bring it up yourself:`]
   if (a.topSongs.length) lines.push(`- Most played: ${a.topSongs.slice(0, 5).map((s) => song(s, s.plays)).join('; ')}`)
   if (a.topArtists.length) lines.push(`- Top artists: ${a.topArtists.slice(0, 5).map((x) => `${promptTitle(x.name)} (${x.plays})`).join(', ')}`)
   for (const h of a.habits.slice(0, 4)) lines.push(`- ${cap(h.when)}: ${song(h)}`)
@@ -138,18 +138,39 @@ const words = (s: string) =>
     .split(/\s+/)
     .filter(Boolean)
 
-/** A song from the history whose title has every word of the query (most played first), to replay without a search. */
+/** Words that say nothing about which song: generic play requests and YouTube upload boilerplate. */
+const NOT_A_SONG = new Set('a an the of to and or in on for my me some something any anything play song songs music track tracks video videos official audio lyric lyrics hd 4k live remix mix playlist please'.split(' '))
+
+/**
+ * A song from the history that the query names (most played first), to replay without a search. It needs at least two
+ * meaningful words, all in the cleaned title or the artist, so a generic ("music") or one-word mood request ("jazz")
+ * still searches. The last word may be cut off ("…beats to rel").
+ */
 export function matchHistory(query: string, listens: Listen[]): MusicTrack | null {
-  const q = words(query)
-  if (!q.length || q.join(' ').length < 3) return null
+  return matchTracks(
+    query,
+    listens.filter((l) => l.outcome !== 'skipped').map((l) => ({ videoId: l.videoId, title: l.title, ...(l.channel ? { channel: l.channel } : {}) })),
+  )
+}
+
+/** A known song (e.g. from the user's playlists) the query names, by the same rules as matchHistory. */
+export function matchKnownTracks(query: string, tracks: MusicTrack[]): MusicTrack | null {
+  return matchTracks(query, tracks)
+}
+
+/** Each appearance of a track counts once; the most frequent match wins. */
+function matchTracks(query: string, tracks: MusicTrack[]): MusicTrack | null {
+  const q = words(query).filter((w) => !NOT_A_SONG.has(w))
+  if (q.length < 2) return null
+  const last = q[q.length - 1]
   const counts = new Map<string, { track: MusicTrack; plays: number }>()
-  for (const l of listens) {
-    if (l.outcome === 'skipped') continue
-    const t = new Set(words(l.title))
-    if (!q.every((w) => t.has(w))) continue
-    const c = counts.get(l.videoId) ?? { track: { videoId: l.videoId, title: l.title, ...(l.channel ? { channel: l.channel } : {}) }, plays: 0 }
+  for (const tr of tracks) {
+    const t = words(`${promptTitle(tr.title)} ${artistOf(tr.channel)}`)
+    const has = new Set(t)
+    if (!q.slice(0, -1).every((w) => has.has(w)) || !t.some((w) => w.startsWith(last))) continue
+    const c = counts.get(tr.videoId) ?? { track: tr, plays: 0 }
     c.plays++
-    counts.set(l.videoId, c)
+    counts.set(tr.videoId, c)
   }
   return [...counts.values()].sort((a, b) => b.plays - a.plays)[0]?.track ?? null
 }
@@ -161,6 +182,19 @@ export function isPlayingMessage(data: unknown): boolean {
     const m = JSON.parse(data) as { event?: unknown; info?: unknown }
     if (m?.event === 'onStateChange') return m.info === 1
     if (m?.event === 'infoDelivery' && m.info && typeof m.info === 'object') return (m.info as { playerState?: unknown }).playerState === 1
+  } catch {
+    // not ours
+  }
+  return false
+}
+
+/** True for the YouTube embed's postMessage saying the video is paused (state 2). */
+export function isPausedMessage(data: unknown): boolean {
+  if (typeof data !== 'string') return false
+  try {
+    const m = JSON.parse(data) as { event?: unknown; info?: unknown }
+    if (m?.event === 'onStateChange') return m.info === 2
+    if (m?.event === 'infoDelivery' && m.info && typeof m.info === 'object') return (m.info as { playerState?: unknown }).playerState === 2
   } catch {
     // not ours
   }

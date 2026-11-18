@@ -415,6 +415,7 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
 function YourListening({ uid }: { uid: string }) {
   const player = useMusicPlayer()
   const [listens, setListens] = useState<Listen[] | null>(null)
+  const [loadError, setLoadError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -423,8 +424,14 @@ function YourListening({ uid }: { uid: string }) {
     const since = Timestamp.fromMillis(Date.now() - LISTEN_WINDOW_DAYS * 86_400_000)
     return onSnapshot(
       query(listensCol(uid), where('startedAt', '>=', since), orderBy('startedAt', 'desc'), limit(500)),
-      (snap) => setListens(snap.docs.map((d) => toListen(d.data())).filter((l): l is Listen => l !== null)),
-      () => setListens([]),
+      (snap) => {
+        setListens(snap.docs.map((d) => toListen(d.data())).filter((l): l is Listen => l !== null))
+        setLoadError('')
+      },
+      (e) => {
+        setListens([])
+        setLoadError(isPermissionDenied(e) ? 'Your listening history needs the updated Firestore rules. Deploy firestore.rules, then reload.' : 'Could not load your listening history.')
+      },
     )
   }, [uid])
   const a: ListeningAnalysis | null = useMemo(() => (listens ? analyzeListening(listens, new Date()) : null), [listens])
@@ -455,7 +462,11 @@ function YourListening({ uid }: { uid: string }) {
           </Button>
         )}
       </div>
-      {!a ? (
+      {loadError ? (
+        <div className="mt-3">
+          <Alert variant="warning">{loadError}</Alert>
+        </div>
+      ) : !a ? (
         <Skeleton className="mt-3 h-16" />
       ) : a.plays === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">Play some music and Echo learns what you like. Then ask &quot;play my usual&quot; or &quot;what do I listen to most?&quot;.</p>

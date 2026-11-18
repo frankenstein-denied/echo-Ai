@@ -8,6 +8,7 @@ import {
   PLAYLIST_LIMITS,
   queueReducer,
   renderMusicContext,
+  readPlayerTime,
   MUSIC_CONTEXT_MAX,
   shuffled,
   toPlaylist,
@@ -205,5 +206,14 @@ describe('renderMusicContext with listening habits', () => {
     expect(text.indexOf('Listening habits')).toBeGreaterThan(-1)
     expect(text.indexOf('Listening habits')).toBeLessThan(text.indexOf('Playlists ('))
     expect(text).toContain('- Gym (1 song): Eye of the Tiger')
+  })
+})
+
+describe('readPlayerTime', () => {
+  it('reads currentTime and duration from the embed info messages', () => {
+    expect(readPlayerTime(JSON.stringify({ event: 'infoDelivery', info: { currentTime: 42.5, duration: 200 } }))).toEqual({ currentTime: 42.5, duration: 200 })
+    expect(readPlayerTime(JSON.stringify({ event: 'infoDelivery', info: { currentTime: 7 } }))).toEqual({ currentTime: 7 })
+    expect(readPlayerTime(JSON.stringify({ event: 'onStateChange', info: 1 }))).toBeNull()
+    expect(readPlayerTime('nope')).toBeNull()
   })
 })
