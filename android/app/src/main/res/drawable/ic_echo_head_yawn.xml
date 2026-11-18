@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ic_echo_head yawning: the hour before bed -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#2DD4BF"
+        android:pathData="M256,0a256,256 0 1,0 0.001,0z" />
+    <group
+        android:translateX="112.6"
+        android:translateY="112.6"
+        android:scaleX="11.947"
+        android:scaleY="11.947">
+        <path
+            android:fillColor="#04201C"
+            android:pathData="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    </group>
+    <!-- a sleepy yawn: an open "o" and a curl of breath in the free corner -->
+    <path
+        android:fillColor="#04201C"
+        android:pathData="M120,120 m-34,0 a34,42 0 1,0 68,0 a34,42 0 1,0 -68,0" />
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M120,128 m-18,0 a18,24 0 1,0 36,0 a18,24 0 1,0 -36,0" />
+    <path
+        android:pathData="M176,86 Q196,66 216,86 T256,86"
+        android:strokeColor="#04201C"
+        android:strokeLineCap="round"
+        android:strokeWidth="12" />
+</vector>

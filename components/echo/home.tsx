@@ -12,6 +12,10 @@ import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/se
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState, AI_PROVIDERS } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
+import { rainUntilMs } from '@/lib/echo/chathead-mood'
+import { setNativeChatheadMood } from '@/lib/native/echo-bridge'
+
+const RAIN_CHECK_MS = 30 * 60_000
 import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, resolveMusicControl, type MusicTrack } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
 import { renderMusicContext, toPlaylist, type Playlist } from '@/lib/echo/playlists'
@@ -428,6 +432,22 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const weatherLocRef = useRef<{ place: string; lat: number; lon: number } | null>(null)
   const weatherCacheRef = useRef<{ key: string; text: string; at: number } | null>(null)
   const weatherFetchRef = useRef<{ key: string; promise: Promise<void> } | null>(null)
+  // The chathead's umbrella: tell the phone when the coming rain ends (0 = none). The full app only, at most
+  // every 30 minutes; a failed fetch leaves the last report, which expires on its own.
+  const rainCheckedAt = useRef(0)
+  const reportRain = useCallback(() => {
+    if (embed || Date.now() - rainCheckedAt.current < RAIN_CHECK_MS) return
+    rainCheckedAt.current = Date.now()
+    const loc = weatherLocRef.current
+    if (!loc) return setNativeChatheadMood({ rainUntilMs: 0 })
+    fetchForecast(loc.lat, loc.lon)
+      .then((f) => setNativeChatheadMood({ rainUntilMs: rainUntilMs(f, Date.now()) }))
+      .catch(() => undefined)
+  }, [embed])
+  useEffect(() => {
+    const id = setInterval(reportRain, RAIN_CHECK_MS)
+    return () => clearInterval(id)
+  }, [reportRain])
   useEffect(() => {
     return onSnapshot(
       connectorsCol(uid),
@@ -442,6 +462,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           isConnected(connectorsRef.current.statuses, 'weather') && typeof wx?.lat === 'number' && typeof wx?.lon === 'number'
             ? { place: typeof wx.place === 'string' ? wx.place : '', lat: wx.lat, lon: wx.lon }
             : null
+        reportRain()
       },
       (e) => console.error('connectors listener', e),
     )

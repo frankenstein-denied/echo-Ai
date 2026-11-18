@@ -14,6 +14,7 @@ import type { MusicTrack } from '@/lib/echo/music-play'
 import { isEndedMessage, queueReducer, readPlayerTime, type QueueAction, type QueueState } from '@/lib/echo/playlists'
 import { isPausedMessage, isPlayingMessage, listenOutcome } from '@/lib/echo/listening'
 import { finishListen, startListen } from '@/lib/firestore'
+import { setNativeChatheadMood } from '@/lib/native/echo-bridge'
 import type { ControlResult } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
 import { buttonClass } from '@/lib/echo/ui-classes'
@@ -89,6 +90,7 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
   }, [uid])
   const playing = useCallback(
     (key: number) => {
+      setNativeChatheadMood({ musicPlaying: true }) // the chathead bobs along
       if (!uid) return
       const l = logRef.current
       // The same song playing on after a pause: just restart the clock. A replay after it ended is a new play.
@@ -105,6 +107,7 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
     [uid, finalize],
   )
   const paused = useCallback((key: number) => {
+    setNativeChatheadMood({ musicPlaying: false })
     const l = logRef.current
     if (l?.key === key && l.since !== null) {
       l.playedMs += Date.now() - l.since
@@ -210,6 +213,11 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
   }, [])
   const current = q.tracks[q.index]
   const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key, cause: q.cause } : null), [current, q.autoplay, q.key, q.cause])
+  // Player closed (or gone): the chathead stops bobbing.
+  const hasTrack = !!current
+  useEffect(() => {
+    if (!hasTrack) setNativeChatheadMood({ musicPlaying: false })
+  }, [hasTrack])
   const queue = useMemo(() => ({ tracks: q.tracks, index: q.index }), [q.tracks, q.index])
   const api = useMemo(
     () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, interrupt, control, nowPlaying }),

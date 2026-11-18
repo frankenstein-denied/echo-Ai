@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ic_echo_head with an umbrella: rain is coming -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#2DD4BF"
+        android:pathData="M256,0a256,256 0 1,0 0.001,0z" />
+    <group
+        android:translateX="112.6"
+        android:translateY="112.6"
+        android:scaleX="11.947"
+        android:scaleY="11.947">
+        <path
+            android:fillColor="#04201C"
+            android:pathData="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    </group>
+    <!-- a small umbrella in the corner the number leaves free -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M64,150 A78,78 0 0,1 220,150 Q201,138 181,150 Q162,138 142,150 Q123,138 103,150 Q84,138 64,150 Z" />
+    <path
+        android:pathData="M142,150 V212 Q142,230 124,230 Q110,230 108,216"
+        android:strokeColor="#F8FAFC"
+        android:strokeLineCap="round"
+        android:strokeWidth="14" />
+</vector>

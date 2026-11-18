@@ -12,6 +12,7 @@ import android.provider.Settings;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import com.echo.app.floating.ChatheadMood;
 import com.echo.app.floating.ChatheadService;
 import com.echo.app.floating.CheckInAlarm;
 import com.echo.app.floating.CheckInEngine;
@@ -115,6 +116,20 @@ public class EchoBridgePlugin extends Plugin {
     @PluginMethod
     public void refresh(PluginCall call) {
         PinnedController.refresh(getContext());
+        call.resolve();
+    }
+
+    /** The app reports the user's world for the chathead: when coming rain ends (0 = none) and whether music plays. */
+    @PluginMethod
+    public void setChatheadMood(PluginCall call) {
+        long now = System.currentTimeMillis();
+        if (call.hasOption("rainUntilMs")) {
+            Double rain = call.getDouble("rainUntilMs");
+            ChatheadMood.saveRain(getContext(), rain == null ? 0L : rain.longValue());
+        }
+        if (call.hasOption("musicPlaying")) {
+            ChatheadMood.saveMusic(getContext(), Boolean.TRUE.equals(call.getBoolean("musicPlaying")), now);
+        }
         call.resolve();
     }
 
