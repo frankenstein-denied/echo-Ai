@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, connectorsCol, listensCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { addPageMessage, connectorsCol, listensCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, saveBrief, setConnectorSecret, watchBriefDone, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
@@ -23,13 +23,15 @@ import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo
 import { Alert, Button, IconButton, Skeleton } from './ui'
 import { kindForCategory } from '@/lib/echo/glow'
 import { KindTag } from './glow'
-import { CallBar, CallScreen, useEchoCall, type CallTurn, type LateResult } from './call-panel'
+import { CallBar, CallScreen, useEchoCall, type CallMode, type CallTurn, type LateResult } from './call-panel'
 import { TodayDrawer, TodayPanel, useToday } from './home-panels'
 import { Sheet } from './sheet'
 import { useCallFlag, useIsMobile } from './use-mobile'
-import { TodayOrbWelcome } from './today-orb'
+import { TodayOrbWelcome, usePrefersReducedMotion } from './today-orb'
+import { BriefOrb } from './brief-orb'
+import { useDay } from './use-day'
 import { LegacyReleaseBanner } from './legacy/release-banner'
-import { showTodayWelcome } from '@/lib/echo/today-orb'
+import { showPinnedBriefOrb, showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
@@ -191,11 +193,23 @@ export function companionGreeting(name: string | undefined, hour = new Date().ge
   return n ? `Good ${part}, ${n}.` : `Good ${part}.`
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call' }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed, isTodayPage }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call'; /** The page shown is today's (the daily brief can start from it). */ isTodayPage: boolean }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
+  const reducedMotion = usePrefersReducedMotion()
+  // Whether today's brief is stored. null until the first answer (or after an error): no brief entry point then.
+  const briefDay = useDay()
+  const [briefDone, setBriefDone] = useState<boolean | null>(null)
+  useEffect(() => {
+    setBriefDone(null)
+    if (embed) return
+    return watchBriefDone(uid, briefDay, setBriefDone, (e) => {
+      console.error('Echo: could not read the daily brief', e)
+      setBriefDone(null)
+    })
+  }, [uid, briefDay, embed])
   const { play: playMusic, playTracks, interrupt: interruptMusic, control: musicControl, nowPlaying, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
   // MUSIC context: the user's playlists (live) and the player's queue, read at send / call start.
   // null until the first snapshot (or after an error): the MUSIC block then leaves playlists out instead of saying none.
@@ -735,7 +749,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   // Calls: commands never start sound over Echo's voice, and the result says what's playing now (the call's MUSIC
   // block was built when the call started).
   const onCallMusicControl = useCallback((cmd: MusicCommand, seconds?: number) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true, seconds })), ...nowPlaying() }), [musicControl, nowPlaying])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens })
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens, onBrief: (b) => void saveBrief(uid, b.day, b.text, b.partial).catch((e) => console.error('Echo: could not save brief', e)) })
   useCallFlag(call.active)
   useEffect(() => {
     const t = musicRef.current
@@ -752,18 +766,21 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useEffect(() => {
     if (liveKey || pendingTurns.length || callBlocked) scrollEnd()
   }, [liveKey, pendingTurns.length, call.error, callBlocked])
-  const startCall = () => {
+  const startCall = (mode: CallMode = 'greeting') => {
     stopAudio()
     setCallSaveError(null)
     setCallBlocked(null)
     // The full app must not open a second call on top of a floating one (one microphone, one Live session).
     // On the web (and in the embedded call) start synchronously so the click keeps its user activation.
-    if (embed || !Capacitor.isNativePlatform()) return void call.start()
+    if (embed || !Capacitor.isNativePlatform()) return void call.start(mode)
     void floatingCallActiveWithin(1000).then((floating) => {
       if (floating) setCallBlocked('Echo is already in a call from the floating bubble. End that call first.')
-      else void call.start()
+      else void call.start(mode)
     })
   }
+  const startBrief = () => startCall('brief')
+  // Today's brief is still owed on this page: only today's page may start (and store) it.
+  const briefOwed = isTodayPage && briefDone === false
 
   // Floating call (/?embed=call): start once today's page is picked and its messages, the memories and the voice prefs
   // have loaded (or failed to: a load error still starts, and native's connect timeout covers a load that never answers).
@@ -886,6 +903,15 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
 
   if (embed === 'call') return null
 
+  const welcomeShown = showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length
+  // Voice entry points (welcome orb tap, pinned brief orb): the full app with voice on.
+  const voiceEntry = embed !== 'chat' && !!prefs?.enabled && !disabled
+  const pinnedBriefOrb = showPinnedBriefOrb({ isTodayPage, briefDone, welcomeShown, callActive: call.active, voiceEnabled: !!prefs?.enabled, embed })
+  // The speaking orb during a brief call: in the chat column on desktop, in CallScreen on touch. One at a time,
+  // so the orb's shared SVG ids never resolve into a hidden copy. Only until the brief turn is finalized: after
+  // that the call looks like a normal call (saved turns no longer jump above the orb).
+  const briefOrb = call.active && call.mode === 'brief' && call.briefPending ? <BriefOrb uid={uid} pageId={pageId ?? undefined} getLevel={call.getOutputLevel} speaking={call.phase === 'speaking'} reducedMotion={reducedMotion} size={160} /> : null
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -904,7 +930,15 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
             {!embed && <LegacyReleaseBanner onOpen={() => onNavigate('Legacy')} />}
             {listenError && <Alert variant="danger">{listenError}</Alert>}
             {messages === null && !listenError && <Skeleton className="h-16 max-w-xl" />}
-            {showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length && (
+            {pinnedBriefOrb && (
+              <div className="flex flex-col items-center gap-1">
+                <button type="button" aria-label="Play today's brief" onClick={startBrief} disabled={disabled || thinking} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60">
+                  <BriefOrb uid={uid} pageId={pageId ?? undefined} getLevel={call.getOutputLevel} speaking={false} reducedMotion={reducedMotion} size={64} />
+                </button>
+                <p aria-hidden="true" className="text-xs text-muted-foreground">Today&apos;s brief</p>
+              </div>
+            )}
+            {welcomeShown && (
               <TodayOrbWelcome
                 uid={uid}
                 pageId={pageId ?? undefined}
@@ -912,9 +946,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 hint={hint}
                 onAsk={ask}
                 onFillComposer={fillComposer}
+                onOrbTap={voiceEntry ? (briefOwed ? startBrief : () => startCall('greeting')) : undefined}
+                orbLabel={voiceEntry ? (briefOwed ? "Play today's brief" : 'Talk to Echo') : undefined}
                 callButton={
                   embed === 'chat' ? null : prefs?.enabled ? (
-                    <Button icon={Phone} onClick={startCall} disabled={disabled || thinking} className="h-12 rounded-full px-6 text-base">
+                    <Button icon={Phone} onClick={() => startCall()} disabled={disabled || thinking} className="h-12 rounded-full px-6 text-base">
                       Talk to Echo
                     </Button>
                   ) : (
@@ -939,6 +975,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 </EchoRow>
               )
             })}
+            {briefOrb && !mobile && <div className="flex justify-center py-6 max-lg:hidden">{briefOrb}</div>}
             {pendingTurns.map((t) => {
               // Firestore shows a write locally before it is acknowledged; hide the parts already on the page.
               const recent = (messages ?? []).slice(-6).filter((m) => (m.createdAt?.toMillis?.() ?? 0) >= t.at - 2000)
@@ -983,7 +1020,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 <Alert variant={call.error.kind === 'quota' || call.error.kind === 'limit' ? 'warning' : 'danger'}>{call.error.message}</Alert>
                 <div className="flex gap-2">
                   {embed !== 'chat' && (
-                    <Button size="sm" icon={Phone} onClick={startCall} disabled={disabled || thinking}>
+                    <Button size="sm" icon={Phone} onClick={() => startCall(briefOwed ? 'brief' : 'greeting')} disabled={disabled || thinking}>
                       {call.error.kind === 'limit' ? 'Start new call' : 'Retry call'}
                     </Button>
                   )}
@@ -1037,7 +1074,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                   </Button>
                 )}
                 {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={startCall} disabled={disabled || thinking} />}
+                {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => startCall()} disabled={disabled || thinking} />}
                 <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || !text.trim()} />
               </div>
             )}
@@ -1071,6 +1108,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           onMute={call.toggleMute}
           onEnd={call.end}
           onClosed={() => callBtnRef.current?.focus({ preventScroll: true })}
+          mark={mobile ? (briefOrb ?? undefined) : undefined}
           scrollKey={`${liveKey}|${pendingTurns.length}|${callMessages.length}`}
           alerts={
             callSaveError || quotaNotice || undos.length ? (

@@ -210,3 +210,11 @@ export function formatElapsed(ms: number): string {
   const m = Math.floor(s / 60)
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
+
+/** Loudness of a block of samples: the RMS, clamped to 0..1 (0 for an empty block). */
+export function rmsLevel(samples: Float32Array): number {
+  if (samples.length === 0) return 0
+  let sum = 0
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
+  return Math.min(1, Math.sqrt(sum / samples.length))
+}

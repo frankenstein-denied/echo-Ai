@@ -23,3 +23,8 @@ export function dropUnansweredCheckIns<T extends { role: string; checkIn?: boole
   const newest = messages.map((m) => !!m.checkIn).lastIndexOf(true)
   return messages.filter((m, i) => !m.checkIn || i === newest || messages[i + 1]?.role === 'user')
 }
+
+/** Whether the small pinned Today orb (entry point to today's brief) shows: today's page, brief not played yet, voice on, and no welcome orb, call or chathead embed. */
+export function showPinnedBriefOrb(s: { isTodayPage: boolean; briefDone: boolean | null; welcomeShown: boolean; callActive: boolean; voiceEnabled: boolean; embed?: 'chat' | 'call' }): boolean {
+  return s.isTodayPage && s.briefDone === false && !s.welcomeShown && !s.callActive && s.voiceEnabled && !s.embed
+}

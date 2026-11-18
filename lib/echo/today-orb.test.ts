@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ORB_KINDS } from './orbs'
-import { dropUnansweredCheckIns, emptyPageOrb, hasUserMessage, showTodayWelcome } from './today-orb'
+import { dropUnansweredCheckIns, emptyPageOrb, hasUserMessage, showPinnedBriefOrb, showTodayWelcome } from './today-orb'
 
 describe('emptyPageOrb', () => {
   it('is an empty pearl orb for the page', () => {
@@ -58,5 +58,23 @@ describe('dropUnansweredCheckIns', () => {
     const msgs = [{ role: 'user' }, { role: 'assistant' }]
     expect(dropUnansweredCheckIns(msgs)).toEqual(msgs)
     expect(dropUnansweredCheckIns([])).toEqual([])
+  })
+})
+
+describe('showPinnedBriefOrb', () => {
+  const base = { isTodayPage: true, briefDone: false as boolean | null, welcomeShown: false, callActive: false, voiceEnabled: true }
+  it("shows on today's page until the brief has played", () => {
+    expect(showPinnedBriefOrb(base)).toBe(true)
+  })
+  it.each([
+    ['the brief has played', { briefDone: true }],
+    ['the brief state is still loading', { briefDone: null }],
+    ['the welcome orb is showing', { welcomeShown: true }],
+    ['a call is active', { callActive: true }],
+    ['voice is off', { voiceEnabled: false }],
+    ['the page is not today', { isTodayPage: false }],
+    ['it is the chathead chat panel', { embed: 'chat' as const }],
+  ])('hides when %s', (_, change) => {
+    expect(showPinnedBriefOrb({ ...base, ...change })).toBe(false)
   })
 })

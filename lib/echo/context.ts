@@ -229,8 +229,20 @@ export function partOfDay(hour: number): 'morning' | 'afternoon' | 'evening' | '
   return 'night'
 }
 
-export function greetingKickoff(clientTime: string): string {
+/** "Local time HH:MM (part of day)" from an ISO client time (noon when it can't be read). */
+function localTimeLine(clientTime: string): string {
   const m = /T(\d{2}):(\d{2})/.exec(clientTime)
   const hour = m ? Number(m[1]) : 12
-  return `${GREETING_MARKER} Local time ${m ? `${m[1]}:${m[2]}` : 'unknown'} (${partOfDay(hour)}). Greet the user now.`
+  return `Local time ${m ? `${m[1]}:${m[2]}` : 'unknown'} (${partOfDay(hour)})`
+}
+
+export function greetingKickoff(clientTime: string): string {
+  return `${GREETING_MARKER} ${localTimeLine(clientTime)}. Greet the user now.`
+}
+
+/** Client kickoff for the first call of the day: Echo speaks the daily brief instead of the greeting. */
+export const BRIEF_MARKER = '[daily brief]'
+
+export function briefKickoff(clientTime: string): string {
+  return `${BRIEF_MARKER} ${localTimeLine(clientTime)}. Give the user today's brief now.`
 }
