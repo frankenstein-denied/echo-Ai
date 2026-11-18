@@ -136,11 +136,20 @@ public final class CheckInPlanner {
         {"Good evening{, name}. Anything good happen today?", "Anything good happen today?"},
         {"Winding down yet? Tell me about your day.", "Winding down yet?"},
     };
-    /** The small message for a reminder is its title and time, built in {@link #plan}. */
+    /*
+     * A reminder is said the way a friend would mention it, never as a to-do label ("Dentist at 4 PM").
+     * {when} is "at 4 PM" or "on Sat, Nov 7". The small message has no {time} beyond {when}, and its title is
+     * cut to fit, built in {@link #reminderShort}.
+     */
     private static final String[] REMINDER = {
-        "Hey, don't forget {title} {when}.",
-        "Just a heads up: {title} {when}.",
-        "Hey{, name}, {title} is coming up {when}.",
+        "Hey{, name}! Just so it doesn't sneak up on you: {title} {when}. Need anything to get ready?",
+        "Thinking of you{, name}. {title} is coming up {when}. How are you feeling about it?",
+        "Psst{, name}, {title} {when}. You've got this!",
+    };
+    private static final String[] REMINDER_SHORT = {
+        "Hey, {title} {when}!",
+        "Psst… {title} {when}",
+        "{title} {when}, remember?",
     };
 
     private CheckInPlanner() {}
@@ -184,7 +193,7 @@ public final class CheckInPlanner {
                 String when = nameTheDay ? "on " + day + " at " + time : "at " + time;
                 String full = withName(REMINDER[Math.floorMod(step, REMINDER.length)], name)
                     .replace("{when}", when).replace("{title}", soonest.title);
-                return new Plan(topic, shortTitle(soonest.title) + (nameTheDay ? " on " + day : " at " + time), full);
+                return new Plan(topic, reminderShort(soonest.title, nameTheDay ? "on " + day : "at " + time, step), full);
             }
             case MORNING:
                 return say(topic, s.energyLogged ? GOOD_MORNING_WARM : GOOD_MORNING, step, name);
@@ -317,9 +326,18 @@ public final class CheckInPlanner {
         return s.kcalToday * 100L >= s.calorieGoal * 90L;
     }
 
-    private static String shortTitle(String title) {
-        if (title.length() <= TITLE_MAX) return title;
-        int end = Character.isHighSurrogate(title.charAt(TITLE_MAX - 1)) ? TITLE_MAX - 1 : TITLE_MAX;
+    /** The friendly small message, with the title cut so the whole line fits {@link SmartCheckIns#SHORT_MAX}. */
+    private static String reminderShort(String title, String when, int step) {
+        String line = REMINDER_SHORT[Math.floorMod(step, REMINDER_SHORT.length)].replace("{when}", when);
+        int room = Math.min(TITLE_MAX, SmartCheckIns.SHORT_MAX - (line.length() - "{title}".length()));
+        return line.replace("{title}", shortTitle(title, room));
+    }
+
+    /** At most {@code max} characters, the last one an ellipsis when cut. */
+    private static String shortTitle(String title, int max) {
+        if (title.length() <= max) return title;
+        int keep = Math.max(1, max - 1);
+        int end = Character.isHighSurrogate(title.charAt(keep - 1)) ? keep - 1 : keep;
         return title.substring(0, end) + "…";
     }
 

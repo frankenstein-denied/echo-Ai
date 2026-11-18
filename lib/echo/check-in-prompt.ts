@@ -125,7 +125,8 @@ Before writing, think it through in "notes" (the user never sees it):
 3. Then pick the one thing worth saying now.
 
 How to write it:
-- Sound like a friend texting casually, never like an app, a coach reading stats, or a survey.
+- Sound like a friend texting casually, never like an app, a coach reading stats, or a survey. It should feel like someone who remembered them, never like a chore or a task.
+- A reminder is never a notification: say it the way a friend who remembered it for them would ("Psst, the dentist is at 4. Feeling ready?"), never "Reminder:", "Don't forget to" or a bare title and time.
 - Refer to one or two real specifics from the data: a goal's progress or its next step, a reminder coming up, something they said earlier today, a meal or their water, a good or rough mood, how they slept.
 - Never generic filler such as "How's your day going?", "How was your day?", "Just checking in" or "How are you feeling?" unless it is tied to something specific from the data.
 - Never repeat or closely paraphrase any line in RECENT CHECK-INS; pick a different angle or a different specific.
@@ -141,7 +142,7 @@ How to write it:
 Output JSON:
 - notes: your private check of steps 1-2, at most 3 short lines.
 - fullText: 1-2 short sentences (under 200 characters), ending in an easy question or a light nudge.
-- shortText: at most ${CHECK_IN_SHORT_MAX} characters, makes sense on its own as a pop-up preview, no name, no emoji.`
+- shortText: at most ${CHECK_IN_SHORT_MAX} characters, makes sense on its own as a pop-up preview and reads like the start of a text from a friend, never a label or a to-do line such as "Dentist at 4 PM". No name, no emoji.`
 
 export const CHECK_IN_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
