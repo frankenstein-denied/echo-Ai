@@ -1,6 +1,10 @@
 package com.echo.app.floating;
 
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import com.echo.app.echo.CheckInPrefs;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -188,6 +192,10 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private long tapAtMs; // set while a tap waits for the page; 0 otherwise
     private CheckInEngine engine;
     private boolean dozing;
+    private int headLook = R.drawable.ic_echo_head;
+    private ObjectAnimator bob;
+    private static final long MOOD_TICK_MS = 30_000L;
+    private static final long BOB_HALF_BEAT_MS = 260L;
     private boolean panelOpen;
     private boolean tornDown;
     private int latestStartId = -1; // -1 stops whatever came in, for a teardown before any start
@@ -286,6 +294,8 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         }
         recordError(this, null);
         startEngine();
+        main.removeCallbacks(moodTick);
+        moodTick.run();
         return START_STICKY;
     }
 
@@ -498,7 +508,58 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     @Override public void setDozing(boolean value) {
         if (headImage == null || dozing == value) return;
         dozing = value;
-        headImage.setImageResource(value ? R.drawable.ic_echo_head_sleeping : R.drawable.ic_echo_head);
+        applyMood();
+    }
+
+    /** Re-reads the user's world (rain, music, bedtime) every half minute while the head shows. */
+    private final Runnable moodTick = new Runnable() {
+        @Override public void run() {
+            if (tornDown || headImage == null) return;
+            applyMood();
+            main.postDelayed(this, MOOD_TICK_MS);
+        }
+    };
+
+    /** Dozing wins; otherwise yawn before bed, an umbrella when rain is coming, and a bob while music plays. */
+    private void applyMood() {
+        if (headImage == null) return;
+        long now = System.currentTimeMillis();
+        int image = R.drawable.ic_echo_head_sleeping;
+        if (!dozing) {
+            CheckInPrefs p;
+            try {
+                p = CheckInPrefs.fromJson(SessionStore.get(this).getCachedPrefsJson());
+            } catch (RuntimeException e) { // a store that can't open still gets the default bedtime
+                p = CheckInPrefs.defaults();
+            }
+            ChatheadMood.Look look = ChatheadMood.look(now, TimeZone.getDefault(), p.sleepStartMin, p.sleepEndMin, ChatheadMood.rainUntil(this));
+            image = look == ChatheadMood.Look.YAWN ? R.drawable.ic_echo_head_yawn
+                : look == ChatheadMood.Look.UMBRELLA ? R.drawable.ic_echo_head_umbrella
+                : R.drawable.ic_echo_head;
+        }
+        if (image != headLook) {
+            headLook = image;
+            headImage.setImageResource(image);
+        }
+        setBobbing(ChatheadMood.bobs(ChatheadMood.musicPlaying(this), ChatheadMood.musicAt(this), now, dozing));
+    }
+
+    /** A gentle side-to-side rock, about two beats a second, like nodding along. */
+    private void setBobbing(boolean on) {
+        if (on == (bob != null) || headImage == null) return;
+        if (on) {
+            float tilt = 7f;
+            bob = ObjectAnimator.ofFloat(headImage, View.ROTATION, -tilt, tilt);
+            bob.setDuration(BOB_HALF_BEAT_MS);
+            bob.setRepeatCount(ValueAnimator.INFINITE);
+            bob.setRepeatMode(ValueAnimator.REVERSE);
+            bob.setInterpolator(new AccelerateDecelerateInterpolator());
+            bob.start();
+        } else {
+            bob.cancel();
+            bob = null;
+            headImage.setRotation(0f);
+        }
     }
 
     /** Loads the page with no windows added, so the next tap is quick. Not worth the battery with the screen off. */
@@ -825,6 +886,10 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         removeRemoveTarget();
         removePanelWindows();
         destroyWeb();
+        if (bob != null) {
+            bob.cancel();
+            bob = null;
+        }
         removeWindow(head);
         head = null;
         headImage = null;

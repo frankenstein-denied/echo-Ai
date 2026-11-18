@@ -39,6 +39,7 @@ interface EchoBridgePlugin {
   setPinned(opts: { pinned: boolean }): Promise<void>
   getStatus(): Promise<EchoBridgeStatus>
   refresh(): Promise<void>
+  setChatheadMood(mood: { rainUntilMs?: number; musicPlaying?: boolean }): Promise<void>
   requestNotificationPermission(): Promise<{ granted: boolean }>
   openBatterySettings(): Promise<void>
   isFloatingCallActive(): Promise<{ active: boolean }>
@@ -80,6 +81,12 @@ export async function getNativeStatus(): Promise<EchoBridgeStatus | null> {
 export async function refreshNativeNotification(): Promise<void> {
   if (!native()) return
   await EchoBridge.refresh()
+}
+
+/** Tells the chathead about the user's world (rain coming, music playing). Older APKs lack it: ignored. */
+export function setNativeChatheadMood(mood: { rainUntilMs?: number; musicPlaying?: boolean }): void {
+  if (!native()) return
+  EchoBridge.setChatheadMood(mood).catch(() => undefined)
 }
 
 const REFRESH_DELAY_MS = 400
