@@ -535,3 +535,12 @@ describe('music context', () => {
     expect('error' in r ? '' : r.context.music).toHaveLength(3000)
   })
 })
+
+describe('music_control seeking', () => {
+  it('keeps forward/back with seconds (default 10, capped at an hour) and restart', () => {
+    expect(resp([{ type: 'music_control', command: 'forward', seconds: 180 }]).actions).toEqual([{ type: 'music_control', command: 'forward', seconds: 180 }])
+    expect(resp([{ type: 'music_control', command: 'back' }]).actions).toEqual([{ type: 'music_control', command: 'back', seconds: 10 }])
+    expect(resp([{ type: 'music_control', command: 'forward', seconds: 99999 }]).actions).toEqual([{ type: 'music_control', command: 'forward', seconds: 3600 }])
+    expect(resp([{ type: 'music_control', command: 'restart', seconds: 5 }]).actions).toEqual([{ type: 'music_control', command: 'restart' }])
+  })
+})

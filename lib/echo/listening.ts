@@ -147,18 +147,30 @@ const NOT_A_SONG = new Set('a an the of to and or in on for my me some something
  * still searches. The last word may be cut off ("…beats to rel").
  */
 export function matchHistory(query: string, listens: Listen[]): MusicTrack | null {
+  return matchTracks(
+    query,
+    listens.filter((l) => l.outcome !== 'skipped').map((l) => ({ videoId: l.videoId, title: l.title, ...(l.channel ? { channel: l.channel } : {}) })),
+  )
+}
+
+/** A known song (e.g. from the user's playlists) the query names, by the same rules as matchHistory. */
+export function matchKnownTracks(query: string, tracks: MusicTrack[]): MusicTrack | null {
+  return matchTracks(query, tracks)
+}
+
+/** Each appearance of a track counts once; the most frequent match wins. */
+function matchTracks(query: string, tracks: MusicTrack[]): MusicTrack | null {
   const q = words(query).filter((w) => !NOT_A_SONG.has(w))
   if (q.length < 2) return null
   const last = q[q.length - 1]
   const counts = new Map<string, { track: MusicTrack; plays: number }>()
-  for (const l of listens) {
-    if (l.outcome === 'skipped') continue
-    const t = words(`${promptTitle(l.title)} ${artistOf(l.channel)}`)
+  for (const tr of tracks) {
+    const t = words(`${promptTitle(tr.title)} ${artistOf(tr.channel)}`)
     const has = new Set(t)
     if (!q.slice(0, -1).every((w) => has.has(w)) || !t.some((w) => w.startsWith(last))) continue
-    const c = counts.get(l.videoId) ?? { track: { videoId: l.videoId, title: l.title, ...(l.channel ? { channel: l.channel } : {}) }, plays: 0 }
+    const c = counts.get(tr.videoId) ?? { track: tr, plays: 0 }
     c.plays++
-    counts.set(l.videoId, c)
+    counts.set(tr.videoId, c)
   }
   return [...counts.values()].sort((a, b) => b.plays - a.plays)[0]?.track ?? null
 }

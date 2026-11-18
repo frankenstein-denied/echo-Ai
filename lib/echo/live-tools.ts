@@ -233,8 +233,8 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: CONTROL_TOOL_NAME,
-    description: "Control Echo's music player: next, previous, pause, resume, stop, or shuffle (the rest of the queue). Returns ok, or an error with tell_user (e.g. nothing is playing).",
-    parameters: { type: Type.OBJECT, properties: { command: { type: Type.STRING, enum: [...MUSIC_COMMANDS] } }, required: ['command'] },
+    description: "Control Echo's music player: next, previous, pause, resume, stop, shuffle (the rest of the queue), forward/back by seconds, or restart the song. Returns ok, or an error with tell_user (e.g. nothing is playing).",
+    parameters: { type: Type.OBJECT, properties: { command: { type: Type.STRING, enum: [...MUSIC_COMMANDS] }, seconds: { type: Type.NUMBER, description: 'forward/back only: how many seconds to jump (e.g. 180 for 3 minutes)' } }, required: ['command'] },
   },
 ]
 
@@ -289,7 +289,7 @@ export function mapToolCall(name: string | undefined, args: unknown, ctx: ToolCo
     return action ? { ok: true, response: { reply: '', actions: [action], memories: [], trace: [] } } : { ok: false, error: 'a known source and a query are required' }
   }
   if (name === CONTROL_TOOL_NAME) {
-    const res = sanitizeEchoResponse({ actions: [{ type: 'music_control', command: a.command }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels)
+    const res = sanitizeEchoResponse({ actions: [{ type: 'music_control', command: a.command, seconds: a.seconds }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels)
     const action = res.actions.find((x) => x.type === 'music_control')
     return action ? { ok: true, response: { reply: '', actions: [action], memories: [], trace: [] } } : { ok: false, error: 'command must be next, previous, pause, resume, stop or shuffle' }
   }
@@ -341,7 +341,7 @@ export type SearchFn = (query: string) => Promise<Record<string, unknown>>
 export type PlayFn = (query: string) => Promise<Record<string, unknown>>
 /** Fetches a free connector's facts via POST /api/lookup; resolves with the tool output ({ results } or an error). */
 /** Runs a player command; resolves with the tool output ({ ok } or error + tell_user). */
-export type ControlFn = (command: MusicCommand) => Promise<Record<string, unknown>>
+export type ControlFn = (command: MusicCommand, seconds?: number) => Promise<Record<string, unknown>>
 export type LookupFn = (source: LookupSource, query: string) => Promise<Record<string, unknown>>
 export type ToolFunctionResponse = { id?: string; name?: string; response: { output?: Record<string, unknown>; error?: string } }
 
@@ -458,11 +458,11 @@ export async function executeToolCalls(
       }
       if (call.name === CONTROL_TOOL_NAME) {
         // Controlling the player saves nothing.
-        const command = (mapped.response.actions[0] as { command: MusicCommand }).command
+        const { command, seconds } = mapped.response.actions[0] as { command: MusicCommand; seconds?: number }
         const none = { id: call.id, name: call.name, response: { output: controlToolOutput('unavailable') } }
         if (!opts.control) return none
         try {
-          return { id: call.id, name: call.name, response: { output: await opts.control(command) } }
+          return { id: call.id, name: call.name, response: { output: await opts.control(command, seconds) } }
         } catch {
           return none
         }

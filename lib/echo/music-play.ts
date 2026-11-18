@@ -2,7 +2,7 @@
 // request); a song name goes through POST /api/music/search. Fixed replies per error; never logs the query.
 import { parseYoutubeLink } from './music'
 import { matchPlaylist, type Playlist } from './playlists'
-import { matchHistory, type Listen } from './listening'
+import { matchHistory, matchKnownTracks, type Listen } from './listening'
 import { fetchWithTimeout } from './send-helpers'
 import type { EchoResponse, MusicCommand } from './types'
 
@@ -102,7 +102,9 @@ export async function findMusic(
   const pl = matchPlaylist(query, lists)
   if (pl) return { outcome: { ok: true, track: { videoId: pl.tracks[0].videoId, title: `${pl.name} playlist` } }, queue: pl.tracks }
   // A song the user has played before replays from the history (no YouTube search quota).
-  const known = !parseYoutubeLink(query) && deps.history ? matchHistory(query, deps.history()) : null
+  // A song from the user's playlists or history replays directly (no YouTube search quota, works without a key).
+  const linkQuery = !!parseYoutubeLink(query)
+  const known = linkQuery ? null : (deps.history ? matchHistory(query, deps.history()) : null) ?? matchKnownTracks(query, lists.flatMap((p) => p.tracks))
   if (known) return { outcome: { ok: true, track: known }, queue: [known] }
   let outcome: FindOutcome
   try {
@@ -116,23 +118,24 @@ export async function findMusic(
 // ---------- player commands ----------
 
 /** What a player command did: ok, or why it couldn't. */
-export type ControlResult = 'ok' | 'nothing_playing' | 'no_next' | 'no_previous' | 'no_shuffle' | 'in_call' | 'unavailable'
+export type ControlResult = 'ok' | 'nothing_playing' | 'no_next' | 'no_previous' | 'no_shuffle' | 'cant_seek' | 'in_call' | 'unavailable'
 
 export const MUSIC_CONTROL_REPLIES: Record<Exclude<ControlResult, 'ok' | 'unavailable'>, string> = {
   nothing_playing: "Nothing is playing right now. Ask me to play a song or one of your playlists.",
   no_next: "That's the last song in the queue.",
   no_previous: "That's the first song in the queue.",
   no_shuffle: "There's nothing left in the queue to shuffle.",
+  cant_seek: "I can't jump around in this song yet — try again once it's playing.",
   in_call: "It's ready in the player — tap play when you want it. I won't play music over our call.",
 }
 
 const controlReply = (r: Exclude<ControlResult, 'ok'>) => (r === 'unavailable' ? MUSIC_REPLIES.unavailable : MUSIC_CONTROL_REPLIES[r])
 
 /** Typed chat: runs a music_control action on the player; when it can't, the reply says why instead. */
-export function resolveMusicControl(res: EchoResponse, control: (command: MusicCommand) => ControlResult): { res: EchoResponse; result: ControlResult | null } {
+export function resolveMusicControl(res: EchoResponse, control: (command: MusicCommand, seconds?: number) => ControlResult): { res: EchoResponse; result: ControlResult | null } {
   const action = res.actions.find((a) => a.type === 'music_control')
   if (!action) return { res, result: null }
-  const result = control(action.command)
+  const result = control(action.command, action.seconds)
   return { res: result === 'ok' ? res : { ...res, reply: controlReply(result) }, result }
 }
 

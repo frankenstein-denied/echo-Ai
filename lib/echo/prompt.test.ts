@@ -180,10 +180,14 @@ describe('music in the typed prompt', () => {
     expect(SYSTEM_INSTRUCTION).toContain('"Play my usual"')
     expect(SYSTEM_INSTRUCTION).toContain('never suggest music on your own')
   })
+  it('teaches seeking and playing a known song by its title', () => {
+    expect(SYSTEM_INSTRUCTION).toContain('"fast forward 3 minutes" -> {"type":"music_control","command":"forward","seconds":180}')
+    expect(SYSTEM_INSTRUCTION).toContain('"Play it" right after naming a song from MUSIC means play_music with that exact title')
+  })
   it('teaches music_control and answering from MUSIC', () => {
     expect(SYSTEM_INSTRUCTION).toContain('- music_control:')
     expect(SYSTEM_INSTRUCTION).toContain('"What\'s in my gym playlist?" is answered from MUSIC')
     const variants = (RESPONSE_SCHEMA.properties.actions.items as { anyOf: { properties: { type: { enum: string[] }; command?: { enum?: string[] } } }[] }).anyOf
-    expect(variants.find((x) => x.properties.type.enum.includes('music_control'))?.properties.command?.enum).toEqual(['next', 'previous', 'pause', 'resume', 'stop', 'shuffle'])
+    expect(variants.find((x) => x.properties.type.enum.includes('music_control'))?.properties.command?.enum).toEqual(['next', 'previous', 'pause', 'resume', 'stop', 'shuffle', 'forward', 'back', 'restart'])
   })
 })

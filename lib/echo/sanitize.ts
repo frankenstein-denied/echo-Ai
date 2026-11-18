@@ -365,8 +365,14 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
       const query = str(a.query, LIMITS.lookupQuery)
       return source && query ? { type: 'lookup', source, query } : null
     }
-    case 'music_control':
-      return (MUSIC_COMMANDS as readonly unknown[]).includes(a.command) ? { type: 'music_control', command: a.command as MusicCommand } : null
+    case 'music_control': {
+      if (!(MUSIC_COMMANDS as readonly unknown[]).includes(a.command)) return null
+      const command = a.command as MusicCommand
+      if (command !== 'forward' && command !== 'back') return { type: 'music_control', command }
+      // How far to jump: whole seconds, 10 by default, at most an hour.
+      const n = typeof a.seconds === 'number' && Number.isFinite(a.seconds) ? Math.round(a.seconds) : 10
+      return { type: 'music_control', command, seconds: Math.min(3600, Math.max(1, n)) }
+    }
     case 'play_music': {
       const query = str(a.query, LIMITS.musicQuery)
       return query ? { type: 'play_music', query } : null

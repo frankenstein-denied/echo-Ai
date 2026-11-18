@@ -571,7 +571,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         let queue: MusicTrack[] = []
         // music_control (next, pause, stop…) runs on the player now; if it can't, the reply says why.
         const control = res.actions.find((a) => a.type === 'music_control')
-        const { res: withControl, result: controlled } = resolveMusicControl(res, (cmd) => (musicAvailable ? musicControl(cmd) : 'unavailable'))
+        const { res: withControl, result: controlled } = resolveMusicControl(res, (cmd, seconds) => (musicAvailable ? musicControl(cmd, { seconds }) : 'unavailable'))
         if (controlled === 'ok' && control && ['next', 'previous', 'resume'].includes(control.command)) songStarted = true
         const applied = await applyEchoResponseWithMusic(
           uid,
@@ -732,7 +732,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   }, [musicTrack])
   // Calls: commands never start sound over Echo's voice, and the result says what's playing now (the call's MUSIC
   // block was built when the call started).
-  const onCallMusicControl = useCallback((cmd: MusicCommand) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true })), ...nowPlaying() }), [musicControl, nowPlaying])
+  const onCallMusicControl = useCallback((cmd: MusicCommand, seconds?: number) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true, seconds })), ...nowPlaying() }), [musicControl, nowPlaying])
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens })
   useCallFlag(call.active)
   useEffect(() => {

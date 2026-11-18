@@ -179,7 +179,7 @@ describe('resolveMusicControl', () => {
   it('runs the command and keeps the reply', () => {
     const control = vi.fn(() => 'ok' as const)
     const out = resolveMusicControl(base('next'), control)
-    expect(control).toHaveBeenCalledWith('next')
+    expect(control).toHaveBeenCalledWith('next', undefined)
     expect(out).toEqual({ res: base('next'), result: 'ok' })
   })
   it('replaces the reply when nothing plays or there is no player', () => {
@@ -208,5 +208,29 @@ describe('findMusic with listening history', () => {
     const r = await findMusic('eye of the tiger', { playlists: async () => [], find, history })
     expect(find).not.toHaveBeenCalled()
     expect(r.outcome).toEqual({ ok: true, track: { videoId: 'ddddddddddd', title: 'Survivor - Eye Of The Tiger', channel: 'SurvivorVEVO' } })
+  })
+})
+
+describe('findMusic plays songs Echo already knows', () => {
+  const jazz = { videoId: 'jjjjjjjjjjj', title: "1940s Jazz Noir -- Worrying Too Much Won't Help You", channel: 'Noir Lounge' }
+  it('a playlist song named by its title plays without a search', async () => {
+    const find = vi.fn()
+    const r = await findMusic("1940s Jazz Noir -- Worrying Too Much Won't Help You", { playlists: async () => [{ id: 'p', name: 'test play', tracks: [jazz] }], find })
+    expect(find).not.toHaveBeenCalled()
+    expect(r.outcome).toEqual({ ok: true, track: jazz })
+    expect(r.queue).toEqual([jazz])
+  })
+  it('a shortened title still finds it', async () => {
+    const find = vi.fn()
+    const r = await findMusic('worrying too much', { playlists: async () => [{ id: 'p', name: 'test play', tracks: [jazz] }], find })
+    expect(find).not.toHaveBeenCalled()
+    expect(r.outcome.ok && r.outcome.track.videoId).toBe(jazz.videoId)
+  })
+})
+
+describe('seek commands', () => {
+  it('say why a seek could not happen', () => {
+    const res = (command: string): EchoResponse => ({ reply: 'Skipping ahead.', actions: [{ type: 'music_control', command, seconds: 180 } as never], memories: [], trace: [] })
+    expect(resolveMusicControl(res('forward'), () => 'cant_seek').res.reply).toBe(MUSIC_CONTROL_REPLIES.cant_seek)
   })
 })

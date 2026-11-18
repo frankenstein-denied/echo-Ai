@@ -11,7 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { ChevronDown, ChevronUp, ExternalLink, Music, SkipBack, SkipForward, X } from 'lucide-react'
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
-import { isEndedMessage, queueReducer, type QueueAction, type QueueState } from '@/lib/echo/playlists'
+import { isEndedMessage, queueReducer, readPlayerTime, type QueueAction, type QueueState } from '@/lib/echo/playlists'
 import { isPausedMessage, isPlayingMessage, listenOutcome } from '@/lib/echo/listening'
 import { finishListen, startListen } from '@/lib/firestore'
 import type { ControlResult } from '@/lib/echo/music-play'
@@ -39,12 +39,12 @@ type MusicPlayerApi = {
   interrupt: () => void
   close: () => void
   /** A player command from Echo (chat or call): what it did, or why it couldn't. In a call, songs open paused. */
-  control: (command: MusicCommand, opts?: { inCall?: boolean }) => ControlResult
+  control: (command: MusicCommand, opts?: { inCall?: boolean; seconds?: number }) => ControlResult
   nowPlaying: () => { now_playing?: string; up_next?: string[] }
 }
 
 /** The docked player's embed: send a YouTube command; ready once the embed has answered (it's listening). */
-type Embed = { send: (func: 'pauseVideo' | 'playVideo') => void; ready: () => boolean }
+type Embed = { send: (func: 'pauseVideo' | 'playVideo') => void; seek: (seconds: number) => void; time: () => { currentTime: number; duration?: number } | null; ready: () => boolean }
 
 const noop = () => undefined
 const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop, interrupt: noop, control: () => 'unavailable', nowPlaying: () => ({}) }
@@ -146,7 +146,7 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
     embedRef.current = e
   }, [])
   const control = useCallback(
-    (command: MusicCommand, opts: { inCall?: boolean } = {}): ControlResult => {
+    (command: MusicCommand, opts: { inCall?: boolean; seconds?: number } = {}): ControlResult => {
       const s = qRef.current
       if (!s.tracks[s.index]) return 'nothing_playing'
       const embed = embedRef.current?.ready() ? embedRef.current : null
@@ -177,6 +177,27 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
           if (s.tracks.length - s.index - 1 < 2) return 'no_shuffle'
           act({ type: 'shuffleRest' })
           return 'ok'
+        case 'forward':
+        case 'back':
+        case 'restart': {
+          // Seeking needs the embed's channel and a known position (it reports one while playing).
+          const at = embed?.time()
+          if (!embed || (command !== 'restart' && !at)) return 'cant_seek'
+          const step = opts.seconds ?? 10
+          const to = command === 'restart' ? 0 : (at?.currentTime ?? 0) + (command === 'forward' ? step : -step)
+          const end = at?.duration
+          // Jumping past the end goes to the next song, or stops just before the end of the last one.
+          if (end && to >= end - 1) {
+            if (s.index + 1 < s.tracks.length) {
+              act({ type: 'next', autoplay: !opts.inCall })
+              return 'ok'
+            }
+            embed.seek(Math.max(0, end - 2))
+            return 'ok'
+          }
+          embed.seek(Math.max(0, to))
+          return 'ok'
+        }
       }
     },
     [act],
@@ -220,6 +241,8 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlayi
   const key = track.key
   // The key of the embed that last answered; commands go to the embed only once the current one has.
   const answered = useRef(-1)
+  // The latest playback position the embed reported, per song.
+  const timeRef = useRef<{ key: number; at: { currentTime: number; duration?: number } } | null>(null)
   const keyRef = useRef(key)
   useEffect(() => {
     keyRef.current = key
@@ -229,6 +252,8 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlayi
       if (e.source !== frame.current?.contentWindow) return
       // Any message from this embed means its player is up and listening for commands.
       answered.current = key
+      const at = readPlayerTime(e.data)
+      if (at) timeRef.current = { key, at }
       if (isEndedMessage(e.data)) onEnded(key)
       else if (isPlayingMessage(e.data)) onPlaying(key)
       else if (isPausedMessage(e.data)) onPaused(key)
@@ -239,8 +264,11 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlayi
 
   // Let the provider pause/resume this embed (YouTube's postMessage commands).
   useEffect(() => {
+    const post = (func: string, args: unknown[]) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube-nocookie.com')
     onRegister({
-      send: (func) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), 'https://www.youtube-nocookie.com'),
+      send: (func) => post(func, []),
+      seek: (seconds) => post('seekTo', [seconds, true]),
+      time: () => (timeRef.current && timeRef.current.key === keyRef.current ? timeRef.current.at : null),
       ready: () => answered.current === keyRef.current,
     })
     return () => onRegister(null)

@@ -156,7 +156,7 @@ export function useEchoCall({
   /** play_music found a song: open the shell's player paused (never over the call audio). */
   onPlayMusic?: (tracks: MusicTrack[]) => void
   /** music_control tool: runs next/pause/stop… on the shell's player; absent where there is no player. */
-  onMusicControl?: (command: MusicCommand) => Record<string, unknown>
+  onMusicControl?: (command: MusicCommand, seconds?: number) => Record<string, unknown>
   /** Songs played before, so play_music can replay one without a YouTube search. */
   getListenHistory?: () => Listen[]
 }) {
@@ -309,7 +309,7 @@ export function useEchoCall({
             return r.output
           },
           lookup: (source, q) => lookupViaApi(cb.current.user, source, q),
-          control: async (cmd) => (cb.current.onMusicControl ? cb.current.onMusicControl(cmd) : controlToolOutput('unavailable')),
+          control: async (cmd, seconds) => (cb.current.onMusicControl ? cb.current.onMusicControl(cmd, seconds) : controlToolOutput('unavailable')),
           play: async (q) => {
             // No player in this view (the chathead): tell the user instead of finding a song that can't open.
             if (!cb.current.onPlayMusic) return musicToolOutput({ ok: false, error: 'unavailable', reply: MUSIC_REPLIES.unavailable })
