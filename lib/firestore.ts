@@ -91,6 +91,8 @@ export const diaryPagesCol = (uid: string) => sub<DiaryPage>(uid, 'diaryPages')
 export const pageMessagesCol = (uid: string, pageId: string) => collection(db, 'users', uid, 'diaryPages', pageId, 'messages') as CollectionReference<Message>
 export const connectorsCol = (uid: string) => sub<Connector>(uid, 'connectors')
 export const memoriesCol = (uid: string) => sub<Memory>(uid, 'memories')
+export type PlaylistDoc = { name: string; tracks: { videoId: string; title: string; channel?: string }[]; createdAt: Timestamp; updatedAt: Timestamp }
+export const playlistsCol = (uid: string) => sub<PlaylistDoc>(uid, 'playlists')
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = userDoc(user.uid)
@@ -193,6 +195,29 @@ export async function setMusicAccount(uid: string, service: 'listenbrainz', user
 /** Music: disconnects and removes the saved account. */
 export async function disconnectMusic(uid: string): Promise<void> {
   await setDoc(doc(connectorsCol(uid), 'music'), { name: 'Music (ListenBrainz)', connected: false, updatedAt: serverTimestamp() } as never)
+}
+
+// ---------- playlists (Music page) ----------
+
+/** Firestore rejects undefined fields: keep channel only when there is one. */
+const plainTracks = (tracks: { videoId: string; title: string; channel?: string }[]) => tracks.map((t) => ({ videoId: t.videoId, title: t.title, ...(t.channel ? { channel: t.channel } : {}) }))
+
+export async function createPlaylist(uid: string, name: string, tracks: { videoId: string; title: string; channel?: string }[] = []): Promise<string> {
+  const ref = doc(playlistsCol(uid))
+  await setDoc(ref, { name, tracks: plainTracks(tracks), createdAt: serverTimestamp(), updatedAt: serverTimestamp() } as never)
+  return ref.id
+}
+
+export async function renamePlaylist(uid: string, id: string, name: string): Promise<void> {
+  await updateDoc(doc(playlistsCol(uid), id), { name, updatedAt: serverTimestamp() } as never)
+}
+
+export async function setPlaylistTracks(uid: string, id: string, tracks: { videoId: string; title: string; channel?: string }[]): Promise<void> {
+  await updateDoc(doc(playlistsCol(uid), id), { tracks: plainTracks(tracks), updatedAt: serverTimestamp() } as never)
+}
+
+export async function deletePlaylist(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(playlistsCol(uid), id))
 }
 
 export async function addNote(uid: string, note: Pick<Note, 'title' | 'body' | 'category' | 'tags'>): Promise<string> {

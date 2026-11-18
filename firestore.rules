@@ -299,6 +299,19 @@ service cloud.firestore {
         }
       }
 
+      // ---------- playlists (Music page: YouTube link playlists; owner-only) ----------
+      match /playlists/{id} {
+        function validPlaylist(d) {
+          return d.keys().hasOnly(['name', 'tracks', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['name', 'tracks', 'createdAt', 'updatedAt'])
+            && isString(d.name, 60) && d.name.size() > 0
+            && d.tracks is list && d.tracks.size() <= 100;
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validPlaylist(request.resource.data) && createStamps(request.resource.data);
+        allow update: if isOwner(uid) && validPlaylist(request.resource.data) && updateStamps(request.resource.data);
+      }
+
       // ---------- connectors (doc id = provider; batch set, no createdAt) ----------
       match /connectors/{provider} {
         function validConnector(d) {
