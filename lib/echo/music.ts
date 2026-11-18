@@ -104,3 +104,22 @@ export async function listenbrainzListening(name: string, fetchImpl: typeof fetc
   }
   return { recent, topArtists }
 }
+
+/**
+ * Title and channel of a YouTube video from YouTube's oEmbed endpoint (no API key; it allows browser requests).
+ * Falls back to a plain "YouTube video" title. Never throws.
+ */
+export async function fetchVideoInfo(videoId: string, fetchImpl: typeof fetch = fetch): Promise<{ videoId: string; title: string; channel?: string }> {
+  const plain = { videoId, title: 'YouTube video' }
+  try {
+    const url = `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return plain
+    const d = (await res.json()) as { title?: unknown; author_name?: unknown }
+    const title = typeof d.title === 'string' ? d.title.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+    const channel = typeof d.author_name === 'string' ? d.author_name.trim().slice(0, 200) : ''
+    return title ? { videoId, title, ...(channel ? { channel } : {}) } : plain
+  } catch {
+    return plain
+  }
+}

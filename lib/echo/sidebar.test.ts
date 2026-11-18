@@ -9,12 +9,13 @@ describe('nav constants', () => {
     expect(NAV_GROUPS.map((g) => [g.label, g.items])).toEqual([
       ['Capture', ['Diary', 'Notes']],
       ['Track', ['Goals', 'Health', 'Reminders']],
-      ['Mind', ['2nd Brain', 'Connectors', 'Legacy']],
+      ['Mind', ['2nd Brain', 'Music', 'Connectors', 'Legacy']],
     ])
     expect(NAV_COLOR.Diary).toBe('#2dd4bf')
     expect(NAV_COLOR.Goals).toBe(ORB_COLOR.goal)
     expect(NAV_COLOR.Connectors).toBe('#94a3b8')
     expect(NAV_COLOR.Legacy).toBe('#f0a6c9')
+    expect(NAV_COLOR.Music).toBe('#f43f5e')
   })
   it('gradient repeats first colour at end', () => {
     expect(BRAIN_GRADIENT.startsWith('conic-gradient(')).toBe(true)

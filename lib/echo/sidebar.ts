@@ -1,12 +1,12 @@
 import { ORB_COLOR, ORB_KINDS, type OrbKind } from './orbs'
 import { localDateKey } from './view-helpers'
 
-export type NavName = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy' | 'Settings'
+export type NavName = 'Diary' | 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Music' | 'Legacy' | 'Settings'
 
 export const NAV_GROUPS: { label: 'Capture' | 'Track' | 'Mind'; items: Exclude<NavName, 'Settings'>[] }[] = [
   { label: 'Capture', items: ['Diary', 'Notes'] },
   { label: 'Track', items: ['Goals', 'Health', 'Reminders'] },
-  { label: 'Mind', items: ['2nd Brain', 'Connectors', 'Legacy'] },
+  { label: 'Mind', items: ['2nd Brain', 'Music', 'Connectors', 'Legacy'] },
 ]
 
 export const NAV_COLOR: Record<Exclude<NavName, 'Settings' | '2nd Brain'>, string> = {
@@ -15,6 +15,7 @@ export const NAV_COLOR: Record<Exclude<NavName, 'Settings' | '2nd Brain'>, strin
   Goals: ORB_COLOR.goal,
   Health: ORB_COLOR.health,
   Reminders: ORB_COLOR.reminder,
+  Music: '#f43f5e',
   Connectors: '#94a3b8',
   Legacy: '#f0a6c9',
 }
