@@ -20,6 +20,7 @@ import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { cueForSaved, playCue, primeCues } from '@/lib/echo/cues'
 import { Alert, Button, IconButton, Skeleton } from './ui'
 import { kindForCategory } from '@/lib/echo/glow'
 import { KindTag } from './glow'
@@ -610,8 +611,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           },
           { refs: built?.refs, source: 'chat', onDeleted: pushUndo },
         )
-        // Don't read the reply aloud over the start of the song.
-        if (!songStarted) void speakReply(applied.reply)
+        // Don't read the reply aloud, or chime, over the start of the song.
+        if (!songStarted) {
+          if (applied.reply && !callActive.current) playCue(cueForSaved(applied.saved))
+          void speakReply(applied.reply)
+        }
         const ex: Extras = { trace: res.trace, saved: applied.saved, failed: applied.failed.filter((f) => f !== 'reply') }
         if (applied.messageId) {
           setExtras((x) => ({ ...x, [applied.messageId as string]: { ...ex, failed: applied.failed } }))
@@ -751,6 +755,12 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const onCallMusicControl = useCallback((cmd: MusicCommand, seconds?: number) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true, seconds })), ...nowPlaying() }), [musicControl, nowPlaying])
   const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens, onBrief: (b) => void saveBrief(uid, b.day, b.text, b.partial).catch((e) => console.error('Echo: could not save brief', e)) })
   useCallFlag(call.active)
+  // A typed reply that lands during a call never chimes over Echo's voice.
+  const callActive = useRef(false)
+  useEffect(() => {
+    callActive.current = call.active
+  }, [call.active])
+  useEffect(() => primeCues(), [])
   useEffect(() => {
     const t = musicRef.current
     if (call.active && !wasInCall.current && t?.autoplay) interruptMusic()

@@ -123,3 +123,12 @@ describe('CHECK_IN_SYSTEM_INSTRUCTION language', () => {
     expect(CHECK_IN_SYSTEM_INSTRUCTION).toContain('- Write fullText and shortText in the language given under Language (default English).')
   })
 })
+
+describe('CHECK_IN_SYSTEM_INSTRUCTION companion voice', () => {
+  it('keeps the pop-up preview conversational, never a to-do label', () => {
+    expect(CHECK_IN_SYSTEM_INSTRUCTION).toContain('reads like the start of a text from a friend, never a label or a to-do line such as "Dentist at 4 PM"')
+  })
+  it('mentions a reminder the way a friend who remembered would', () => {
+    expect(CHECK_IN_SYSTEM_INSTRUCTION).toContain('A reminder is never a notification: say it the way a friend who remembered it for them would')
+  })
+})

@@ -9,6 +9,7 @@ import { LIMITS, parseCalorieGoal } from '@/lib/echo/health-helpers'
 import { languageCode, LANGUAGES, type LanguageCode } from '@/lib/echo/languages'
 import { listVoices, speak, VoiceError, type VoiceOption } from '@/lib/echo/voice-client'
 import { DEFAULT_VOICE_PREFS, loadVoicePrefs, saveVoicePrefs, type VoicePrefs } from '@/lib/echo/voice-prefs'
+import { DEFAULT_SOUND_PREFS, loadSoundPrefs, playCue, saveSoundPrefs, type SoundPrefs } from '@/lib/echo/cues'
 import { openPermissionSetup } from '@/lib/echo/permission-setup'
 import { Alert, Button, Card, Input, PageHeader, Select, Switch } from './ui'
 import { useOpenInstallGuide } from './guide'
@@ -206,6 +207,7 @@ function LanguageField({ uid, initial }: { uid: string; initial: unknown }) {
 export function SettingsView({ user, profile, signOut }: { user: User; profile: UserProfile; signOut: () => void | Promise<void> }) {
   const openInstallGuide = useOpenInstallGuide()
   const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_VOICE_PREFS)
+  const [sounds, setSounds] = useState<SoundPrefs>(DEFAULT_SOUND_PREFS)
   const [voices, setVoices] = useState<VoiceOption[]>([])
   const [voicesError, setVoicesError] = useState(false)
   const [previewing, setPreviewing] = useState(false)
@@ -244,6 +246,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
 
   useEffect(() => {
     setPrefs(loadVoicePrefs())
+    setSounds(loadSoundPrefs())
   }, [])
 
   const readCheckInStatus = () => {
@@ -415,6 +418,13 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
     saveVoicePrefs(next)
   }
 
+  const updateSounds = (enabled: boolean) => {
+    setSounds({ enabled })
+    saveSoundPrefs({ enabled })
+    // Turning it on plays the chime once, so the user hears what they chose.
+    if (enabled) playCue('saved', { force: true })
+  }
+
   const preview = async () => {
     setPreviewMsg(null)
     setPreviewing(true)
@@ -562,6 +572,7 @@ export function SettingsView({ user, profile, signOut }: { user: User; profile: 
           <div className="mt-1 divide-y divide-border">
             {row('Enable voice', 'Show the Call button in the Diary.', <Switch checked={prefs.enabled} onChange={(v) => update({ enabled: v })} label="Enable voice" />)}
             {row('Speak typed replies aloud', 'Echo reads each reply to a typed message. Calls always use voice.', <Switch checked={prefs.autoSpeak} onChange={(v) => update({ autoSpeak: v })} label="Speak typed replies aloud" />)}
+            {row('Sounds & vibration', 'A soft chime and a light tap when Echo replies, saves something or a goal moves forward. On this device.', <Switch checked={sounds.enabled} onChange={updateSounds} label="Sounds and vibration" />)}
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <div className="min-w-40 max-sm:w-full">

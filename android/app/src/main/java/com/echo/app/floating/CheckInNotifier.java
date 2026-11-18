@@ -15,17 +15,32 @@ import com.echo.app.echo.DeepLinks;
 /** The check-in notification, for when no bubble can show the message. One id, so a new one replaces the last and buzzes again. */
 public final class CheckInNotifier {
     private static final String TAG = "CheckInTiming";
-    private static final String CHANNEL_ID = "echo_checkins";
+    /** A channel keeps its first sound for good, so the warm chime needs a new id; the old channel is removed. */
+    static final String CHANNEL_ID = "echo_checkins_chime";
+    static final String OLD_CHANNEL_ID = "echo_checkins";
     private static final int NOTIFICATION_ID = 4204;
 
     private CheckInNotifier() {}
+
+    /**
+     * How loud the chime channel starts: heads-up on a fresh install, but never louder than the user had set the
+     * old double-buzz channel (turned off stays off, silent stays silent).
+     */
+    static int chimeImportance(Integer oldImportance) {
+        if (oldImportance == null) return NotificationManagerCompat.IMPORTANCE_HIGH;
+        return Math.min(oldImportance, NotificationManagerCompat.IMPORTANCE_HIGH);
+    }
 
     /** Any thread. A failure here must not stop the check-in reaching the chat. */
     static void post(Context ctx, CheckInPlanner.Plan plan, int unread) {
         try {
             NotificationManagerCompat nm = NotificationManagerCompat.from(ctx);
+            // Carry the user's choice over from the double-buzz channel, once; after that it is gone (null).
+            NotificationChannelCompat old = nm.getNotificationChannelCompat(OLD_CHANNEL_ID);
+            int importance = chimeImportance(old == null ? null : old.getImportance());
+            if (old != null) nm.deleteNotificationChannel(OLD_CHANNEL_ID);
             nm.createNotificationChannel(
-                new NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
+                new NotificationChannelCompat.Builder(CHANNEL_ID, importance)
                     .setName(ctx.getString(R.string.check_in_channel_name))
                     .setDescription(ctx.getString(R.string.check_in_channel_desc))
                     .setSound(EchoBuzz.soundUri(ctx), EchoBuzz.audioAttributes())
