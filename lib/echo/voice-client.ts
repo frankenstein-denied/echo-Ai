@@ -85,7 +85,7 @@ export async function listVoices(user: Tok, opts: VoiceOpts = {}): Promise<{ voi
   return { voices: Array.isArray(d.voices) ? d.voices : [], default: d.default ?? 'Kore' }
 }
 
-export type LiveSessionBody = { clientTime: string; timeZone: string; voice: string; context: unknown; snapshot?: string }
+export type LiveSessionBody = { clientTime: string; timeZone: string; voice: string; context: unknown; snapshot?: string; recentBriefs?: string[] }
 export type LiveSession = { token: string; model: string; voice: string }
 
 // Mints a single-use ephemeral Live token on the server (the API key never reaches the browser).

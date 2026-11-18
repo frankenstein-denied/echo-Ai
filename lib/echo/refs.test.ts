@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addRef, buildContext, buildItemsContext, emptyRefMap, greetingKickoff, GREETING_MARKER, partOfDay, refsAsItems, removeRef, renderItems, resolveRef, type RefSource } from './context'
+import { addRef, BRIEF_MARKER, briefKickoff, buildContext, buildItemsContext, emptyRefMap, greetingKickoff, GREETING_MARKER, partOfDay, refsAsItems, removeRef, renderItems, resolveRef, type RefSource } from './context'
 import { DELETE_CONFIRM_RULE, SYSTEM_INSTRUCTION, buildUserContents } from './prompt'
 import { LIVE_PERSONA } from '@/lib/server/live'
 
@@ -87,5 +87,9 @@ describe('prompts', () => {
     expect(partOfDay(13)).toBe('afternoon')
     expect(partOfDay(23)).toBe('night')
     expect(LIVE_PERSONA).toContain(GREETING_MARKER)
+  })
+  it('brief kickoff names the brief marker and the part of day', () => {
+    expect(BRIEF_MARKER).toBe('[daily brief]')
+    expect(briefKickoff('2026-11-18T07:05:00+08:00')).toBe("[daily brief] Local time 07:05 (morning). Give the user today's brief now.")
   })
 })
