@@ -196,7 +196,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
-  const { play: playMusic, playTracks, pause: pauseMusic, control: musicControl, nowPlaying, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
+  const { play: playMusic, playTracks, interrupt: interruptMusic, control: musicControl, nowPlaying, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
   // MUSIC context: the user's playlists (live) and the player's queue, read at send / call start.
   // null until the first snapshot (or after an error): the MUSIC block then leaves playlists out instead of saying none.
   const playlistsRef = useRef<Playlist[] | null>(null)
@@ -737,9 +737,9 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useCallFlag(call.active)
   useEffect(() => {
     const t = musicRef.current
-    if (call.active && !wasInCall.current && t?.autoplay) pauseMusic()
+    if (call.active && !wasInCall.current && t?.autoplay) interruptMusic()
     wasInCall.current = call.active
-  }, [call.active, pauseMusic])
+  }, [call.active, interruptMusic])
   useEffect(() => {
     onCallActiveChange?.(call.active)
     return () => onCallActiveChange?.(false)

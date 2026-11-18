@@ -12,7 +12,7 @@ import { ChevronDown, ChevronUp, ExternalLink, Music, SkipBack, SkipForward, X }
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
 import { isEndedMessage, queueReducer, type QueueAction, type QueueState } from '@/lib/echo/playlists'
-import { isPlayingMessage, listenOutcome } from '@/lib/echo/listening'
+import { isPausedMessage, isPlayingMessage, listenOutcome } from '@/lib/echo/listening'
 import { finishListen, startListen } from '@/lib/firestore'
 import type { ControlResult } from '@/lib/echo/music-play'
 import type { MusicCommand } from '@/lib/echo/types'
@@ -33,8 +33,10 @@ type MusicPlayerApi = {
   prev: () => void
   jump: (index: number) => void
   remove: (index: number) => void
-  /** Reopens the current song paused (e.g. a call started). */
+  /** Reopens the current song paused. */
   pause: () => void
+  /** A call started: reopens the song paused without counting it as skipped. */
+  interrupt: () => void
   close: () => void
   /** A player command from Echo (chat or call): what it did, or why it couldn't. In a call, songs open paused. */
   control: (command: MusicCommand, opts?: { inCall?: boolean }) => ControlResult
@@ -45,7 +47,7 @@ type MusicPlayerApi = {
 type Embed = { send: (func: 'pauseVideo' | 'playVideo') => void; ready: () => boolean }
 
 const noop = () => undefined
-const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop, control: () => 'unavailable', nowPlaying: () => ({}) }
+const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop, interrupt: noop, control: () => 'unavailable', nowPlaying: () => ({}) }
 const MusicPlayerContext = createContext<MusicPlayerApi | null>(null)
 const EMPTY: QueueState = { tracks: [], index: 0, autoplay: false, key: 0, cause: 'user' }
 
@@ -75,25 +77,40 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
   const pause = useCallback(() => act({ type: 'pause' }), [act])
   const close = useCallback(() => act({ type: 'close' }), [act])
   // ---- listening history: one doc per song that actually played; its outcome is written when it leaves ----
-  const logRef = useRef<{ key: number; id: Promise<string | null>; startMs: number; ended: boolean } | null>(null)
+  // Only time spent playing counts (pauses inside the embed stop the clock). `interrupted` marks a call taking over.
+  type Log = { key: number; id: Promise<string | null>; playedMs: number; since: number | null; ended: boolean; interrupted: boolean }
+  const logRef = useRef<Log | null>(null)
   const finalize = useCallback(() => {
     const l = logRef.current
     if (!l || !uid) return
     logRef.current = null
-    const sec = (Date.now() - l.startMs) / 1000
-    void l.id.then((id) => (id ? finishListen(uid, id, listenOutcome(l.ended, sec), sec) : undefined)).catch(() => undefined)
+    const sec = (l.playedMs + (l.since !== null ? Date.now() - l.since : 0)) / 1000
+    void l.id.then((id) => (id ? finishListen(uid, id, listenOutcome(l.ended, sec, l.interrupted), sec) : undefined)).catch(() => undefined)
   }, [uid])
   const playing = useCallback(
     (key: number) => {
-      if (!uid || logRef.current?.key === key) return
+      if (!uid) return
+      const l = logRef.current
+      // The same song playing on after a pause: just restart the clock. A replay after it ended is a new play.
+      if (l?.key === key && !l.ended) {
+        if (l.since === null) l.since = Date.now()
+        return
+      }
       const s = qRef.current
       const t = s.key === key ? s.tracks[s.index] : undefined
       if (!t) return
       finalize()
-      logRef.current = { key, id: startListen(uid, t).catch(() => null), startMs: Date.now(), ended: false }
+      logRef.current = { key, id: startListen(uid, t).catch(() => null), playedMs: 0, since: Date.now(), ended: false, interrupted: false }
     },
     [uid, finalize],
   )
+  const paused = useCallback((key: number) => {
+    const l = logRef.current
+    if (l?.key === key && l.since !== null) {
+      l.playedMs += Date.now() - l.since
+      l.since = null
+    }
+  }, [])
   // A song leaves the player when the queue moves on or closes, the provider unmounts, or the page is hidden.
   useEffect(() => {
     if (logRef.current && logRef.current.key !== q.key) finalize()
@@ -107,11 +124,22 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
   }, [finalize])
   const ended = useCallback(
     (key: number) => {
-      if (logRef.current?.key === key) logRef.current.ended = true
+      const l = logRef.current
+      if (l?.key === key) {
+        l.ended = true
+        // The last song in the queue doesn't move on, so close its record now.
+        const s = qRef.current
+        if (s.key === key && s.index + 1 >= s.tracks.length) finalize()
+      }
       act({ type: 'ended', key })
     },
-    [act],
+    [act, finalize],
   )
+  /** A call started: reopen the song paused; its record ends as partly played, never as a skip. */
+  const interrupt = useCallback(() => {
+    if (logRef.current) logRef.current.interrupted = true
+    act({ type: 'pause' })
+  }, [act])
   // The docked player registers how to command its embed, and whether the embed has answered yet (is listening).
   const embedRef = useRef<Embed | null>(null)
   const registerEmbed = useCallback((e: Embed | null) => {
@@ -163,18 +191,18 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
   const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key, cause: q.cause } : null), [current, q.autoplay, q.key, q.cause])
   const queue = useMemo(() => ({ tracks: q.tracks, index: q.index }), [q.tracks, q.index])
   const api = useMemo(
-    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control, nowPlaying }),
-    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control, nowPlaying],
+    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, interrupt, control, nowPlaying }),
+    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, interrupt, control, nowPlaying],
   )
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onPlaying={playing} onClose={close} onRegister={registerEmbed} />}
+      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onPlaying={playing} onPaused={paused} onClose={close} onRegister={registerEmbed} />}
     </MusicPlayerContext.Provider>
   )
 }
 
-function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlaying, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onPlaying: (key: number) => void; onClose: () => void; onRegister: (embed: Embed | null) => void }) {
+function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlaying, onPaused, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onPlaying: (key: number) => void; onPaused: (key: number) => void; onClose: () => void; onRegister: (embed: Embed | null) => void }) {
   // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
   const [minimized, setMinimized] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -203,10 +231,11 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onPlayi
       answered.current = key
       if (isEndedMessage(e.data)) onEnded(key)
       else if (isPlayingMessage(e.data)) onPlaying(key)
+      else if (isPausedMessage(e.data)) onPaused(key)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onEnded, onPlaying, key])
+  }, [onEnded, onPlaying, onPaused, key])
 
   // Let the provider pause/resume this embed (YouTube's postMessage commands).
   useEffect(() => {
