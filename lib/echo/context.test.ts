@@ -94,3 +94,10 @@ describe('buildContext check-ins', () => {
     expect(buildContext({}, msgs, []).recentMessages).toEqual([{ role: 'assistant', text: 'Had lunch yet?' }, { role: 'user', text: 'Yes, adobo' }])
   })
 })
+
+describe('buildContext music', () => {
+  it('includes the music summary only when given', () => {
+    expect(buildContext({}, [], [], undefined, undefined, undefined, 'Nothing is playing.').music).toBe('Nothing is playing.')
+    expect(buildContext({}, [], [])).not.toHaveProperty('music')
+  })
+})

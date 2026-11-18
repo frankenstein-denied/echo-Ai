@@ -86,13 +86,16 @@ export type QueueState = { tracks: MusicTrack[]; index: number; autoplay: boolea
 export type QueueAction =
   | { type: 'play'; tracks: MusicTrack[]; start: number; autoplay: boolean }
   | { type: 'enqueue'; tracks: MusicTrack[] }
-  | { type: 'next' }
+  /** autoplay false opens the song paused (in a call, never over Echo's voice). */
+  | { type: 'next'; autoplay?: boolean }
   /** The embed with this key reported the song ended. Stale keys are ignored (YouTube can report one end twice). */
   | { type: 'ended'; key: number }
-  | { type: 'prev' }
-  | { type: 'jump'; index: number }
+  | { type: 'prev'; autoplay?: boolean }
+  | { type: 'jump'; index: number; autoplay?: boolean }
   | { type: 'remove'; index: number }
   | { type: 'pause' }
+  /** Shuffle the songs after the current one (the current song keeps playing). */
+  | { type: 'shuffleRest'; rand?: () => number }
   | { type: 'close' }
 
 const MAX_QUEUE = 200
@@ -110,13 +113,13 @@ export function queueReducer(s: QueueState, a: QueueAction): QueueState {
       return { ...s, tracks: [...s.tracks, ...a.tracks].slice(0, MAX_QUEUE) }
     }
     case 'next':
-      return s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: true, key: s.key + 1, cause: 'user' } : s
+      return s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: a.autoplay ?? true, key: s.key + 1, cause: 'user' } : s
     case 'ended':
       return a.key === s.key && s.index + 1 < s.tracks.length ? { ...s, index: s.index + 1, autoplay: true, key: s.key + 1, cause: 'ended' } : s
     case 'prev':
-      return s.index > 0 ? { ...s, index: s.index - 1, autoplay: true, key: s.key + 1, cause: 'user' } : s
+      return s.index > 0 ? { ...s, index: s.index - 1, autoplay: a.autoplay ?? true, key: s.key + 1, cause: 'user' } : s
     case 'jump':
-      return a.index >= 0 && a.index < s.tracks.length ? { ...s, index: a.index, autoplay: true, key: s.key + 1, cause: 'user' } : s
+      return a.index >= 0 && a.index < s.tracks.length ? { ...s, index: a.index, autoplay: a.autoplay ?? true, key: s.key + 1, cause: 'user' } : s
     case 'remove': {
       if (a.index < 0 || a.index >= s.tracks.length) return s
       const tracks = s.tracks.filter((_, i) => i !== a.index)
@@ -128,6 +131,8 @@ export function queueReducer(s: QueueState, a: QueueAction): QueueState {
     }
     case 'pause':
       return s.tracks.length ? { ...s, autoplay: false, key: s.key + 1, cause: 'user' } : s
+    case 'shuffleRest':
+      return s.index + 2 < s.tracks.length ? { ...s, tracks: [...s.tracks.slice(0, s.index + 1), ...shuffled(s.tracks.slice(s.index + 1), a.rand)] } : s
     case 'close':
       return { tracks: [], index: 0, autoplay: false, key: s.key + 1, cause: 'user' }
   }
@@ -144,4 +149,66 @@ export function isEndedMessage(data: unknown): boolean {
     // not ours
   }
   return false
+}
+
+// ---------- what Echo is told about music ----------
+
+export const MUSIC_CONTEXT_MAX = 3000
+const TITLES_PER_PLAYLIST = 15
+const TITLE_MAX = 70
+
+/** A title or name made safe for a delimited prompt block: one line, no "===", no YouTube video-type suffixes. */
+function promptTitle(s: string): string {
+  return s
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/={2,}/g, '=')
+    .replace(/\s*[([](official\s+)?(music\s+)?(video|audio|lyric(s)?(\s+video)?|visuali[sz]er|hd|4k|remaster(ed)?)[)\]]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, TITLE_MAX)
+}
+
+/**
+ * The MUSIC block for Echo's context: what's playing, what's next, every playlist's name and size, then as many song
+ * titles as fit (shared fairly across playlists), so Echo can answer "what's in my gym playlist?" and control the
+ * player. `playlists` is null while they load (the line is left out). `player` is false where nothing can play.
+ */
+export function renderMusicContext({ playlists, queue, player }: { playlists: Playlist[] | null; queue: { tracks: MusicTrack[]; index: number }; player: boolean }): string {
+  const lines: string[] = []
+  const current = queue.tracks[queue.index]
+  if (!player) lines.push('There is no music player here (the floating bubble); open Echo to play music.')
+  else if (!current) lines.push('Nothing is playing.')
+  else {
+    lines.push(`Now playing: ${promptTitle(current.title)} (song ${queue.index + 1} of ${queue.tracks.length} in the queue).`)
+    const next = queue.tracks.slice(queue.index + 1, queue.index + 4).map((x) => promptTitle(x.title))
+    if (next.length) lines.push(`Up next: ${next.join('; ')}${queue.tracks.length - queue.index - 1 > next.length ? '; …' : ''}.`)
+  }
+  if (playlists && !playlists.length) lines.push('No playlists yet.')
+  if (playlists?.length) {
+    const sorted = [...playlists].sort((a, b) => a.name.localeCompare(b.name))
+    const count = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`
+    lines.push(`Playlists (${sorted.length}): ${sorted.map((p) => `${promptTitle(p.name)} (${count(p.tracks.length)})`).join(', ')}.`)
+    // Room left for titles, shared evenly; a playlist that needs less gives the rest to the others.
+    let room = MUSIC_CONTEXT_MAX - lines.join('\n').length - 1
+    const withSongs = sorted.filter((p) => p.tracks.length)
+    withSongs.forEach((p, i) => {
+      const share = Math.floor(room / (withSongs.length - i))
+      const head = `- ${promptTitle(p.name)} (${count(p.tracks.length)}): `
+      const titles: string[] = []
+      for (const t of p.tracks.slice(0, TITLES_PER_PLAYLIST)) {
+        const next = promptTitle(t.title)
+        const left = p.tracks.length - titles.length - 1
+        const tail = left > 0 ? `; …and ${left} more` : ''
+        if (head.length + [...titles, next].join('; ').length + tail.length + 1 > share) break
+        titles.push(next)
+      }
+      const more = p.tracks.length - titles.length
+      const line = `${head}${titles.join('; ') || '…'}${titles.length && more ? `; …and ${more} more` : ''}`
+      if (line.length + 1 <= room) {
+        lines.push(line)
+        room -= line.length + 1
+      }
+    })
+  }
+  return lines.join('\n').slice(0, MUSIC_CONTEXT_MAX)
 }

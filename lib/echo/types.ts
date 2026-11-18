@@ -40,10 +40,14 @@ export type EchoAction =
   | { type: 'web_search'; query: string }
   /** Resolved on the server (never reaches the browser): the reply is written from a free connector's data. */
   | { type: 'lookup'; source: LookupSource; query: string }
+  /** Reaches the browser: controls the music player (next, previous, pause, resume, stop, shuffle the rest). */
+  | { type: 'music_control'; command: MusicCommand }
   /** Reaches the browser: it finds the song (a pasted YouTube link, or POST /api/music/search) and opens the player. */
   | { type: 'play_music'; query: string }
 
 export type EchoActionType = EchoAction['type']
+export const MUSIC_COMMANDS = ['next', 'previous', 'pause', 'resume', 'stop', 'shuffle'] as const
+export type MusicCommand = (typeof MUSIC_COMMANDS)[number]
 export const DELETE_ACTION_TYPES = ['reminder_delete', 'note_delete', 'goal_delete', 'meal_delete'] as const
 
 export type MemoryInput = {
@@ -86,6 +90,8 @@ export type EchoRequest = {
     connectors?: { id: string; status: ConnectorStatus }[]
     /** Compact forecast text from the Weather connector (max 600 chars); absent when Weather is not connected. */
     weather?: string
+    /** Playlists and what the player is doing (renderMusicContext). */
+    music?: string
   }
   /** Sealed Tavily tokens from the Web search connector doc; sent only when Web search is connected. */
   webSearchKey?: string

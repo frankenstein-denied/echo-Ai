@@ -1,10 +1,12 @@
 import { CONNECTORS, LOOKUP_SOURCES, type ConnectorStatus, type LookupSource } from './connectors'
 import { isMealType, isMoodTag, MOOD_SCORES } from './health-helpers'
+import { MUSIC_COMMANDS, type MusicCommand } from './types'
 import type { EchoAction, EchoEnergy, EchoItemsContext, EchoMealType, EchoRequest, EchoRequestMessage, EchoResponse, MemoryInput, MemoryType } from './types'
 
 export const LIMITS = {
   connectors: 32,
   weather: 600,
+  music: 3000,
   webSearchKey: 8192,
   text: 2000,
   profile: 1500,
@@ -144,7 +146,8 @@ export function parseEchoContext(raw: unknown): EchoRequest['context'] {
   const items = parseItemsContext(ctx.items)
   const connectors = parseConnectors(ctx.connectors)
   const weather = str(ctx.weather, LIMITS.weather)
-  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors } : {}), ...(weather ? { weather } : {}) }
+  const music = str(ctx.music, LIMITS.music)
+  return { profile: str(ctx.profile, LIMITS.profile), recentMessages, memoryLabels, ...(items ? { items } : {}), ...(connectors ? { connectors } : {}), ...(weather ? { weather } : {}), ...(music ? { music } : {}) }
 }
 
 const CONNECTOR_STATUSES: readonly string[] = ['connected', 'not_connected', 'coming_soon']
@@ -362,6 +365,8 @@ function sanitizeAction(a: unknown, client: ParsedClock, clientDate: string, che
       const query = str(a.query, LIMITS.lookupQuery)
       return source && query ? { type: 'lookup', source, query } : null
     }
+    case 'music_control':
+      return (MUSIC_COMMANDS as readonly unknown[]).includes(a.command) ? { type: 'music_control', command: a.command as MusicCommand } : null
     case 'play_music': {
       const query = str(a.query, LIMITS.musicQuery)
       return query ? { type: 'play_music', query } : null
@@ -612,8 +617,9 @@ export function sanitizeEchoResponse(raw: unknown, clientTime: string, checkInTi
   // A free lookup wins over a web search (it is the connector that covers the question).
   // One play_music may come with saves (it saves nothing and runs in the browser); it wins over a search.
   const searches = [...actions.filter((a) => a.type === 'lookup'), ...actions.filter((a) => a.type === 'web_search')]
-  const plays = actions.filter((a) => a.type === 'play_music').slice(0, 1)
-  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'lookup' && a.type !== 'play_music')
+  // One music action (play or control) at most.
+  const plays = actions.filter((a) => a.type === 'play_music' || a.type === 'music_control').slice(0, 1)
+  const saving = actions.filter((a) => a.type !== 'general' && a.type !== 'web_search' && a.type !== 'lookup' && a.type !== 'play_music' && a.type !== 'music_control')
   // A connector action next to a search or a play means a missing connector: search or play instead.
   if ((searches.length || plays.length) && saving.length && saving.every((a) => a.type === 'connector')) saving.length = 0
   // A pending delete confirmation drops searches and plays, so the question reaches the user.

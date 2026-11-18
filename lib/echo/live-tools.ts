@@ -2,10 +2,10 @@ import { Type, type FunctionDeclaration } from '@google/genai'
 import { LOOKUP_SOURCES, type LookupSource } from './connectors'
 import { refsAsItems, type RefMap } from './context'
 import { READ_TOOL_NAMES, type ReadToolName } from './live-read'
-import { MUSIC_REPLIES } from './music-play'
+import { controlToolOutput, MUSIC_REPLIES } from './music-play'
 import { LOOKUP_UNAVAILABLE, SEARCH_FAILED_REPLY, SEARCH_NOT_CONNECTED_REPLY } from './search-replies'
 import { confirmQuestion, DELETE_CONFIRM_TRACE, sanitizeEchoResponse } from './sanitize'
-import type { EchoAction, EchoMemoryLabel, EchoResponse, MemoryInput } from './types'
+import { MUSIC_COMMANDS, type EchoAction, type EchoMemoryLabel, type EchoResponse, type MemoryInput, type MusicCommand } from './types'
 
 // Function tools for Echo calls. They mirror the router's EchoAction variants plus memories;
 // connectors have no tool (Echo teaches verbally); web_search reads the web through /api/search; play_music opens the
@@ -38,7 +38,8 @@ export const WRITE_TOOL_NAMES = [
 export const SEARCH_TOOL_NAME = 'web_search'
 export const MUSIC_TOOL_NAME = 'play_music'
 export const LOOKUP_TOOL_NAME = 'lookup'
-export const LIVE_TOOL_NAMES = [...WRITE_TOOL_NAMES, ...READ_TOOL_NAMES, SEARCH_TOOL_NAME, LOOKUP_TOOL_NAME, MUSIC_TOOL_NAME] as const
+export const CONTROL_TOOL_NAME = 'music_control'
+export const LIVE_TOOL_NAMES = [...WRITE_TOOL_NAMES, ...READ_TOOL_NAMES, SEARCH_TOOL_NAME, LOOKUP_TOOL_NAME, MUSIC_TOOL_NAME, CONTROL_TOOL_NAME] as const
 export type LiveToolName = (typeof WRITE_TOOL_NAMES)[number]
 
 export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
@@ -230,6 +231,11 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Play a song or music for the user: finds it on YouTube and opens Echo's music player paused (no sound over the call; the user taps play). Returns ok and the title, or an error with tell_user. Never say music is playing.",
     parameters: { type: Type.OBJECT, properties: { query: s('song and artist, mood or genre, or a YouTube link the user gave, max 200 characters') }, required: ['query'] },
   },
+  {
+    name: CONTROL_TOOL_NAME,
+    description: "Control Echo's music player: next, previous, pause, resume, stop, or shuffle (the rest of the queue). Returns ok, or an error with tell_user (e.g. nothing is playing).",
+    parameters: { type: Type.OBJECT, properties: { command: { type: Type.STRING, enum: [...MUSIC_COMMANDS] } }, required: ['command'] },
+  },
 ]
 
 const ACTION_TYPE: Record<Exclude<LiveToolName, 'save_memories'>, EchoAction['type']> = {
@@ -282,6 +288,11 @@ export function mapToolCall(name: string | undefined, args: unknown, ctx: ToolCo
     const action = res.actions.find((x) => x.type === 'lookup')
     return action ? { ok: true, response: { reply: '', actions: [action], memories: [], trace: [] } } : { ok: false, error: 'a known source and a query are required' }
   }
+  if (name === CONTROL_TOOL_NAME) {
+    const res = sanitizeEchoResponse({ actions: [{ type: 'music_control', command: a.command }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels)
+    const action = res.actions.find((x) => x.type === 'music_control')
+    return action ? { ok: true, response: { reply: '', actions: [action], memories: [], trace: [] } } : { ok: false, error: 'command must be next, previous, pause, resume, stop or shuffle' }
+  }
   if (name === MUSIC_TOOL_NAME) {
     const res = sanitizeEchoResponse({ actions: [{ type: 'play_music', query: a.query }] }, ctx.clientTime, ctx.checkInTime, ctx.memoryLabels)
     const action = res.actions.find((x) => x.type === 'play_music')
@@ -329,6 +340,8 @@ export type SearchFn = (query: string) => Promise<Record<string, unknown>>
 /** Finds a song and opens the player paused; resolves with the tool output ({ ok, title } or error + tell_user). */
 export type PlayFn = (query: string) => Promise<Record<string, unknown>>
 /** Fetches a free connector's facts via POST /api/lookup; resolves with the tool output ({ results } or an error). */
+/** Runs a player command; resolves with the tool output ({ ok } or error + tell_user). */
+export type ControlFn = (command: MusicCommand) => Promise<Record<string, unknown>>
 export type LookupFn = (source: LookupSource, query: string) => Promise<Record<string, unknown>>
 export type ToolFunctionResponse = { id?: string; name?: string; response: { output?: Record<string, unknown>; error?: string } }
 
@@ -394,7 +407,7 @@ export async function executeToolCalls(
   calls: ToolCallLike[],
   ctx: ToolContext,
   apply: ApplyFn,
-  opts: { read?: ReadFn; search?: SearchFn; lookup?: LookupFn; play?: PlayFn; confirmWithinMs?: number } = {},
+  opts: { read?: ReadFn; search?: SearchFn; lookup?: LookupFn; play?: PlayFn; control?: ControlFn; confirmWithinMs?: number } = {},
 ): Promise<ToolBatchResult> {
   const confirmWithinMs = opts.confirmWithinMs ?? CONFIRM_WITHIN_MS
   const saved: TaggedSaved[] = []
@@ -441,6 +454,17 @@ export async function executeToolCalls(
           return { id: call.id, name: call.name, response: { output: await opts.lookup(action.source, action.query) } }
         } catch {
           return unavailable
+        }
+      }
+      if (call.name === CONTROL_TOOL_NAME) {
+        // Controlling the player saves nothing.
+        const command = (mapped.response.actions[0] as { command: MusicCommand }).command
+        const none = { id: call.id, name: call.name, response: { output: controlToolOutput('unavailable') } }
+        if (!opts.control) return none
+        try {
+          return { id: call.id, name: call.name, response: { output: await opts.control(command) } }
+        } catch {
+          return none
         }
       }
       if (call.name === MUSIC_TOOL_NAME) {

@@ -270,3 +270,17 @@ describe('lookup tool', () => {
     expect(thrown.responses[0].response.output).toEqual({ error: 'unavailable', next: 'use web_search with the same question' })
   })
 })
+
+describe('music_control tool', () => {
+  it('maps a known command and runs the control function', async () => {
+    expect(mapToolCall('music_control', { command: 'explode' }, ctx()).ok).toBe(false)
+    const control = vi.fn(async () => ({ ok: true }))
+    const out = await executeToolCalls([{ id: 'a', name: 'music_control', args: { command: 'next' } }], ctx(), vi.fn() as never, { control })
+    expect(control).toHaveBeenCalledWith('next')
+    expect(out.responses[0].response.output).toEqual({ ok: true })
+  })
+  it('without a player says so', async () => {
+    const out = await executeToolCalls([{ id: 'a', name: 'music_control', args: { command: 'pause' } }], ctx(), vi.fn() as never)
+    expect(out.responses[0].response.output).toEqual({ error: 'unavailable', tell_user: MUSIC_REPLIES.unavailable })
+  })
+})

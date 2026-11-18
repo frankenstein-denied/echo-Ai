@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { findMusic, findTrack, LINK_TITLE, MUSIC_REPLIES, musicToolOutput, resolvePlayMusic } from './music-play'
+import { controlToolOutput, findMusic, MUSIC_CONTROL_REPLIES, resolveMusicControl, findTrack, LINK_TITLE, MUSIC_REPLIES, musicToolOutput, resolvePlayMusic } from './music-play'
 import type { EchoResponse } from './types'
 
 const user = { getIdToken: async () => 'tok' }
@@ -171,5 +171,32 @@ describe('findMusic', () => {
   it('passes a failed search through with no queue', async () => {
     const miss = { ok: false as const, error: 'not_found' as const, reply: MUSIC_REPLIES.not_found }
     expect(await findMusic('zzz', { playlists: lists, find: async () => miss })).toEqual({ outcome: miss, queue: [] })
+  })
+})
+
+describe('resolveMusicControl', () => {
+  const base = (command: string, reply = 'Skipping.'): EchoResponse => ({ reply, actions: [{ type: 'music_control', command } as never], memories: [], trace: [] })
+  it('runs the command and keeps the reply', () => {
+    const control = vi.fn(() => 'ok' as const)
+    const out = resolveMusicControl(base('next'), control)
+    expect(control).toHaveBeenCalledWith('next')
+    expect(out).toEqual({ res: base('next'), result: 'ok' })
+  })
+  it('replaces the reply when nothing plays or there is no player', () => {
+    expect(resolveMusicControl(base('pause'), () => 'nothing_playing').res.reply).toBe(MUSIC_CONTROL_REPLIES.nothing_playing)
+    expect(resolveMusicControl(base('next'), () => 'no_next').res.reply).toBe(MUSIC_CONTROL_REPLIES.no_next)
+    expect(resolveMusicControl(base('shuffle'), () => 'no_shuffle').res.reply).toBe(MUSIC_CONTROL_REPLIES.no_shuffle)
+    expect(resolveMusicControl(base('stop'), () => 'unavailable').res.reply).toBe(MUSIC_REPLIES.unavailable)
+  })
+  it('passes other responses through', () => {
+    const r: EchoResponse = { reply: 'hi', actions: [], memories: [], trace: [] }
+    expect(resolveMusicControl(r, vi.fn())).toEqual({ res: r, result: null })
+  })
+})
+
+describe('controlToolOutput', () => {
+  it('in a call, resume asks the user to tap play instead of playing over Echo', () => {
+    expect(controlToolOutput('in_call')).toEqual({ error: 'in_call', tell_user: MUSIC_CONTROL_REPLIES.in_call })
+    expect(MUSIC_CONTROL_REPLIES.in_call).toMatch(/tap play/)
   })
 })

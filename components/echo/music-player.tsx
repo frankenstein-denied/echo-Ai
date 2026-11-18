@@ -11,7 +11,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { ChevronDown, ChevronUp, ExternalLink, Music, SkipBack, SkipForward, X } from 'lucide-react'
 import { youtubeEmbedUrl, youtubeMusicUrl } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
-import { isEndedMessage, queueReducer, type QueueState } from '@/lib/echo/playlists'
+import { isEndedMessage, queueReducer, type QueueAction, type QueueState } from '@/lib/echo/playlists'
+import type { ControlResult } from '@/lib/echo/music-play'
+import type { MusicCommand } from '@/lib/echo/types'
 import { buttonClass } from '@/lib/echo/ui-classes'
 import { IconButton } from './ui'
 
@@ -32,10 +34,16 @@ type MusicPlayerApi = {
   /** Reopens the current song paused (e.g. a call started). */
   pause: () => void
   close: () => void
+  /** A player command from Echo (chat or call): what it did, or why it couldn't. In a call, songs open paused. */
+  control: (command: MusicCommand, opts?: { inCall?: boolean }) => ControlResult
+  nowPlaying: () => { now_playing?: string; up_next?: string[] }
 }
 
+/** The docked player's embed: send a YouTube command; ready once the embed has answered (it's listening). */
+type Embed = { send: (func: 'pauseVideo' | 'playVideo') => void; ready: () => boolean }
+
 const noop = () => undefined
-const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop }
+const NOOP: MusicPlayerApi = { available: false, track: null, queue: { tracks: [], index: 0 }, play: noop, playTracks: noop, enqueue: noop, next: noop, prev: noop, jump: noop, remove: noop, pause: noop, close: noop, control: () => 'unavailable', nowPlaying: () => ({}) }
 const MusicPlayerContext = createContext<MusicPlayerApi | null>(null)
 const EMPTY: QueueState = { tracks: [], index: 0, autoplay: false, key: 0, cause: 'user' }
 
@@ -46,33 +54,87 @@ export function useMusicPlayer(): MusicPlayerApi {
 
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [q, dispatch] = useReducer(queueReducer, EMPTY)
+  // qRef mirrors the queue synchronously (same reducer, same actions), so a command run seconds after a send, or two
+  // call tools in one batch, see the queue as it is now, not as it was when the callback was made.
+  const qRef = useRef<QueueState>(EMPTY)
+  const act = useCallback((a: QueueAction) => {
+    qRef.current = queueReducer(qRef.current, a)
+    dispatch(a)
+  }, [])
   // A new key remounts the iframe, so asking for the same song again starts it over.
-  const play = useCallback((t: MusicTrack, opts: { autoplay: boolean }) => dispatch({ type: 'play', tracks: [t], start: 0, autoplay: opts.autoplay }), [])
-  const playTracks = useCallback((tracks: MusicTrack[], opts: { start?: number; autoplay?: boolean } = {}) => dispatch({ type: 'play', tracks, start: opts.start ?? 0, autoplay: opts.autoplay ?? true }), [])
-  const enqueue = useCallback((tracks: MusicTrack[]) => dispatch({ type: 'enqueue', tracks }), [])
-  const next = useCallback(() => dispatch({ type: 'next' }), [])
-  const prev = useCallback(() => dispatch({ type: 'prev' }), [])
-  const jump = useCallback((index: number) => dispatch({ type: 'jump', index }), [])
-  const remove = useCallback((index: number) => dispatch({ type: 'remove', index }), [])
-  const pause = useCallback(() => dispatch({ type: 'pause' }), [])
-  const close = useCallback(() => dispatch({ type: 'close' }), [])
-  const ended = useCallback((key: number) => dispatch({ type: 'ended', key }), [])
+  const play = useCallback((t: MusicTrack, opts: { autoplay: boolean }) => act({ type: 'play', tracks: [t], start: 0, autoplay: opts.autoplay }), [act])
+  const playTracks = useCallback((tracks: MusicTrack[], opts: { start?: number; autoplay?: boolean } = {}) => act({ type: 'play', tracks, start: opts.start ?? 0, autoplay: opts.autoplay ?? true }), [act])
+  const enqueue = useCallback((tracks: MusicTrack[]) => act({ type: 'enqueue', tracks }), [act])
+  const next = useCallback(() => act({ type: 'next' }), [act])
+  const prev = useCallback(() => act({ type: 'prev' }), [act])
+  const jump = useCallback((index: number) => act({ type: 'jump', index }), [act])
+  const remove = useCallback((index: number) => act({ type: 'remove', index }), [act])
+  const pause = useCallback(() => act({ type: 'pause' }), [act])
+  const close = useCallback(() => act({ type: 'close' }), [act])
+  const ended = useCallback((key: number) => act({ type: 'ended', key }), [act])
+  // The docked player registers how to command its embed, and whether the embed has answered yet (is listening).
+  const embedRef = useRef<Embed | null>(null)
+  const registerEmbed = useCallback((e: Embed | null) => {
+    embedRef.current = e
+  }, [])
+  const control = useCallback(
+    (command: MusicCommand, opts: { inCall?: boolean } = {}): ControlResult => {
+      const s = qRef.current
+      if (!s.tracks[s.index]) return 'nothing_playing'
+      const embed = embedRef.current?.ready() ? embedRef.current : null
+      switch (command) {
+        case 'next':
+          if (s.index + 1 >= s.tracks.length) return 'no_next'
+          // In a call the next song opens paused: never over Echo's voice.
+          act({ type: 'next', autoplay: !opts.inCall })
+          return 'ok'
+        case 'previous':
+          if (s.index === 0) return 'no_previous'
+          act({ type: 'prev', autoplay: !opts.inCall })
+          return 'ok'
+        case 'pause':
+          // An embed that hasn't answered yet would drop the command: reopen the song paused instead.
+          if (embed) embed.send('pauseVideo')
+          else act({ type: 'pause' })
+          return 'ok'
+        case 'resume':
+          if (opts.inCall) return 'in_call'
+          if (embed) embed.send('playVideo')
+          else act({ type: 'jump', index: s.index })
+          return 'ok'
+        case 'stop':
+          act({ type: 'close' })
+          return 'ok'
+        case 'shuffle':
+          if (s.tracks.length - s.index - 1 < 2) return 'no_shuffle'
+          act({ type: 'shuffleRest' })
+          return 'ok'
+      }
+    },
+    [act],
+  )
+  /** What's playing and next right now (for a call's tool result, which is fresher than the call's MUSIC block). */
+  const nowPlaying = useCallback((): { now_playing?: string; up_next?: string[] } => {
+    const s = qRef.current
+    const cur = s.tracks[s.index]
+    return cur ? { now_playing: cur.title, up_next: s.tracks.slice(s.index + 1, s.index + 4).map((x) => x.title) } : {}
+  }, [])
   const current = q.tracks[q.index]
   const track = useMemo<PlayerTrack | null>(() => (current ? { ...current, autoplay: q.autoplay, key: q.key, cause: q.cause } : null), [current, q.autoplay, q.key, q.cause])
   const queue = useMemo(() => ({ tracks: q.tracks, index: q.index }), [q.tracks, q.index])
   const api = useMemo(
-    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close }),
-    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close],
+    () => ({ available: true, track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control, nowPlaying }),
+    [track, queue, play, playTracks, enqueue, next, prev, jump, remove, pause, close, control, nowPlaying],
   )
   return (
     <MusicPlayerContext.Provider value={api}>
       {children}
-      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} />}
+      {track && <DockedPlayer track={track} position={q.index + 1} total={q.tracks.length} onPrev={prev} onNext={next} onEnded={ended} onClose={close} onRegister={registerEmbed} />}
     </MusicPlayerContext.Provider>
   )
 }
 
-function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void }) {
+function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose, onRegister }: { track: PlayerTrack; position: number; total: number; onPrev: () => void; onNext: () => void; onEnded: (key: number) => void; onClose: () => void; onRegister: (embed: Embed | null) => void }) {
   // Minimized keeps the iframe mounted (hidden), so the song keeps playing while the player stops covering the page.
   const [minimized, setMinimized] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -88,14 +150,31 @@ function DockedPlayer({ track, position, total, onPrev, onNext, onEnded, onClose
 
   // When this song's embed says it ended, play the next one. The key makes a repeated "ended" a no-op.
   const key = track.key
+  // The key of the embed that last answered; commands go to the embed only once the current one has.
+  const answered = useRef(-1)
+  const keyRef = useRef(key)
+  useEffect(() => {
+    keyRef.current = key
+  }, [key])
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow) return
+      // Any message from this embed means its player is up and listening for commands.
+      answered.current = key
       if (isEndedMessage(e.data)) onEnded(key)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [onEnded, key])
+
+  // Let the provider pause/resume this embed (YouTube's postMessage commands).
+  useEffect(() => {
+    onRegister({
+      send: (func) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), 'https://www.youtube-nocookie.com'),
+      ready: () => answered.current === keyRef.current,
+    })
+    return () => onRegister(null)
+  }, [onRegister])
 
   // Ask the embed to report its state (YouTube's iframe postMessage protocol). Its player may start after the
   // iframe's load event, so ask a few times.

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, connectorsCol, loadPlaylists, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { addPageMessage, connectorsCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, setConnectorSecret, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
 import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
 import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
@@ -12,7 +12,9 @@ import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/se
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
 import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
-import { findMusic, findTrack, MUSIC_REPLIES, type MusicTrack } from '@/lib/echo/music-play'
+import { controlToolOutput, findMusic, findTrack, MUSIC_REPLIES, resolveMusicControl, type MusicTrack } from '@/lib/echo/music-play'
+import type { MusicCommand } from '@/lib/echo/types'
+import { renderMusicContext, toPlaylist, type Playlist } from '@/lib/echo/playlists'
 import { buildContext, buildItemsContext, type RefMap, type RefSource } from '@/lib/echo/context'
 import { createUndoStore, undoLabel, type UndoEntry, type UndoInput } from '@/lib/echo/undo'
 import { speak, VoiceError } from '@/lib/echo/voice-client'
@@ -193,7 +195,26 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
   const mobile = useIsMobile()
-  const { play: playMusic, playTracks, pause: pauseMusic, track: musicTrack, available: musicAvailable } = useMusicPlayer()
+  const { play: playMusic, playTracks, pause: pauseMusic, control: musicControl, nowPlaying, queue: musicQueue, track: musicTrack, available: musicAvailable } = useMusicPlayer()
+  // MUSIC context: the user's playlists (live) and the player's queue, read at send / call start.
+  // null until the first snapshot (or after an error): the MUSIC block then leaves playlists out instead of saying none.
+  const playlistsRef = useRef<Playlist[] | null>(null)
+  useEffect(() => {
+    return onSnapshot(
+      playlistsCol(uid),
+      (snap) => {
+        playlistsRef.current = snap.docs.map((d) => toPlaylist(d.id, d.data())).filter((p): p is Playlist => p !== null)
+      },
+      () => {
+        playlistsRef.current = null
+      },
+    )
+  }, [uid])
+  const queueRef = useRef(musicQueue)
+  useEffect(() => {
+    queueRef.current = musicQueue
+  }, [musicQueue])
+  const getMusic = useCallback(() => renderMusicContext({ playlists: playlistsRef.current, queue: queueRef.current, player: musicAvailable }), [musicAvailable])
   const callBtnRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -506,7 +527,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         const userP: Promise<void> = userSaved ? Promise.resolve() : addPageMessage(uid, page, 'user', msg).then(() => undefined)
         const built = buildItems()
         const weather = await getWeather()
-        const echoP = sendToEcho(user, msg, buildContext({ ...profile, language: languageRef.current }, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather), webSearchKey())
+        const echoP = sendToEcho(user, msg, buildContext({ ...profile, language: languageRef.current }, history, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather, getMusic()), webSearchKey())
         echoP.catch(() => undefined)
         try {
           await userP
@@ -529,10 +550,14 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         // Saves next to it still apply. If the song can't be found, nothing opens and the reply carries the error text.
         let songStarted = false
         let queue: MusicTrack[] = []
+        // music_control (next, pause, stop…) runs on the player now; if it can't, the reply says why.
+        const control = res.actions.find((a) => a.type === 'music_control')
+        const { res: withControl, result: controlled } = resolveMusicControl(res, (cmd) => (musicAvailable ? musicControl(cmd) : 'unavailable'))
+        if (controlled === 'ok' && control && ['next', 'previous', 'resume'].includes(control.command)) songStarted = true
         const applied = await applyEchoResponseWithMusic(
           uid,
           page,
-          res,
+          withControl,
           // No player here (the chathead bubble): say so instead of spending a search on a song that can't open.
           // A saved playlist's name plays the whole list; anything else is a song search.
           (q) =>
@@ -580,7 +605,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         }
       }
     },
-    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic, playTracks, musicAvailable],
+    [uid, user, profile, onEnsurePage, stopAudio, speakReply, buildItems, getWeather, pushUndo, playMusic, playTracks, musicAvailable, musicControl, getMusic],
   )
   useEffect(() => {
     sendRef.current = send
@@ -669,8 +694,8 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     const weather = await getWeather()
     const built = buildItems()
     callRefs.current = built?.refs
-    return buildContext({ ...profile, language: languageRef.current }, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather)
-  }, [profile, buildItems, getWeather])
+    return buildContext({ ...profile, language: languageRef.current }, messagesRef.current, memoriesRef.current, built?.items, connectorsRef.current.statuses, weather, getMusic())
+  }, [profile, buildItems, getWeather, getMusic])
   const getCallRefs = useCallback(() => callRefs.current, [])
   const saveWebSearchSecret = useCallback(
     (sealed: string | null) => {
@@ -686,7 +711,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   useEffect(() => {
     musicRef.current = musicTrack
   }, [musicTrack])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined })
+  // Calls: commands never start sound over Echo's voice, and the result says what's playing now (the call's MUSIC
+  // block was built when the call started).
+  const onCallMusicControl = useCallback((cmd: MusicCommand) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true })), ...nowPlaying() }), [musicControl, nowPlaying])
+  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined })
   useCallFlag(call.active)
   useEffect(() => {
     const t = musicRef.current
