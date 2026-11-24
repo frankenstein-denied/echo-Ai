@@ -5,12 +5,12 @@ import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
 import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
 import { addPageMessage, connectorsCol, listensCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, saveBrief, setConnectorSecret, watchBriefDone, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
-import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { applyEchoResponseWithMusic, connectorContext, restoreDeleted, saveReply, saveWebSearchLogin, sendToEcho, watchRefSource, webSearchKeyOf, type SavedItem } from '@/lib/echo/client'
 import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
-import { connectorStatuses, isConnected, type ConnectorState, AI_PROVIDERS } from '@/lib/echo/connectors'
+import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
 import { rainUntilMs } from '@/lib/echo/chathead-mood'
 import { setNativeChatheadMood } from '@/lib/native/echo-bridge'
@@ -454,10 +454,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       connectorsCol(uid),
       (snap) => {
         const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
-        const web = docs.find((d) => d.id === 'web-search')
-        // Sealed AI model keys (ask Claude…), sent with each message; only the server can open them.
-        const aiKeys = Object.fromEntries(docs.filter((d) => (AI_PROVIDERS as readonly string[]).includes(d.id) && d.connected && typeof d.sealed === 'string' && d.sealed).map((d) => [d.id, d.sealed as string]))
-        connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '', aiKeys }
+        connectorsRef.current = connectorContext(docs)
         const wx = docs.find((d) => d.id === 'weather')
         weatherLocRef.current =
           isConnected(connectorsRef.current.statuses, 'weather') && typeof wx?.lat === 'number' && typeof wx?.lon === 'number'
@@ -493,10 +490,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     clearTimeout(timer)
     return cached()?.text
   }, [])
-  const webSearchKey = () => {
-    const { statuses, sealed } = connectorsRef.current
-    return isConnected(statuses, 'web-search') && sealed ? sealed : undefined
-  }
+  const webSearchKey = () => webSearchKeyOf(connectorsRef.current)
 
   useEffect(() => {
     scrollEnd()
@@ -596,9 +590,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           return
         }
         const res = await echoP
-        // Web search login: keep refreshed tokens, or disconnect when Tavily no longer accepts the login.
-        if (res.webSearchRevoked) void setConnectorSecret(uid, 'web-search', null).catch((e) => console.error('Echo: could not disconnect Web search', e))
-        else if (res.webSearchResealed) void setConnectorSecret(uid, 'web-search', res.webSearchResealed).catch((e) => console.error('Echo: could not save the Web search login', e))
+        saveWebSearchLogin(uid, res)
         if (res.error) {
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return

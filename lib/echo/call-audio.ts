@@ -218,3 +218,28 @@ export function rmsLevel(samples: Float32Array): number {
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
   return Math.min(1, Math.sqrt(sum / samples.length))
 }
+
+/** A mono 16-bit PCM WAV file (44-byte header + little-endian samples) for the transcribe route. Browser-safe. */
+export function pcm16ToWav(pcm: Int16Array, sampleRate = INPUT_RATE): Uint8Array {
+  const data = pcm16ToBytes(pcm)
+  const out = new Uint8Array(44 + data.length)
+  const v = new DataView(out.buffer)
+  const ascii = (at: number, s: string) => {
+    for (let i = 0; i < s.length; i++) out[at + i] = s.charCodeAt(i)
+  }
+  ascii(0, 'RIFF')
+  v.setUint32(4, 36 + data.length, true)
+  ascii(8, 'WAVE')
+  ascii(12, 'fmt ')
+  v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true) // PCM
+  v.setUint16(22, 1, true) // mono
+  v.setUint32(24, sampleRate, true)
+  v.setUint32(28, sampleRate * 2, true)
+  v.setUint16(32, 2, true)
+  v.setUint16(34, 16, true)
+  ascii(36, 'data')
+  v.setUint32(40, data.length, true)
+  out.set(data, 44)
+  return out
+}
