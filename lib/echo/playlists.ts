@@ -66,6 +66,15 @@ export function matchPlaylist(query: string, playlists: Playlist[]): Playlist | 
   return playlists.find((p) => p.tracks.length > 0 && norm(p.name) === q) ?? null
 }
 
+/**
+ * Whether another playlist already has a name Echo would hear as the same one ("Gym" and "my gym playlist"), so
+ * "play my gym playlist" never has to guess. `exceptId` is the playlist being renamed.
+ */
+export function playlistNameTaken(name: string, playlists: Pick<Playlist, 'id' | 'name'>[], exceptId?: string): boolean {
+  const n = norm(name)
+  return !!n && playlists.some((p) => p.id !== exceptId && norm(p.name) === n)
+}
+
 /** Fisher-Yates shuffle (copy). */
 export function shuffled<T>(items: T[], rand: () => number = Math.random): T[] {
   const out = [...items]

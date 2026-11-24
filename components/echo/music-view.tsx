@@ -13,7 +13,7 @@ import { analyzeListening, LISTEN_WINDOW_DAYS, toListen, type Listen, type Liste
 import { isPermissionDenied } from '@/lib/echo/diary'
 import { fetchVideoInfo } from '@/lib/echo/music'
 import type { MusicTrack } from '@/lib/echo/music-play'
-import { addTracks, cleanPlaylistName, parseYoutubeLinks, PLAYLIST_LIMITS, shuffled, toPlaylist, type Playlist } from '@/lib/echo/playlists'
+import { addTracks, cleanPlaylistName, parseYoutubeLinks, PLAYLIST_LIMITS, playlistNameTaken, shuffled, toPlaylist, type Playlist } from '@/lib/echo/playlists'
 import { Alert, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Skeleton, Textarea } from './ui'
 import { useMusicPlayer } from './music-player'
 
@@ -26,6 +26,7 @@ async function tracksFromText(text: string): Promise<MusicTrack[]> {
 }
 
 const NO_LINKS = 'No YouTube or YouTube Music links found. Paste links like https://youtu.be/… or music.youtube.com/watch?v=…'
+const TAKEN = (name: string) => `You already have a playlist called "${name}". Pick another name so Echo knows which one to play.`
 
 export function MusicView({ uid }: { uid: string }) {
   const player = useMusicPlayer()
@@ -52,7 +53,7 @@ export function MusicView({ uid }: { uid: string }) {
       <PageHeader title="Music" description='Play YouTube links and build playlists. You can also ask Echo: "play my gym playlist".' />
       <div className="grid gap-4 lg:grid-cols-2">
         <PasteLinks />
-        <UpNext uid={uid} playlistCount={playlists?.length ?? 0} />
+        <UpNext uid={uid} playlists={playlists ?? []} />
       </div>
       <YourListening uid={uid} />
       <section aria-labelledby="playlists-heading" className="mt-6">
@@ -64,7 +65,7 @@ export function MusicView({ uid }: { uid: string }) {
             <Alert variant="danger">{loadError}</Alert>
           </div>
         )}
-        <NewPlaylist uid={uid} count={playlists?.length ?? 0} />
+        <NewPlaylist uid={uid} playlists={playlists ?? []} />
         {playlists === null ? (
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Skeleton className="h-32" />
@@ -77,7 +78,7 @@ export function MusicView({ uid }: { uid: string }) {
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {playlists.map((p) => (
-              <PlaylistCard key={p.id} uid={uid} playlist={p} onPlay={(tracks, start = 0) => player.playTracks(tracks, { start, autoplay: true })} />
+              <PlaylistCard key={p.id} uid={uid} playlist={p} playlists={playlists} onPlay={(tracks, start = 0) => player.playTracks(tracks, { start, autoplay: true })} />
             ))}
           </div>
         )}
@@ -134,7 +135,7 @@ function PasteLinks() {
   )
 }
 
-function UpNext({ uid, playlistCount }: { uid: string; playlistCount: number }) {
+function UpNext({ uid, playlists }: { uid: string; playlists: Playlist[] }) {
   const { queue, jump, remove } = useMusicPlayer()
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
@@ -144,7 +145,11 @@ function UpNext({ uid, playlistCount }: { uid: string; playlistCount: number }) 
   async function save() {
     const clean = cleanPlaylistName(name)
     if (!clean) return
-    if (playlistCount >= PLAYLIST_LIMITS.playlists) {
+    if (playlistNameTaken(clean, playlists)) {
+      setMessage(TAKEN(clean))
+      return
+    }
+    if (playlists.length >= PLAYLIST_LIMITS.playlists) {
       setMessage(`You can have up to ${PLAYLIST_LIMITS.playlists} playlists.`)
       return
     }
@@ -227,7 +232,7 @@ function TrackRow({ track, index, current = false, removeDisabled = false, onPla
   )
 }
 
-function NewPlaylist({ uid, count }: { uid: string; count: number }) {
+function NewPlaylist({ uid, playlists }: { uid: string; playlists: Playlist[] }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -235,7 +240,11 @@ function NewPlaylist({ uid, count }: { uid: string; count: number }) {
   async function create() {
     const clean = cleanPlaylistName(name)
     if (!clean) return
-    if (count >= PLAYLIST_LIMITS.playlists) {
+    if (playlistNameTaken(clean, playlists)) {
+      setMessage(TAKEN(clean))
+      return
+    }
+    if (playlists.length >= PLAYLIST_LIMITS.playlists) {
       setMessage(`You can have up to ${PLAYLIST_LIMITS.playlists} playlists.`)
       return
     }
@@ -274,7 +283,7 @@ function NewPlaylist({ uid, count }: { uid: string; count: number }) {
   )
 }
 
-function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playlist; onPlay: (tracks: MusicTrack[], start?: number) => void }) {
+function PlaylistCard({ uid, playlist, playlists, onPlay }: { uid: string; playlist: Playlist; playlists: Playlist[]; onPlay: (tracks: MusicTrack[], start?: number) => void }) {
   const [open, setOpen] = useState(false)
   const [links, setLinks] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -342,7 +351,8 @@ function PlaylistCard({ uid, playlist, onPlay }: { uid: string; playlist: Playli
           onSubmit={(e) => {
             e.preventDefault()
             const clean = cleanPlaylistName(name)
-            if (clean) void run(() => renamePlaylist(uid, playlist.id, clean).then(() => setRenaming(false)), 'Could not rename. Please try again.')
+            if (clean && playlistNameTaken(clean, playlists, playlist.id)) setMessage(TAKEN(clean))
+            else if (clean) void run(() => renamePlaylist(uid, playlist.id, clean).then(() => setRenaming(false)), 'Could not rename. Please try again.')
           }}
         >
           <div className="min-w-0 flex-1">

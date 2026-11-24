@@ -6,6 +6,7 @@ import {
   matchPlaylist,
   parseYoutubeLinks,
   PLAYLIST_LIMITS,
+  playlistNameTaken,
   queueReducer,
   renderMusicContext,
   readPlayerTime,
@@ -71,6 +72,23 @@ describe('matchPlaylist', () => {
     expect(matchPlaylist('lofi beats', lists)).toBeNull()
     expect(matchPlaylist('empty playlist', lists)).toBeNull()
     expect(matchPlaylist('gym workout songs', lists)).toBeNull()
+  })
+})
+
+describe('playlistNameTaken', () => {
+  const lists = [
+    { id: '1', name: 'Gym', tracks: [] },
+    { id: '2', name: 'Chill Sunday', tracks: [] },
+  ]
+  it('finds a name Echo would hear as the same playlist', () => {
+    expect(playlistNameTaken('gym', lists)).toBe(true)
+    expect(playlistNameTaken('My Gym Playlist', lists)).toBe(true)
+    expect(playlistNameTaken('chill  sunday!', lists)).toBe(true)
+    expect(playlistNameTaken('Gym 2', lists)).toBe(false)
+  })
+  it('lets a playlist keep its own name when renamed', () => {
+    expect(playlistNameTaken('GYM', lists, '1')).toBe(false)
+    expect(playlistNameTaken('Gym', lists, '2')).toBe(true)
   })
 })
 
