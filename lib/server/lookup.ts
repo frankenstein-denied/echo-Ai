@@ -17,6 +17,8 @@ const FETCH_TIMEOUT_MS = 8000
 const ANSWER_RESERVE_MS = 4000
 /** Below this much time left, don't start a lookup. */
 const MIN_BUDGET_MS = 6000
+/** The fetch never gets less than this just to leave room for the web-search fallback. */
+const MIN_FETCH_MS = 3000
 const TRACE_MAX = 8
 
 const slots = new Map<string, number[]>()
@@ -49,6 +51,8 @@ export type LookupDeps = {
   connectors?: { id: ConnectorId; status: ConnectorStatus }[]
   answer: (question: string, results: WebResult[], ctx: { clientTime: string; profile: string }) => Promise<{ reply: string; sources: Source[] }>
   deadline?: number
+  /** Time to keep for the web-search fallback when it can really search (connected); 0 when it would only teach. */
+  fallbackReserveMs?: number
   now?: () => number
   fetch?: (source: Parameters<typeof fetchLookup>[0], query: string, opts: LookupOptions) => Promise<WebResult[]>
 }
@@ -81,7 +85,10 @@ export async function resolveLookup(res: EchoResponse, deps: LookupDeps): Promis
 
   let results: WebResult[]
   try {
-    results = await (deps.fetch ?? fetchLookup)(action.source, action.query, { timeoutMs: Math.min(FETCH_TIMEOUT_MS, remaining() - ANSWER_RESERVE_MS), now: userNow(deps.clientTime) })
+    // A slow source that times out must still leave the web search enough time to answer instead.
+    const left = remaining()
+    const timeoutMs = Math.min(FETCH_TIMEOUT_MS, left - ANSWER_RESERVE_MS, Math.max(MIN_FETCH_MS, left - (deps.fallbackReserveMs ?? 0)))
+    results = await (deps.fetch ?? fetchLookup)(action.source, action.query, { timeoutMs, now: userNow(deps.clientTime) })
   } catch (err) {
     const kind = err instanceof LookupError ? err.kind : ((err as { name?: string })?.name ?? 'unknown')
     if (kind === 'not_configured') console.error(`[echo] ${name} lookup is not configured (missing API key)`)

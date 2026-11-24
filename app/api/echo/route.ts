@@ -7,7 +7,7 @@ import { geminiModels, withModelFallback } from '@/lib/server/gemini-fallback'
 import { isConnected, type ConnectorId, type ConnectorStatus } from '@/lib/echo/connectors'
 import { estimateNutrition, looksLikeMeal, resolveMeals, withSpeculative } from '@/lib/server/nutrition'
 import { verifyUser } from '@/lib/server/verify-user'
-import { answerFromWeb, resolveWebSearch } from '@/lib/server/web-answer'
+import { answerFromWeb, MIN_SEARCH_BUDGET_MS, resolveWebSearch } from '@/lib/server/web-answer'
 import { resolveLookup } from '@/lib/server/lookup'
 import { resolveAskModel } from '@/lib/server/ask-model'
 
@@ -78,6 +78,8 @@ export async function POST(req: Request) {
     const t1 = Date.now()
     // Web search stands alone (sanitize guarantees it): search when connected, otherwise teach.
     const deadline = t0 + REQUEST_BUDGET_MS
+    const webConnected = !connectors || isConnected(connectors, 'web-search')
+    const webSearchKey = webConnected ? parsed.webSearchKey : undefined
     // A free connector lookup answers first; if it can't, it becomes a web_search for the step below.
     const looked = await resolveLookup(sanitized, {
       uid: user.uid,
@@ -86,14 +88,15 @@ export async function POST(req: Request) {
       profile: parsed.context.profile,
       connectors,
       deadline,
+      // Only a search that can really run needs time kept for it; without a key it just teaches, instantly.
+      fallbackReserveMs: webSearchKey ? MIN_SEARCH_BUDGET_MS : 0,
       answer: (q, results, ctx) => answerFromWeb(ai, q, results, ctx, { deadline }),
     })
     // Ask another AI model with the user's own key.
     const asked = await resolveAskModel(looked, { uid: user.uid, aiKeys: parsed.aiKeys, deadline })
-    const webConnected = !connectors || isConnected(connectors, 'web-search')
     const searched = await resolveWebSearch(asked, {
       uid: user.uid,
-      sealed: webConnected ? parsed.webSearchKey : undefined,
+      sealed: webSearchKey,
       question: parsed.text,
       clientTime: parsed.clientTime,
       profile: parsed.context.profile,

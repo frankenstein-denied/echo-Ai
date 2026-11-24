@@ -76,6 +76,19 @@ describe('resolveLookup', () => {
     expect(out.actions).toEqual([])
   })
 
+  it('keeps time for the web-search fallback when one is ready', async () => {
+    const timeout = async (over: Partial<LookupDeps>) => {
+      const d = deps({ deadline: 12_000, now: () => 0, ...over })
+      await resolveLookup(lookup(), d)
+      return (vi.mocked(d.fetch!).mock.calls[0][2] as { timeoutMs: number }).timeoutMs
+    }
+    // 12 s left: without a fallback the fetch may use its full 8 s; with one, 6 s stay for the search.
+    expect(await timeout({})).toBe(8000)
+    expect(await timeout({ fallbackReserveMs: 6000 })).toBe(6000)
+    // Little time left: the lookup still gets a fair try rather than being starved by the fallback.
+    expect(await timeout({ deadline: 7000, fallbackReserveMs: 6000 })).toBe(3000)
+  })
+
   it('gives up politely when no time is left, never claiming an answer', async () => {
     const d = deps({ deadline: 1000, now: () => 999 })
     const out = await resolveLookup(lookup(), d)
