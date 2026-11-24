@@ -14,7 +14,8 @@ import {
   type User,
 } from 'firebase/auth'
 import { Capacitor } from '@capacitor/core'
-import { app, auth, initAnalytics } from '@/lib/firebase'
+import { clearIndexedDbPersistence, terminate } from 'firebase/firestore'
+import { app, auth, db, initAnalytics } from '@/lib/firebase'
 import { clearNativeSession, refreshNativeNotification, setNativeSession } from '@/lib/native/echo-bridge'
 import { upsertDirectoryEntry } from '@/lib/legacy-store'
 
@@ -126,6 +127,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await FirebaseAuthentication.signOut().catch(() => null)
     }
     await firebaseSignOut(auth)
+    // Wipe the on-device copy of the diary (see lib/firebase.ts) so the next person on this device can't read it.
+    // A terminated Firestore can't be used again, so reload to start the signed-out page with a fresh one.
+    try {
+      await terminate(db)
+      await clearIndexedDbPersistence(db)
+    } catch (e) {
+      console.warn('Echo: could not clear the local copy', e)
+    }
+    window.location.reload()
   }, [])
 
   const value = useMemo(

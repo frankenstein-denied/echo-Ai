@@ -53,14 +53,17 @@ export async function POST(req: Request) {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const verified = Date.now()
+    const config = buildLiveConfig(parsed)
     const token = await Promise.race([
-      mintLiveToken(genai(apiKey), model, buildLiveConfig(parsed)),
+      mintLiveToken(genai(apiKey), model, config),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { name: 'AbortError' })), MINT_TIMEOUT_MS)
       }),
     ])
     // Timing only (never content): auth + body, then the token mint.
-    console.info(`[call-timing] session route verify+body ${verified - t0}ms mint ${Date.now() - verified}ms`)
+    // The instruction size is logged to see whether a bigger context makes Google's session setup slower.
+    const chars = typeof config.systemInstruction === 'string' ? config.systemInstruction.length : JSON.stringify(config.systemInstruction ?? '').length
+    console.info(`[call-timing] session route verify+body ${verified - t0}ms mint ${Date.now() - verified}ms instruction ${chars} chars`)
     return NextResponse.json({ token, model, voice: parsed.voice }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     // Never log the key, the token or the user's context; only the failure kind.
