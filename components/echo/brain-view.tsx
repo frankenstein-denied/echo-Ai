@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
-import { BookOpen, Brain, Maximize2, Minus, Palette, Pin, PinOff, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { BookOpen, Brain, Info, Maximize2, Minus, Pin, PinOff, Plus, Search, X } from 'lucide-react'
 import { diaryPagesCol, memoriesCol, pageMessagesCol, type Message } from '@/lib/firestore'
 import {
   buildOrbs,
@@ -23,8 +23,11 @@ import {
   type Thread,
 } from '@/lib/echo/orbs'
 import { PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
+import { brainLine } from '@/lib/echo/page-lines'
+import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { MemoryOrb, OrbDefs, OrbSwatch } from './memory-orb'
-import { Button, Card, EmptyState, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
+import { Button, Card, EmptyState, IconButton, Input, PageHeader, Skeleton } from './ui'
+import { tellEchoReply } from './page-tell'
 import { Sheet } from './sheet'
 import { useIsMobile } from './use-mobile'
 
@@ -53,6 +56,18 @@ const SINGLE = Object.fromEntries(
 
 const DATE_FMT = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 const formatDate = (ms: number) => (ms ? DATE_FMT.format(ms) : 'No date')
+const SHORT_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+const SAVED_KINDS: readonly OrbKind[] = ['note', 'goal', 'reminder', 'health']
+
+/** "Thu, Nov 5 · 3 saved · Maya, running" for the orb's bottom card. */
+function orbMeta(orb: Orb): string {
+  const saved = SAVED_KINDS.reduce((n, k) => n + orb.counts[k], 0)
+  const names = orb.members.filter((m) => m.kind === 'person' || m.kind === 'interest').slice(0, 2).map((m) => m.label)
+  return [orb.ms ? SHORT_FMT.format(orb.ms) : 'No date', saved ? `${saved} saved` : '', names.join(', ')].filter(Boolean).join(' · ')
+}
+
+const CHIP = `inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors max-lg:min-h-11 ${FOCUS_RING}`
+const chipClass = (on: boolean) => `${CHIP} ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border-strong text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`
 const shortLabel = (s: string) => (s.length > LABEL_MAX ? `${s.slice(0, LABEL_MAX - 1).trimEnd()}…` : s)
 
 function noPagesText(period: Period): string {
@@ -120,8 +135,11 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoverId, setHoverId] = useState<string | null>(null)
-  const [filterSheet, setFilterSheet] = useState(false)
   const [legendOpen, setLegendOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [kindFilter, setKindFilter] = useState<OrbKind | null>(null)
+  // On a phone, tapping an orb shows a small card; "Details" opens the full sheet.
+  const [detailsFor, setDetailsFor] = useState<string | null>(null)
   const mobile = useIsMobile()
   const prefersReduced = usePrefersReducedMotion()
   const [tf, setTf] = useState<Transform>({ x: 0, y: 0, k: 1 })
@@ -183,6 +201,13 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const byId = useMemo(() => new Map(shown.map((o) => [o.id, o])), [shown])
   const matches = useMemo(() => searchOrbs(shown, search), [shown, search])
   const allMatches = useMemo(() => searchOrbs(orbs, search), [orbs, search])
+  const weekCount = useMemo(() => filterOrbs(orbs, 'week').length, [orbs])
+  // Orbs that stand out: the search matches and/or pages holding the chosen kind; the rest are dimmed.
+  const focus = useMemo(() => {
+    const q = search.trim().length > 0
+    if (!q && !kindFilter) return null
+    return new Set(shown.filter((o) => (!q || matches.has(o.id)) && (!kindFilter || o.counts[kindFilter] > 0)).map((o) => o.id))
+  }, [shown, search, matches, kindFilter])
 
   const requestFrame = useCallback(() => {
     if (rafRef.current) return
@@ -534,7 +559,13 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
   const swirl = !prefersReduced && shown.length <= SWIRL_LIMIT
   const lite = shown.length > LITE_LIMIT
 
-  const header = <PageHeader title="2nd Brain" description="Each diary page is a memory orb. Its colors show what's inside." />
+  const header = (
+    <PageHeader
+      title="2nd Brain"
+      line={memories === null ? 'Each diary page is a memory orb' : brainLine(weekCount)}
+      actions={hasOrbs ? <IconButton icon={Search} label={searchOpen ? 'Hide search' : 'Find a memory'} aria-pressed={searchOpen} onClick={() => setSearchOpen((o) => !o)} /> : undefined}
+    />
+  )
 
   if (memories === null && !error) {
     return (
@@ -556,17 +587,16 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
     return (
       <div>
         {header}
-        <EmptyState icon={Brain} title="Nothing here yet" description="Chat with Echo and each diary page will appear here as a glowing memory orb." />
+        <EmptyState
+          icon={Brain}
+          title="Nothing here yet"
+          description="Tell Echo about your day and each diary page appears here as a glowing memory orb."
+          tell={{ sentence: 'I went for a morning run with Maya today', onSend: (text) => tellEchoReply({ uid, text }) }}
+        />
       </div>
     )
   }
 
-  // Tighter segments so the four periods fit on one line in the side panel; full width in the mobile sheet.
-  const periodControl = (
-    <div className="[&_button]:whitespace-nowrap [&_button]:px-2">
-      <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} fullWidth={mobile} />
-    </div>
-  )
   const legend = (
     <>
       <h2 className="mb-2 text-sm font-medium text-foreground">What the colors mean</h2>
@@ -654,31 +684,63 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
       )}
     </>
   ) : null
-  const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? 'All'
   const k = tf.k
+  // The phone canvas sits on the page background; the desktop one in a surface box.
+  const canvasBg = mobile ? 'var(--color-background)' : 'var(--color-surface)'
+
+  // One row of chips: the period, then a colour per kind (tap again to clear), then the colour key on a phone.
+  const chips = (
+    <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]" role="group" aria-label="Filter memories">
+      {PERIOD_OPTIONS.map((o) => (
+        <button key={o.value} type="button" aria-pressed={period === o.value} onClick={() => setPeriod(o.value)} className={chipClass(period === o.value)}>
+          {o.label}
+        </button>
+      ))}
+      <span aria-hidden="true" className="my-1 w-px shrink-0 bg-border" />
+      {ORB_KINDS.map((kind) => (
+        <button key={kind} type="button" aria-pressed={kindFilter === kind} onClick={() => setKindFilter((f) => (f === kind ? null : kind))} className={chipClass(kindFilter === kind)}>
+          <span aria-hidden="true" className="size-2 rounded-full" style={{ background: ORB_COLOR[kind], boxShadow: `0 0 4px ${ORB_COLOR[kind]}` }} />
+          <span className="capitalize">{ORB_NOUN[kind][1]}</span>
+        </button>
+      ))}
+      {mobile && (
+        <button type="button" aria-haspopup="dialog" onClick={() => setLegendOpen(true)} className={chipClass(false)}>
+          <Info size={14} aria-hidden="true" />
+          Colors
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div>
       {header}
-      <div className="mb-4 max-w-sm max-lg:max-w-none">
-        <Input
-          label="Find a memory"
-          type="search"
-          placeholder="Search by name"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={onSearchKey}
-          hint={
-            searching
-              ? matches.size || !allMatches.size
-                ? `${matches.size} match${matches.size === 1 ? '' : 'es'}. Press Enter to jump to the first.`
-                : `No matches in this period, ${allMatches.size} in All. Press Enter to jump to the first.`
-              : undefined
-          }
-        />
-      </div>
+      {(searchOpen || searching) && (
+        <div className="mb-3 max-w-sm max-lg:max-w-none">
+          <Input
+            label="Find a memory"
+            type="search"
+            placeholder="Search by name"
+            value={search}
+            autoFocus
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={onSearchKey}
+            hint={
+              searching
+                ? matches.size || !allMatches.size
+                  ? `${matches.size} match${matches.size === 1 ? '' : 'es'}. Press Enter to jump to the first.`
+                  : `No matches in this period, ${allMatches.size} in All. Press Enter to jump to the first.`
+                : undefined
+            }
+          />
+        </div>
+      )}
+      {chips}
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        <div ref={wrapRef} className="relative h-[560px] overflow-hidden rounded-xl border border-border bg-surface max-lg:h-[max(320px,calc(100dvh-var(--topbar-h)-var(--tabbar-h)-12.5rem))]">
+        <div
+          ref={wrapRef}
+          className="relative h-[560px] overflow-hidden rounded-xl border border-border bg-surface max-lg:h-[max(360px,calc(100dvh-var(--topbar-h)-var(--tabbar-h)-9rem))] max-lg:rounded-2xl max-lg:border-transparent max-lg:bg-transparent"
+        >
           <svg
             ref={svgRef}
             className="size-full cursor-grab touch-none select-none"
@@ -697,7 +759,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
                   const b = nodesRef.current.get(t.target)
                   if (!a || !b) return null
                   const onSel = !!selected && (t.source === selected.id || t.target === selected.id)
-                  const faded = searching && !matches.has(t.source) && !matches.has(t.target)
+                  const faded = !!focus && !focus.has(t.source) && !focus.has(t.target)
                   const color = ORB_COLOR[t.kind]
                   return (
                     <g key={`${t.source}|${t.target}`} opacity={faded ? 0.3 : 1}>
@@ -713,8 +775,8 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
                 if (!n) return null
                 const isSel = orb.id === selectedId
                 const isHover = orb.id === hoverId
-                const isMatch = searching && matches.has(orb.id)
-                const dimmed = searching && !isMatch
+                const isMatch = !!focus && focus.has(orb.id)
+                const dimmed = !!focus && !isMatch
                 const showLabel = shown.length <= SWIRL_LIMIT || orb.radius >= 30 || isSel || isHover || isMatch || linkedIds.has(orb.id) || k >= 1.6
                 return (
                   <g
@@ -740,7 +802,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
                     {/* Touch: invisible 44 px hit area around small orbs. */}
                     {mobile && <circle r={Math.max(orb.radius, 22 / k)} fill="transparent" />}
                     {/* Opaque backing so threads never show through a dimmed (see-through) orb. */}
-                    <circle r={orb.radius} style={{ fill: 'var(--color-surface)' }} />
+                    <circle r={orb.radius} style={{ fill: canvasBg }} />
                     <StableOrb orb={orb} selected={isSel} highlighted={isMatch || isHover} dimmed={dimmed} reducedMotion={!swirl} lite={lite} />
                     {n.fx != null && <circle r={orb.radius + 8} fill="none" strokeWidth={1.5} strokeDasharray="3 3" pointerEvents="none" style={{ stroke: 'var(--color-muted-foreground)' }} />}
                     {showLabel && (
@@ -753,7 +815,7 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
                         strokeWidth={3 / k}
                         strokeLinejoin="round"
                         opacity={dimmed ? 0.45 : 1}
-                        style={{ fill: 'var(--color-foreground)', stroke: 'var(--color-surface)', fontWeight: isSel ? 600 : 400 }}
+                        style={{ fill: 'var(--color-foreground)', stroke: canvasBg, fontWeight: isSel ? 600 : 400 }}
                       >
                         {shortLabel(orb.label)}
                       </text>
@@ -772,18 +834,44 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
             </div>
           )}
           <div className="absolute right-3 top-3 flex flex-col gap-1 rounded-lg border border-border bg-surface-2 p-1">
-            <IconButton icon={Plus} label="Zoom in" size="sm" onClick={() => zoomAt(1.3)} />
-            <IconButton icon={Minus} label="Zoom out" size="sm" onClick={() => zoomAt(1 / 1.3)} />
+            {!mobile && <IconButton icon={Plus} label="Zoom in" size="sm" onClick={() => zoomAt(1.3)} />}
+            {!mobile && <IconButton icon={Minus} label="Zoom out" size="sm" onClick={() => zoomAt(1 / 1.3)} />}
             <IconButton icon={Maximize2} label="Fit to view" size="sm" onClick={fit} />
           </div>
-          <div className="absolute left-3 top-3 flex gap-2">
-            <Button variant="secondary" icon={SlidersHorizontal} className="bg-surface-2 lg:hidden" aria-label={`Period: ${periodLabel}. Filter`} aria-haspopup="dialog" aria-expanded={filterSheet} onClick={() => setFilterSheet(true)}>
-              {periodLabel}
-            </Button>
-            <Button variant="secondary" icon={Palette} className="bg-surface-2" aria-haspopup="dialog" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
-              Legend
-            </Button>
-          </div>
+          {/* Phone: tapping an orb slides up a small card with what's inside and an Open button. */}
+          {mobile && selected && (
+            <div
+              role="region"
+              aria-label={`Memory: ${selected.label}`}
+              className="absolute inset-x-0 bottom-0 z-10 rounded-t-2xl border border-b-0 border-border bg-surface px-4 pb-4 pt-2 shadow-lg animate-in"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div aria-hidden="true" className="mx-auto mb-2 h-1 w-9 rounded-full bg-border-strong" />
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">{selected.label}</p>
+                  <p className="truncate text-xs text-muted-foreground">{orbMeta(selected)}</p>
+                </div>
+                {onOpenPage ? (
+                  <Button size="sm" onClick={() => onOpenPage(selected.pageId)}>
+                    Open
+                  </Button>
+                ) : null}
+                <IconButton icon={X} label="Close" size="sm" onClick={() => setSelectedId(null)} />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {summary.map((s) => (
+                  <span key={s.kind} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-foreground">
+                    <span className="size-2 rounded-full" style={{ background: ORB_COLOR[s.kind] }} aria-hidden="true" />
+                    {s.text}
+                  </span>
+                ))}
+                <button type="button" onClick={() => setDetailsFor(selected.id)} className={`ml-auto min-h-11 rounded-lg px-2 text-xs font-medium text-primary ${FOCUS_RING}`}>
+                  Details
+                </button>
+              </div>
+            </div>
+          )}
           {legendOpen && !mobile && (
             <div role="dialog" aria-label="What the colors mean" className="absolute left-3 top-16 z-10 w-80 rounded-lg border border-border bg-surface-2 p-4 pr-10 shadow-lg" onPointerDown={(e) => e.stopPropagation()}>
               <div className="absolute right-2 top-2">
@@ -793,13 +881,9 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
             </div>
           )}
           <p className="pointer-events-none absolute bottom-3 left-3 text-xs text-muted-foreground max-lg:hidden">Drag orbs to arrange · double-tap to unpin · drag the background to pan · scroll to zoom</p>
-          <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap an orb for details · pinch to zoom · drag to pan</p>
+          {!selected && <p className="pointer-events-none absolute inset-x-3 bottom-3 text-xs text-muted-foreground lg:hidden">Tap an orb for details · pinch to zoom · drag to pan</p>}
         </div>
         <div className="grid content-start gap-4 max-lg:hidden">
-          <Card as="div">
-            <h2 className="mb-2 text-sm font-medium text-foreground">Show pages from</h2>
-            {periodControl}
-          </Card>
           {selected ? (
             <Card as="div" className="grid gap-4">
               <div className="flex items-start justify-between gap-2">
@@ -822,13 +906,10 @@ export function BrainView({ uid, onOpenPage }: { uid: string; onOpenPage?: (page
           <Card as="div">{legend}</Card>
         </div>
       </div>
-      <Sheet open={mobile && filterSheet} onClose={() => setFilterSheet(false)} title="Filter">
-        <div className="px-2 pb-2">{periodControl}</div>
-      </Sheet>
       <Sheet open={mobile && legendOpen} onClose={() => setLegendOpen(false)} title="Legend">
         <div className="px-2 pb-2">{legend}</div>
       </Sheet>
-      <Sheet open={mobile && !filterSheet && !legendOpen && !!selected} onClose={() => setSelectedId(null)} title={selected?.label ?? 'Diary page'} description={selected ? formatDate(selected.ms) : undefined}>
+      <Sheet open={mobile && !legendOpen && !!selected && detailsFor === selected.id} onClose={() => setDetailsFor(null)} title={selected?.label ?? 'Diary page'} description={selected ? formatDate(selected.ms) : undefined}>
         <div className="grid gap-4 px-2 pb-2">{details}</div>
       </Sheet>
     </div>
