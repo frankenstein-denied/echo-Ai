@@ -7,6 +7,7 @@ import type { SharedLegacy } from '@/lib/legacy-store'
 import type { Memory } from '@/lib/firestore'
 import { Badge, Card, IconButton } from '../ui'
 import { KIND_LABEL } from './kinds'
+import { goalProgress, MIN_SUBGOALS, subgoalCount } from '@/lib/echo/goal-progress'
 
 const LIST_MAX = 200
 
@@ -92,12 +93,11 @@ export function BrowseMemories({ ownerName, shared, onBack }: { ownerName: strin
         <Section kind="goals">
           <Rows
             rows={goals.map((g) => {
-              const done = (g.milestones ?? []).filter((m) => m.done).length
-              const total = (g.milestones ?? []).length
+              const { done, total } = subgoalCount(g)
               return {
                 id: g.id,
                 title: g.title,
-                body: `${Math.round(g.progress ?? 0)}% done${total ? ` · ${done} of ${total} milestones` : ''}${g.targetDate ? ` · target ${g.targetDate}` : ''}`,
+                body: `${goalProgress(g)}% done${total >= MIN_SUBGOALS ? ` · ${done} of ${total} sub-goals` : ''}${g.targetDate ? ` · target ${g.targetDate}` : ''}`,
               }
             })}
           />

@@ -158,12 +158,12 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   { name: 'delete_note', description: `Delete a note. ${DELETE_DESC}`, parameters: { type: Type.OBJECT, properties: { ref: ref('note', 'n1') }, required: ['ref'] } },
   {
     name: 'update_goal',
-    description: 'Change an existing goal: progress (0-100), title, or mark a milestone done/undone (adds it when it is new).',
+    description: 'Change an existing goal: title, mark a sub-goal (milestone) done/undone (adds it when it is new), or mark a goal without sub-goals done. Progress is automatic: with 2+ sub-goals it is sub-goals done ÷ total, so record progress by marking sub-goals done; never invent a percentage.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         ref: ref('goal', 'g1'),
-        progress: int('0-100'),
+        progress: int('only for a goal with fewer than 2 sub-goals: 100 = done, 0 = not done; ignored otherwise'),
         title: s('new title'),
         milestoneDone: { type: Type.OBJECT, properties: { text: s('milestone text'), done: { type: Type.BOOLEAN } }, required: ['text', 'done'] },
       },
@@ -184,7 +184,7 @@ export const LIVE_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   // Read tools: run in the browser with the user's own Firestore access; compact results (~2 KB max).
   {
     name: 'get_goals',
-    description: "Read the user's goals with progress (0-100), target date and milestones done/total, most recently updated first.",
+    description: "Read the user's goals with progress (0-100, from sub-goals done/total, or 0/100 for done when a goal has fewer than 2 sub-goals), target date and sub-goals done/total, most recently updated first.",
   },
   {
     name: 'get_reminders',

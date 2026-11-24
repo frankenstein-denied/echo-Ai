@@ -1,12 +1,14 @@
 // Result shaping for Echo call read tools (pure, unit-tested). Inputs are plain values (ms timestamps),
 // outputs are compact JSON-able arrays, newest/soonest first, capped to ~2 KB per result.
 
+import { goalProgress, subgoalCount } from './goal-progress'
+
 export const READ_TOOL_NAMES = ['get_goals', 'get_reminders', 'search_notes', 'get_health', 'get_memories'] as const
 export type ReadToolName = (typeof READ_TOOL_NAMES)[number]
 export const RESULT_MAX_BYTES = 2000
 export const SNAPSHOT_MAX = 800
 
-export type GoalIn = { title: string; category?: string; progress?: number; targetDate?: string; milestones?: { done?: boolean }[]; updatedAtMs?: number }
+export type GoalIn = { title: string; category?: string; progress?: number; targetDate?: string; milestones?: { text?: string; done?: boolean }[]; updatedAtMs?: number }
 export type ReminderIn = { title: string; dueAtMs: number; done?: boolean }
 export type NoteIn = { title: string; body?: string; category?: string; tags?: string[]; updatedAtMs?: number }
 export type HealthIn = { date: string; mood?: number; sleepMinutes?: number; waterGlasses?: number; energy?: string }
@@ -30,12 +32,13 @@ export function shapeGoals(goals: GoalIn[]) {
       .slice(0, 20)
       .map((g) => {
         const ms = Array.isArray(g.milestones) ? g.milestones : []
+        const count = subgoalCount({ milestones: ms })
         return {
           title: clip(g.title, 100),
           category: clip(g.category, 40) || 'Personal',
-          progress: Math.round(Math.min(100, Math.max(0, num(g.progress) ?? 0))),
+          progress: goalProgress({ progress: num(g.progress), milestones: ms }),
           ...(g.targetDate ? { targetDate: g.targetDate } : {}),
-          milestones: `${ms.filter((m) => m?.done).length}/${ms.length}`,
+          milestones: `${count.done}/${count.total}`,
         }
       }),
   )

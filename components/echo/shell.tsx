@@ -24,6 +24,7 @@ import { LegacyView } from './legacy/legacy-view'
 import { useLegacyActivity } from './legacy/use-legacy-activity'
 import { LegacyInboxContext, useLegacyInboxState } from './legacy/use-legacy-inbox'
 import { Guide, GuideProvider } from './guide'
+import { normalizeGoalProgress } from '@/lib/echo/goal-normalize'
 import { CheckInsPrompt } from './check-ins-prompt'
 import { PermissionSetup } from './permission-setup'
 import { MobileTabBar, MobileTitleBar, MoreSheet, type TabView } from './mobile-tabbar'
@@ -191,6 +192,10 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [uid, embed])
+  // Once per app session: store the derived progress on goals saved under the old manual-percent rule.
+  useEffect(() => {
+    if (uid && !embed) void normalizeGoalProgress(uid)
   }, [uid, embed])
   const userName = user?.displayName || user?.email?.split('@')[0] || 'You'
 
