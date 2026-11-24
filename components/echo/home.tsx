@@ -39,6 +39,7 @@ import { LegacyReleaseBanner } from './legacy/release-banner'
 import { showPinnedBriefOrb, showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
+import { markPage } from '@/lib/echo/call-timing'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
 import { useMusicPlayer } from './music-player'
 
@@ -774,7 +775,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   // Calls: commands never start sound over Echo's voice, and the result says what's playing now (the call's MUSIC
   // block was built when the call started).
   const onCallMusicControl = useCallback((cmd: MusicCommand, seconds?: number) => ({ ...controlToolOutput(musicControl(cmd, { inCall: true, seconds })), ...nowPlaying() }), [musicControl, nowPlaying])
-  const call = useEchoCall({ user, voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens, onBrief: (b) => void saveBrief(uid, b.day, b.text, b.partial).catch((e) => console.error('Echo: could not save brief', e)) })
+  const call = useEchoCall({ user, timingEntry: embed === 'call' ? 'float' : 'app', voice: prefs?.voice ?? DEFAULT_VOICE_PREFS.voice, getContext: getCallContext, getRefs: getCallRefs, getWebSearchKey: webSearchKey, onWebSearchSecret: saveWebSearchSecret, onTurn: persistCallTurn, getPageId: ensureCallPage, onLateResult, onDeleted: pushUndo, prepareContext: getWeather, onPlayMusic: musicAvailable ? playCallMusic : undefined, onMusicControl: musicAvailable ? onCallMusicControl : undefined, getListenHistory: getListens, onBrief: (b) => void saveBrief(uid, b.day, b.text, b.partial).catch((e) => console.error('Echo: could not save brief', e)) })
   useCallFlag(call.active)
   // A typed reply that lands during a call never chimes over Echo's voice.
   const callActive = useRef(false)
@@ -831,6 +832,13 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [callPossible, call.active, prepareCall, messagesLoaded, memoriesLoaded])
+  // [call-timing] page marks: how long a fresh page takes before a call can start (sent with the call's report).
+  useEffect(() => markPage('home mounted'), [])
+  useEffect(() => {
+    if (prefs) markPage('prefs loaded')
+    if (memoriesLoaded) markPage('memories loaded')
+    if (messagesLoaded) markPage('messages loaded')
+  }, [prefs, memoriesLoaded, messagesLoaded])
   const autoStarted = useRef(false)
   useEffect(() => {
     if (embed !== 'call' || autoStarted.current) return
