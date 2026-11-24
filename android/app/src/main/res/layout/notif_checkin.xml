@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The check-in notification, expanded and heads-up: Echo's question and its one-tap answers.
+     RemoteViews: only LinearLayout/TextView. CheckInNotifier fills the slots it needs and hides the rest. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/checkin_text"
+        style="@style/TextAppearance.Compat.Notification.Line2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="3" />
+
+    <LinearLayout
+        android:id="@+id/checkin_row_a"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/checkin_a1"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/checkin_a2"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/checkin_a3"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/checkin_a4"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/checkin_a5"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/checkin_row_b"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/checkin_b1"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/checkin_b2"
+            style="@style/TextAppearance.Compat.Notification.Info"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/notif_button_bg"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:visibility="gone" />
+
+    </LinearLayout>
+</LinearLayout>

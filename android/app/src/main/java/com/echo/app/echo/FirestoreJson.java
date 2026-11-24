@@ -155,28 +155,148 @@ public final class FirestoreJson {
      */
     public static String buildUpdateCommit(String docPath, Map<String, Object> fields) {
         try {
+            return new JSONObject().put("writes", new JSONArray().put(updateWrite(docPath, fields))).toString();
+        } catch (JSONException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
+     * One update write of an existing document: only the given fields change, and updatedAt is set to
+     * REQUEST_TIME. Field values as in {@link #buildUpdateCommit}, plus Integer (sent as an integer).
+     */
+    public static JSONObject updateWrite(String docPath, Map<String, Object> fields) {
+        try {
             JSONObject values = new JSONObject();
             JSONArray mask = new JSONArray();
             for (Map.Entry<String, Object> e : fields.entrySet()) {
-                Object v = e.getValue();
-                JSONObject val = new JSONObject();
-                if (v instanceof Boolean) val.put("booleanValue", ((Boolean) v).booleanValue());
-                else if (v instanceof Long) val.put("timestampValue", toRfc3339(((Long) v).longValue()));
-                else if (v instanceof String) val.put("stringValue", (String) v);
-                else throw new IllegalArgumentException("unsupported field type: " + e.getKey());
-                values.put(e.getKey(), val);
+                values.put(e.getKey(), fieldValue(e.getKey(), e.getValue()));
                 mask.put(e.getKey());
             }
             JSONObject write = new JSONObject();
             write.put("update", new JSONObject().put("name", docPath).put("fields", values));
             write.put("updateMask", new JSONObject().put("fieldPaths", mask));
-            write.put("updateTransforms", new JSONArray().put(new JSONObject()
-                .put("fieldPath", "updatedAt").put("setToServerValue", "REQUEST_TIME")));
+            write.put("updateTransforms", requestTime("updatedAt"));
             write.put("currentDocument", new JSONObject().put("exists", true));
-            return new JSONObject().put("writes", new JSONArray().put(write)).toString();
+            return write;
         } catch (JSONException ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private static JSONObject fieldValue(String key, Object v) throws JSONException {
+        JSONObject val = new JSONObject();
+        if (v instanceof Boolean) val.put("booleanValue", ((Boolean) v).booleanValue());
+        else if (v instanceof Long) val.put("timestampValue", toRfc3339(((Long) v).longValue()));
+        else if (v instanceof Integer) val.put("integerValue", String.valueOf(v));
+        else if (v instanceof String) val.put("stringValue", (String) v);
+        else throw new IllegalArgumentException("unsupported field type: " + key);
+        return val;
+    }
+
+    /**
+     * The write for healthLogs/{date}, the way the web's saveHealthChanges does it: on an existing log only the
+     * given fields change and water is an increment; a new log gets the date, the fields and water as a number,
+     * with createdAt. The precondition makes the commit fail if the log appeared or vanished since it was read.
+     */
+    public static JSONObject healthWrite(String docPath, String dateKey, Map<String, Object> fields, int waterDelta,
+                                         boolean exists) {
+        try {
+            JSONObject write;
+            if (exists) {
+                write = updateWrite(docPath, fields);
+                if (waterDelta != 0) {
+                    JSONArray transforms = new JSONArray().put(new JSONObject().put("fieldPath", "waterGlasses")
+                        .put("increment", new JSONObject().put("integerValue", String.valueOf(waterDelta))));
+                    JSONArray stamps = write.getJSONArray("updateTransforms");
+                    for (int i = 0; i < stamps.length(); i++) transforms.put(stamps.get(i));
+                    write.put("updateTransforms", transforms);
+                }
+                return write;
+            }
+            JSONObject values = new JSONObject().put("date", stringValue(dateKey));
+            for (Map.Entry<String, Object> e : fields.entrySet()) values.put(e.getKey(), fieldValue(e.getKey(), e.getValue()));
+            if (waterDelta > 0) values.put("waterGlasses", fieldValue("waterGlasses", Integer.valueOf(waterDelta)));
+            write = new JSONObject();
+            write.put("update", new JSONObject().put("name", docPath).put("fields", values));
+            write.put("updateTransforms", requestTime("createdAt", "updatedAt"));
+            write.put("currentDocument", new JSONObject().put("exists", false));
+            return write;
+        } catch (JSONException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
+     * Body for documents:commit that answers a check-in in one atomic commit: the question (when it is not on the
+     * page yet; null questionDocPath leaves it out), the user's answer, the page's preview, count and stamps,
+     * then any data writes (health log, reminder). Both messages are create-only, so a retry of the same answer
+     * is refused as a whole and nothing is written twice. Pass newPageTitle to create today's page too.
+     */
+    public static String buildCheckInAnswerCommit(String pageDocPath, String newPageTitle, String questionDocPath,
+                                                  String questionText, String answerDocPath, String answerText,
+                                                  String category, List<JSONObject> dataWrites) {
+        try {
+            JSONArray writes = new JSONArray();
+            if (questionDocPath != null) {
+                JSONObject qFields = new JSONObject()
+                    .put("role", stringValue("assistant"))
+                    .put("text", stringValue(questionText))
+                    .put("category", stringValue("general"))
+                    .put("checkIn", new JSONObject().put("booleanValue", true));
+                writes.put(createOnly(questionDocPath, qFields));
+            }
+            JSONObject aFields = new JSONObject()
+                .put("role", stringValue("user"))
+                .put("text", stringValue(answerText))
+                .put("category", stringValue(category));
+            writes.put(createOnly(answerDocPath, aFields));
+
+            String preview = previewOf(answerText);
+            JSONObject page = new JSONObject();
+            if (newPageTitle == null) {
+                page.put("update", new JSONObject().put("name", pageDocPath)
+                    .put("fields", new JSONObject().put("preview", stringValue(preview))));
+                page.put("updateMask", new JSONObject().put("fieldPaths", new JSONArray().put("preview")));
+                JSONArray t = new JSONArray().put(new JSONObject().put("fieldPath", "messageCount")
+                    .put("increment", new JSONObject().put("integerValue", "1")));
+                JSONArray stamps = requestTime("updatedAt", "lastMessageAt");
+                for (int i = 0; i < stamps.length(); i++) t.put(stamps.get(i));
+                page.put("updateTransforms", t);
+                page.put("currentDocument", new JSONObject().put("exists", true));
+            } else {
+                JSONObject pageFields = new JSONObject()
+                    .put("title", stringValue(newPageTitle))
+                    .put("preview", stringValue(preview))
+                    .put("messageCount", new JSONObject().put("integerValue", "1"));
+                page.put("update", new JSONObject().put("name", pageDocPath).put("fields", pageFields));
+                page.put("updateTransforms", requestTime("createdAt", "updatedAt", "lastMessageAt"));
+                page.put("currentDocument", new JSONObject().put("exists", false));
+            }
+            writes.put(page);
+            if (dataWrites != null) for (JSONObject w : dataWrites) writes.put(w);
+            return new JSONObject().put("writes", writes).toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static JSONObject createOnly(String docPath, JSONObject fields) throws JSONException {
+        return new JSONObject()
+            .put("update", new JSONObject().put("name", docPath).put("fields", fields))
+            .put("updateTransforms", requestTime("createdAt"))
+            .put("currentDocument", new JSONObject().put("exists", false));
+    }
+
+    private static final int PREVIEW_MAX = 160; // same as lib/echo/diary.ts and firestore.rules
+
+    /** The page list's one-line preview, as the web's previewOf builds it. */
+    public static String previewOf(String text) {
+        String one = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        if (one.length() <= PREVIEW_MAX) return one;
+        int end = PREVIEW_MAX - 1;
+        if (Character.isHighSurrogate(one.charAt(end - 1))) end--;
+        return one.substring(0, end).replaceAll("\\s+$", "") + "…";
     }
 
     /** Reads the profile the way the web's resolveCheckInSettings does: absent or bad fields fall back to the defaults. */

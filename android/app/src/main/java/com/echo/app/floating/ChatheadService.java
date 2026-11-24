@@ -35,6 +35,7 @@ import android.window.OnBackInvokedDispatcher;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.core.app.NotificationChannelCompat;
@@ -50,6 +51,7 @@ import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.FirestoreJson;
 import com.echo.app.echo.PinnedController;
 import com.echo.app.echo.SessionStore;
+import java.util.List;
 import java.util.TimeZone;
 
 /**
@@ -63,6 +65,10 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final String TAG = "Chathead";
     private static final String TIMING_TAG = "CheckInTiming";
     private static final String EXTRA_USER_ASKED = "echo_chathead_user_asked";
+    private static final String EXTRA_OPEN_CHAT = "echo_chathead_open_chat";
+    /** Tells the chat page to have the mic ready for an answer to a check-in. The page may ignore it. */
+    private static final String MIC_READY_JS =
+        "window.dispatchEvent(new CustomEvent('echofloat:checkin-answer',{detail:{mic:true}}))";
     private static final String CHANNEL_ID = "echo_chathead";
     private static final int NOTIFICATION_ID = 4203;
     static final float HEAD_DP = 56f;
@@ -83,6 +89,10 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private static final long MESSAGE_SLIDE_MS = 150L;
     private static final long MESSAGE_VISIBLE_MS = 2_500L;
     private static final long WARM_KEEP_MS = 30 * 60_000L;
+    /** A check-in with answers stays beside the bubble this long, unless answered first. */
+    private static final long CHECK_IN_VISIBLE_MS = 15_000L;
+    private static final float CHECK_IN_MAX_WIDTH_DP = 264f;
+    private static final float CHIP_GAP_DP = 6f;
 
     /** Panel root that turns Back into "shrink". */
     private final class PanelRoot extends FrameLayout {
@@ -153,6 +163,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         @Override public void onPanelReady() {
             if (tornDown || web == null) return;
             webReady = true;
+            if (micOnReady && panelOpen) sendMicReady();
             if (tapAtMs > 0) logTapToReady(tapAtMs, "cold"); // can fire with no tap on a warmed panel, and more than once
             tapAtMs = 0;
         }
@@ -190,6 +201,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     private String webDay; // the local day the page was loaded
     private boolean webReady;
     private long tapAtMs; // set while a tap waits for the page; 0 otherwise
+    private boolean micOnReady; // the panel opened for a check-in answer, before the page was ready
     private CheckInEngine engine;
     private boolean dozing;
     private int headLook = R.drawable.ic_echo_head;
@@ -218,6 +230,21 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
     static void launch(Context ctx) {
         ContextCompat.startForegroundService(ctx,
             new Intent(ctx, ChatheadService.class).putExtra(EXTRA_USER_ASKED, false));
+    }
+
+    /**
+     * From a visible Activity: the bubble with its chat open, for an answer in words to a check-in. Starts the
+     * bubble if it isn't up.
+     */
+    static void openChat(Context ctx) {
+        try {
+            ContextCompat.startForegroundService(ctx, new Intent(ctx, ChatheadService.class)
+                .putExtra(EXTRA_USER_ASKED, true).putExtra(EXTRA_OPEN_CHAT, true));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not open the chat", e);
+            recordError(ctx, "start refused: " + e.getClass().getSimpleName());
+            Toast.makeText(ctx, R.string.float_chathead_start_failed, Toast.LENGTH_LONG).show();
+        }
     }
 
     public static boolean isShowing() {
@@ -268,7 +295,11 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             stopSelf(startId);
             return START_NOT_STICKY;
         }
-        if (showing) return START_STICKY; // a second start while the first is alive: its answer replaces the first's
+        boolean openChat = intent != null && intent.getBooleanExtra(EXTRA_OPEN_CHAT, false);
+        if (showing) { // a second start while the first is alive: its answer replaces the first's
+            if (openChat) openChatForAnswer();
+            return START_STICKY;
+        }
         boolean userAsked = intent != null && intent.getBooleanExtra(EXTRA_USER_ASKED, false);
         if (!foreground) {
             failToStart(userAsked); // enterForeground recorded why
@@ -296,6 +327,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         startEngine();
         main.removeCallbacks(moodTick);
         moodTick.run();
+        if (openChat) openChatForAnswer();
         return START_STICKY;
     }
 
@@ -480,6 +512,136 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         } catch (RuntimeException e) {
             Log.w(TAG, "could not show the small message", e);
             removeMessage();
+        }
+    }
+
+    /**
+     * The check-in beside the bubble with its one-tap answers as chips. Unlike the small message it takes taps,
+     * so it is opaque (only windows that let touches through must stay see-through). A newer one replaces it.
+     */
+    @Override public void showCheckIn(CheckInPlanner.Plan plan, String checkInId, long askedAtMs) {
+        if (tornDown || windows == null || head == null || panelOpen) return;
+        List<CheckInAnswer.Option> options = CheckInAnswer.options(plan.topic);
+        if (CheckInAnswer.answerId(checkInId) == null || options.isEmpty()) {
+            showMessage(plan.shortText);
+            return;
+        }
+        try {
+            removeMessage();
+            measureScreen();
+            float density = getResources().getDisplayMetrics().density;
+            int gap = Math.round(MESSAGE_GAP_DP * density);
+            int maxWidth = Math.min(Math.round(CHECK_IN_MAX_WIDTH_DP * density), screenW - headSize - 2 * gap);
+
+            View v = LayoutInflater.from(this).inflate(R.layout.float_check_in, null);
+            TextView text = v.findViewById(R.id.float_message_text);
+            text.setText(plan.fullText);
+            text.setOnClickListener(x -> openPanel());
+            LinearLayout rows = v.findViewById(R.id.float_check_in_answers);
+            // The card's own padding and the window's shadow room come off the width the chips may use.
+            int chipRoom = maxWidth - Math.round((2 * 12 + 2 * 6) * density);
+            addChipRows(rows, options, chipRoom, density, o -> onChip(o, plan, checkInId, askedAtMs));
+
+            v.measure(View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int width = v.getMeasuredWidth();
+            int height = v.getMeasuredHeight();
+
+            WindowManager.LayoutParams p = overlayParams(width, height, ChatheadGeometry.FLAG_NOT_FOCUSABLE);
+            p.gravity = Gravity.TOP | Gravity.START;
+            p.x = ChatheadGeometry.messageX(headParams.x, headSize, width, screenW, gap);
+            p.y = ChatheadGeometry.clampY(headParams.y + (headSize - height) / 2, height, screenH);
+
+            boolean besideLeftHead = p.x > headParams.x;
+            if (besideLeftHead) pointTailLeft(v.findViewById(R.id.float_message_card), density);
+            float slide = MESSAGE_SLIDE_DP * density;
+            v.setTranslationX(besideLeftHead ? -slide : slide);
+            v.setAlpha(0f);
+
+            windows.addView(v, p);
+            message = v;
+            v.animate().translationX(0f).alpha(1f).setDuration(MESSAGE_SLIDE_MS);
+            main.postDelayed(hideMessage, MESSAGE_SLIDE_MS + CHECK_IN_VISIBLE_MS);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not show the check-in", e);
+            removeMessage();
+        }
+    }
+
+    private interface ChipTap {
+        void onTap(CheckInAnswer.Option option);
+    }
+
+    /** Chips left to right, starting a new row when the next one would not fit. */
+    private void addChipRows(LinearLayout rows, List<CheckInAnswer.Option> options,
+                             int maxRowWidth, float density, ChipTap tap) {
+        int chipGap = Math.round(CHIP_GAP_DP * density);
+        LinearLayout row = null;
+        int used = 0;
+        for (int i = 0; i < options.size(); i++) {
+            CheckInAnswer.Option o = options.get(i);
+            TextView chip = new TextView(this);
+            boolean words = o.kind == CheckInAnswer.Kind.OPEN_CHAT;
+            chip.setText(words && CheckInAnswer.TELL.equals(o.code) ? "🎤 " + o.label : o.label);
+            boolean face = CheckInAnswer.isFace(o);
+            chip.setTextSize(face ? 20f : 13f);
+            boolean primary = i == 0 && !face;
+            chip.setTextColor(primary ? 0xFF04201C : 0xFF14181D);
+            chip.setBackgroundResource(primary ? R.drawable.bg_float_chip_primary : R.drawable.bg_float_chip);
+            int padH = Math.round((face ? 8 : 12) * density);
+            int padV = Math.round((face ? 4 : 8) * density);
+            chip.setPadding(padH, padV, padH, padV);
+            chip.setMinHeight(Math.round(40 * density)); // a finger-sized target
+            chip.setGravity(Gravity.CENTER);
+            chip.setMaxLines(1);
+            chip.setOnClickListener(x -> tap.onTap(o));
+            chip.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int w = chip.getMeasuredWidth();
+            if (row == null || used + chipGap + w > maxRowWidth) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                if (rows.getChildCount() > 0) rp.topMargin = chipGap;
+                rows.addView(row, rp);
+                used = 0;
+            }
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            if (row.getChildCount() > 0) cp.leftMargin = chipGap;
+            row.addView(chip, cp);
+            used += (row.getChildCount() > 1 ? chipGap : 0) + w;
+        }
+    }
+
+    /** A chip tap: saves go to the answer receiver, Later just clears it, words open the chat with the mic ready. */
+    private void onChip(CheckInAnswer.Option o, CheckInPlanner.Plan plan, String checkInId, long askedAtMs) {
+        removeMessage();
+        if (o.kind == CheckInAnswer.Kind.SAVE) {
+            sendBroadcast(CheckInAnswerReceiver.intent(this, checkInId, plan.topic, o.code, plan.reminderId,
+                plan.reminderDueAtMs, askedAtMs, false));
+            return;
+        }
+        CheckInEngine.onAnswered(this, checkInId);
+        if (o.kind == CheckInAnswer.Kind.OPEN_CHAT) openChatForAnswer();
+    }
+
+    /** The chat with the question in it (the check-in is on today's page) and the mic ready once the page is. */
+    private void openChatForAnswer() {
+        if (tornDown) return;
+        if (!panelOpen) openPanel();
+        if (!panelOpen) return;
+        if (webReady) sendMicReady(); else micOnReady = true;
+    }
+
+    private void sendMicReady() {
+        micOnReady = false;
+        if (web == null) return;
+        try {
+            web.evaluateJavascript(MIC_READY_JS, null);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not ready the mic", e);
         }
     }
 
@@ -728,6 +890,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
         main.removeCallbacks(pendingFit);
         panelOpen = false;
         FloatState.panelOpen = false;
+        micOnReady = false;
         tapAtMs = 0; // closed before the page was ready: nothing to time
         restoreHeadY();
         removeWindow(panel); // the panel view (and its WebView) is kept for the next open
@@ -799,6 +962,7 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
                     float dy = e.getRawY() - downRawY;
                     if (!dragging && !ChatheadGeometry.isTap(dx, dy, 0, slop)) {
                         dragging = true;
+                        removeMessage(); // a check-in card would be left behind
                         addRemoveTarget();
                     }
                     if (dragging) {

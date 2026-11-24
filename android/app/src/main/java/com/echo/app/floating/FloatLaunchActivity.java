@@ -2,6 +2,7 @@ package com.echo.app.floating;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -11,13 +12,17 @@ import android.util.Log;
 import android.widget.Toast;
 import com.echo.app.MainActivity;
 import com.echo.app.R;
+import com.echo.app.echo.DeepLinks;
 import com.echo.app.echo.SessionStore;
 
 /** Transparent trampoline behind the notification Talk and Type buttons. Decides, acts, finishes. */
 public class FloatLaunchActivity extends Activity {
     public static final String ACTION_TALK = "talk";
     public static final String ACTION_TYPE = "type";
+    /** A check-in's "Tell Echo" or "Yes, I ate": the bubble's chat, open on the question. */
+    public static final String ACTION_CHAT = "chat";
     public static final String EXTRA_ACTION = "echo_float_action";
+    static final String EXTRA_CHECK_IN_ID = "echo_check_in_id";
 
     private static final String TAG = "FloatLaunch";
     private static final int REQ_MIC = 7;
@@ -28,7 +33,7 @@ public class FloatLaunchActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         action = getIntent().getStringExtra(EXTRA_ACTION);
-        if (!ACTION_TALK.equals(action)) action = ACTION_TYPE;
+        if (!ACTION_TALK.equals(action) && !ACTION_CHAT.equals(action)) action = ACTION_TYPE;
         if (savedInstanceState == null) run();
     }
 
@@ -45,10 +50,19 @@ public class FloatLaunchActivity extends Activity {
             action, signedIn, overlay, mic, FloatState.callRunning, FloatState.appCallActive,
             FloatState.callFinishing);
 
+        if (ACTION_CHAT.equals(action)) CheckInEngine.onAnswered(this, getIntent().getStringExtra(EXTRA_CHECK_IN_ID));
+
         switch (outcome) {
-            case OPEN_APP:
-                startActivity(new Intent(this, MainActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            case OPEN_APP: {
+                Intent app = new Intent(this, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                if (ACTION_CHAT.equals(action)) app.putExtra(DeepLinks.EXTRA_PATH, DeepLinks.DIARY);
+                startActivity(app);
+                break;
+            }
+            case OPEN_CHAT:
+                clearBubbleRemoved();
+                ChatheadService.openChat(this); // before finish(), while Echo is still in the foreground
                 break;
             case OPEN_OVERLAY_SETTINGS:
                 Toast.makeText(this, R.string.float_allow_overlay, Toast.LENGTH_LONG).show();
@@ -79,6 +93,14 @@ public class FloatLaunchActivity extends Activity {
         }
         finish();
         overridePendingTransition(0, 0);
+    }
+
+    /** The activity behind a check-in's Tell Echo button. */
+    static Intent chatIntent(Context ctx, String checkInId) {
+        return new Intent(ctx, FloatLaunchActivity.class)
+            .putExtra(EXTRA_ACTION, ACTION_CHAT)
+            .putExtra(EXTRA_CHECK_IN_ID, checkInId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
     }
 
     private void clearBubbleRemoved() {

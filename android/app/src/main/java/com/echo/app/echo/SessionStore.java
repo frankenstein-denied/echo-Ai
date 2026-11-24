@@ -81,7 +81,9 @@ public final class SessionStore {
         return e.remove("lastFiredMs").remove("lastTopic").remove("unreadCount")
             .remove("pendingCheckInId").remove("pendingCheckInText").remove("cachedPrefsJson")
             .remove("lastBubbleError").remove("lastWakeSource").remove("lastWakeResult").remove("lastWakeMs")
-            .remove("nextWakeMs").remove("morningChatDay").remove("nightChatDay");
+            .remove("nextWakeMs").remove("morningChatDay").remove("nightChatDay")
+            .remove("ignoredInARow").remove("checkInCountDay").remove("checkInCount").remove("currentCheckInId")
+            .remove("currentAnswered").remove("skippedMeal");
     }
 
     public synchronized boolean hasSession() {
@@ -176,6 +178,52 @@ public final class SessionStore {
         prefs.edit().putString("aiCheckInDay", dayKey).putInt("aiCheckInCount", used + 1).apply();
         return true;
     }
+
+    // ---- pacing: answered or ignored, and how many today ----
+
+    /** Check-ins in a row that got no answer, each doubling the wait before the next. */
+    public int getIgnoredInARow() { return prefs.getInt("ignoredInARow", 0); }
+    /** The local day (yyyy-MM-dd) {@link #getCheckInCount} counts. */
+    public String getCheckInCountDay() { return prefs.getString("checkInCountDay", null); }
+    public int getCheckInCount() { return prefs.getInt("checkInCount", 0); }
+    /** The newest check-in's message id, or null before the first. */
+    public String getCurrentCheckInId() { return prefs.getString("currentCheckInId", null); }
+
+    /**
+     * A check-in went out. The one before it, still unanswered, counts as ignored; the day's count goes up,
+     * starting again on a new local day.
+     */
+    public synchronized void noteCheckInFired(String checkInId, String dayKey) {
+        boolean unanswered = getCurrentCheckInId() != null && !prefs.getBoolean("currentAnswered", false);
+        int ignored = Math.min(MAX_IGNORED, getIgnoredInARow() + (unanswered ? 1 : 0));
+        int count = (dayKey.equals(getCheckInCountDay()) ? getCheckInCount() : 0) + 1;
+        prefs.edit().putInt("ignoredInARow", ignored).putString("checkInCountDay", dayKey).putInt("checkInCount", count)
+            .putString("currentCheckInId", checkInId).putBoolean("currentAnswered", false).apply();
+    }
+
+    /**
+     * Any answer brings back the normal gap. Null (or the newest id) also marks the newest check-in answered.
+     * True when the gap was stretched until now, so it just got shorter.
+     */
+    public synchronized boolean noteAnswered(String checkInId) {
+        boolean shrank = getIgnoredInARow() > 0;
+        SharedPreferences.Editor e = prefs.edit().putInt("ignoredInARow", 0);
+        String current = getCurrentCheckInId();
+        if (checkInId == null || checkInId.equals(current)) e.putBoolean("currentAnswered", true);
+        e.apply();
+        return shrank;
+    }
+
+    /** New settings start the pacing over: no backoff and a fresh count for today. */
+    public synchronized void resetPacing() {
+        prefs.edit().remove("ignoredInARow").remove("checkInCountDay").remove("checkInCount").apply();
+    }
+
+    /** "yyyy-MM-dd|meal" for a meal the user said they are skipping, so Echo doesn't ask about it again that day. */
+    public String getSkippedMeal() { return prefs.getString("skippedMeal", null); }
+    public void setSkippedMeal(String v) { prefs.edit().putString("skippedMeal", v).apply(); }
+
+    private static final int MAX_IGNORED = 16;
 
     public String getCachedPrefsJson() { return prefs.getString("cachedPrefsJson", null); }
     public void setCachedPrefsJson(String v) { prefs.edit().putString("cachedPrefsJson", v).apply(); }
