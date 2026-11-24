@@ -1108,6 +1108,17 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     stopAudio() // don't record Echo's own voice
     await dictation.start()
   }
+  // The phone opened this chat to answer a check-in by voice ("Tell Echo" / "Yes, I ate"): start the mic.
+  const toggleMicRef = useRef(toggleMic)
+  toggleMicRef.current = toggleMic
+  useEffect(() => {
+    if (embed !== 'chat') return
+    const onAnswer = (e: Event) => {
+      if ((e as CustomEvent<{ mic?: boolean }>).detail?.mic && !recording) void toggleMicRef.current()
+    }
+    window.addEventListener('echofloat:checkin-answer', onAnswer)
+    return () => window.removeEventListener('echofloat:checkin-answer', onAnswer)
+  }, [embed, recording])
   // A call takes the microphone: drop a recording in progress.
   const cancelDictation = dictation.cancel
   useEffect(() => {
