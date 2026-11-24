@@ -138,13 +138,18 @@ export function MusicPlayerProvider({ uid, children }: { uid?: string; children:
     },
     [act, finalize],
   )
-  /** A call started: reopen the song paused; its record ends as partly played, never as a skip. */
-  const interrupt = useCallback(() => {
-    if (logRef.current) logRef.current.interrupted = true
-    act({ type: 'pause' })
-  }, [act])
   // The docked player registers how to command its embed, and whether the embed has answered yet (is listening).
   const embedRef = useRef<Embed | null>(null)
+  /**
+   * A call started: pause the song where it is (the listening record ends as partly played, never as a skip).
+   * Only an embed that hasn't answered yet is reopened paused, since reopening starts the song from the top.
+   */
+  const interrupt = useCallback(() => {
+    if (logRef.current) logRef.current.interrupted = true
+    const embed = embedRef.current?.ready() ? embedRef.current : null
+    if (embed) embed.send('pauseVideo')
+    else act({ type: 'pause' })
+  }, [act])
   const registerEmbed = useCallback((e: Embed | null) => {
     embedRef.current = e
   }, [])
