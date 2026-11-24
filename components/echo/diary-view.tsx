@@ -246,9 +246,21 @@ export function DiaryView({
   const [creating, setCreating] = useState(false)
   const [, tick] = useState(0)
   const callActive = useRef(false)
+  // Also kept as state: a call started from the Echo orb on an empty diary must keep Home mounted (and shown on
+  // phones) until its first turn creates the page, or the empty state would unmount it and end the call.
+  // Set when the orb asks for a call; cleared only once that call has been active and ended (never in between).
+  const [keepForCall, setKeepForCall] = useState(false)
+  const wasInCall = useRef(false)
   const onCallActiveChange = useCallback((a: boolean) => {
     callActive.current = a
+    if (wasInCall.current && !a) setKeepForCall(false)
+    wasInCall.current = a
   }, [])
+  useEffect(() => {
+    if (!startCall) return
+    setKeepForCall(true)
+    setMobileOpen(true)
+  }, [startCall])
   // Local date key when the current selection was made (for the new-day rollover).
   const openedDay = useRef(localDateKey(new Date()))
   const selRef = useRef<Selection>({ id: null, key: 0 })
@@ -563,7 +575,7 @@ export function DiaryView({
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
-      {!embed && pages !== null && pages.length === 0 && !sel.id && !startCall ? (
+      {!embed && pages !== null && pages.length === 0 && !sel.id && !startCall && !keepForCall ? (
         <>
           <MobileTitleBar title="Diary" />
           <PageHeader title="Diary" description={desc} />

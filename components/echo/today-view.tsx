@@ -213,7 +213,7 @@ export function TodayView({ user, profile, onNavigate, onOpenPage }: { user: Use
           </div>
         )}
 
-        {notice && <NoticedCard key={notice.action?.direct === 'water' ? `water-${dayKey}` : `reminder-${nextReminder?.id}`} uid={uid} user={user} profile={profile} dayKey={dayKey} notice={notice} />}
+        {notice && <NoticedCard key={notice.action?.direct === 'water' ? `water-${dayKey}-${notice.text}` : `reminder-${nextReminder?.id}`} uid={uid} user={user} profile={profile} dayKey={dayKey} notice={notice} />}
       </div>
     </div>
   )

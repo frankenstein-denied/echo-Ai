@@ -206,6 +206,10 @@ public final class EchoApi {
     public AnswerResult writeCheckInAnswer(String checkInId, String questionText, CheckInAnswer.Save save,
                                            String reminderId, String pageIdHint, TimeZone tz) {
         String pageId = null;
+        // A page id made up here (no page yet) is only worth retrying with once a commit carrying it was sent;
+        // before that, a retry must look for today's page again (the web may have created it meanwhile).
+        boolean madeUpPage = false;
+        boolean sent = false;
         try {
             String answerId = CheckInAnswer.answerId(checkInId);
             if (answerId == null || save == null || tz == null) return new AnswerResult(false, null);
@@ -224,6 +228,7 @@ public final class EchoApi {
                 if (pageId == null) {
                     newPageTitle = FirestoreJson.pageTitle(now, tz);
                     pageId = UUID.randomUUID().toString();
+                    madeUpPage = true;
                 }
             }
 
@@ -237,7 +242,7 @@ public final class EchoApi {
             if (save.writesHealth()) {
                 String day = FirestoreJson.dateKey(now, tz);
                 String log = getDoc("/healthLogs/" + day);
-                if (log == null) return new AnswerResult(false, pageId);
+                if (log == null) return new AnswerResult(false, madeUpPage ? null : pageId);
                 Map<String, Object> fields = new LinkedHashMap<>();
                 if (save.moodTag != null) {
                     fields.put("mood", save.mood);
@@ -253,6 +258,7 @@ public final class EchoApi {
                 data.add(FirestoreJson.updateWrite(userPath + "/reminders/" + reminderId, fields));
             }
 
+            sent = true;
             if (commit(FirestoreJson.buildCheckInAnswerCommit(userPath + pagePath, newPageTitle,
                 questionPath == null ? null : userPath + questionPath, questionText, userPath + answerPath,
                 save.answerText, save.category, data))) {
@@ -272,7 +278,7 @@ public final class EchoApi {
             }
             return new AnswerResult(false, pageId);
         } catch (Exception e) {
-            return new AnswerResult(false, pageId);
+            return new AnswerResult(false, madeUpPage && !sent ? null : pageId);
         }
     }
 

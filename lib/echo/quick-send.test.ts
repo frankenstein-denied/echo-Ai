@@ -82,6 +82,16 @@ describe('quickSend', () => {
     expect(createDiaryPage).not.toHaveBeenCalled()
     expect(addPageMessage).not.toHaveBeenCalled()
   })
+
+  it("quickSend never creates a second page when today's page list can't be read", async () => {
+    const { getDocs } = await import('firebase/firestore')
+    vi.mocked(getDocs).mockRejectedValueOnce(new Error('offline'))
+    vi.mocked(sendToEcho).mockResolvedValue({ reply: 'ok', actions: [], memories: [], trace: [] } as never)
+    await expect(quickSend({ user, profile, text: 'call mom at 7' })).rejects.toThrow(/Couldn't reach your diary/)
+    expect(sendToEcho).not.toHaveBeenCalled()
+    expect(createDiaryPage).not.toHaveBeenCalled()
+    expect(addPageMessage).not.toHaveBeenCalled()
+  })
 })
 
 describe('undoSaved', () => {

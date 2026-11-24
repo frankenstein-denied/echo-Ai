@@ -48,7 +48,8 @@ const creating = new Map<string, Promise<string>>()
 async function ensureTodayPage(uid: string): Promise<string> {
   const inFlight = creating.get(uid)
   if (inFlight) return inFlight
-  const p = (async () => (await findTodayPageId(uid).catch(() => null)) ?? createDiaryPage(uid))()
+  // A failed lookup throws: it must never read as "no page today" and create a second one.
+  const p = (async () => (await findTodayPageId(uid)) ?? createDiaryPage(uid))()
   creating.set(uid, p)
   try {
     return await p
@@ -92,7 +93,10 @@ export async function quickSend(args: { user: User; profile: UserProfile; text: 
   const uid = user.uid
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
-  const knownPage = await soft('the diary page', findTodayPageId(uid), null)
+  // Not soft: if the page list can't be read, today's page may exist, so stop before asking Echo.
+  const knownPage = await findTodayPageId(uid).catch(() => {
+    throw new Error("Couldn't reach your diary. Check your connection and try again.")
+  })
   const [history, memories, src, connectorDocs, language] = await Promise.all([
     soft('page messages', readHistory(uid, knownPage), []),
     soft('memories', readMemories(uid), []),
