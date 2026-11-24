@@ -187,13 +187,13 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
           {!user ? null : view === 'Diary' ? (
             <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} />
           ) : view === 'Notes' ? (
-            <NotesView uid={user.uid} />
+            <NotesView uid={user.uid} user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Goals' ? (
             <GoalsView uid={user.uid} focusGoalId={focusGoalId} onFocusHandled={clearFocusGoal} />
           ) : view === 'Health' ? (
             <HealthView uid={user.uid} onNavigate={navigate} />
           ) : view === 'Reminders' ? (
-            <RemindersView uid={user.uid} />
+            <RemindersView uid={user.uid} user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Music' ? (
             <MusicView uid={user.uid} />
           ) : view === 'Connectors' ? (

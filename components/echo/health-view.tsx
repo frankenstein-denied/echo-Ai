@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { documentId, onSnapshot, orderBy, query, where } from 'firebase/firestore'
-import { Droplet, Flame, Minus, Moon, Plus, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronRight, Droplet, Flame, Minus, Moon, Plus, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
 import { averageLogged, calorieFill, waterFill } from '@/lib/echo/body-fill'
 import { DEFAULT_WATER_GOAL, MAX_WATER_GOAL, MIN_WATER_GOAL, parseWaterGoal } from '@/lib/echo/check-ins'
 import { KCAL_TO, WATER_COLOR } from '@/lib/echo/glow'
@@ -12,7 +12,9 @@ import { dailyTotals, MEAL_TYPE_LABELS, moodFromScore, MOOD_LABELS, moodScore, m
 import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, type Period } from '@/lib/echo/period'
 import { Alert, Button, Card, IconButton, Input, PageHeader, Segmented, Skeleton } from './ui'
 import { useDay } from './use-day'
-import { MoodPicker } from './health/mood-picker'
+import { MOOD_COLORS, MoodPicker } from './health/mood-picker'
+import { waterWeekLine } from '@/lib/echo/goal-pace'
+import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { CaloriesCard, nextMealType } from './health/calories-card'
 import { MealDialog } from './health/meal-editor'
 import { BodyMeter } from './health/body-meter'
@@ -222,11 +224,86 @@ function AverageBodies({ water, waterGoal, kcal, goal, showCalories, strip }: { 
   )
 }
 
+const SLEEP_COLOR = '#a78bfa'
+
+// One glowing tile on the main Health page: value, what it is, and its one-tap action.
+function HealthTile({ icon: Icon, color, value, unit, sub, action, actionLabel, onAction, pressed }: { icon: LucideIcon; color: string; value: string; unit?: string; sub: string; action: string; actionLabel: string; onAction: () => void; pressed?: boolean }) {
+  return (
+    <div
+      className="flex min-w-0 flex-col rounded-2xl border border-border px-2.5 pb-2.5 pt-2.5 sm:px-3"
+      style={{ background: `radial-gradient(130% 120% at 50% 0%, color-mix(in srgb, ${color} 20%, transparent), transparent 60%), var(--color-surface)` }}
+    >
+      <Icon size={16} aria-hidden="true" style={{ color }} />
+      <p className="mt-1 truncate text-lg font-bold tabular-nums leading-tight text-foreground">
+        {value}
+        {unit && <span className="text-xs font-medium text-muted-foreground">{unit}</span>}
+      </p>
+      <p className="truncate text-xs text-subtle">{sub}</p>
+      <button
+        type="button"
+        onClick={onAction}
+        aria-label={actionLabel}
+        aria-pressed={pressed}
+        className={`mt-2 inline-flex min-h-11 items-center justify-center rounded-full border px-2 text-xs font-semibold lg:min-h-8 ${FOCUS_RING}`}
+        style={{ color, borderColor: `color-mix(in srgb, ${color} 35%, transparent)`, background: `color-mix(in srgb, ${color} 8%, transparent)` }}
+      >
+        {action}
+      </button>
+    </div>
+  )
+}
+
+const sleepText = (minutes: number | null) => {
+  if (minutes == null) return '–'
+  const { hours, minutes: m } = splitSleep(minutes)
+  return m ? `${hours}h ${m}m` : `${hours}h`
+}
+
+// Water over the last 7 days as bars, with one plain sentence against the week before.
+function WaterWeek({ days, prev, waterGoal }: { days: { key: string; water: number | null }[]; prev: (number | null)[]; waterGoal: number }) {
+  const logged = days.map((d) => d.water).filter((w): w is number => typeof w === 'number')
+  const avg = logged.length ? Math.round((logged.reduce((a, b) => a + b, 0) / logged.length) * 10) / 10 : null
+  const top = Math.max(waterGoal, ...logged, 1)
+  const label = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' })
+  }
+  const summary = days.map((d) => `${label(d.key)} ${d.water ?? 'none'}`).join(', ')
+  return (
+    <Card className="rounded-2xl">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Water, last 7 days</h2>
+        {avg !== null && <span className="text-xs tabular-nums text-subtle">avg {avg}</span>}
+      </div>
+      <div role="img" aria-label={`Glasses per day: ${summary}`} className="mt-3 flex h-16 items-end gap-1.5">
+        {days.map((d, i) => {
+          const today = i === days.length - 1
+          return (
+            <div key={d.key} className="flex h-full flex-1 flex-col justify-end">
+              <div
+                className="rounded-t-[5px] rounded-b-[2px]"
+                style={{ height: `${Math.max(6, ((d.water ?? 0) / top) * 100)}%`, background: today ? 'linear-gradient(#93c5fd, #3b82f6)' : '#1c3a52' }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div aria-hidden="true" className="mt-1 flex gap-1.5 text-center text-[10px] text-subtle">
+        {days.map((d) => (
+          <span key={d.key} className="flex-1">{label(d.key).slice(0, 1)}</span>
+        ))}
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">{waterWeekLine(days.map((d) => d.water), prev)}</p>
+    </Card>
+  )
+}
+
 // Displayed values come from the live snapshot, overlaid by local edits that are still unsaved or in flight.
-function TodayForm({ uid, day, live, waterGoal, calories, onAddMeal, onSetGoal }: { uid: string; day: string; live: Fields; waterGoal: number; calories: CalorieInfo | null; onAddMeal: () => void; onSetGoal?: () => void }) {
+function TodayForm({ uid, day, live, waterGoal, calories, onAddMeal, onSetGoal, layout = 'bodies' }: { uid: string; day: string; live: Fields; waterGoal: number; calories: CalorieInfo | null; onAddMeal: () => void; onSetGoal?: () => void; layout?: 'tiles' | 'bodies' }) {
   const [edits, setEdits] = useState<Edits>({})
   const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [error, setError] = useState('')
+  const [sleepOpen, setSleepOpen] = useState(false)
   const pending = useRef<Fields>({})
   const pendingWater = useRef(0)
   const versions = useRef<Record<string, number>>({})
@@ -313,13 +390,82 @@ function TodayForm({ uid, day, live, waterGoal, calories, onAddMeal, onSetGoal }
     queue()
   }
 
+  const statusText = status === 'saving' ? 'Saving...' : status === 'error' ? 'Not saved' : 'Saved'
+  const setEnergy = (e: Energy) => {
+    touch('energy')
+    setEdits((p) => ({ ...p, energy: e }))
+    pending.current = { ...pending.current, energy: e }
+    queue()
+  }
+  const sleepEditor = (
+    <>
+      <SleepArc minutes={parseSleepInput(sleepH, sleepM) ?? 0} />
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <IconButton icon={Minus} label="Less sleep" variant="secondary" onClick={() => stepSleep(-SLEEP_STEP)} />
+        <Input type="number" inputMode="numeric" min={0} max={24} value={sleepH} placeholder="0" aria-label="Sleep hours" onChange={(e) => changeSleep(e.target.value, sleepM)} className="w-16 text-center" />
+        h
+        <Input type="number" inputMode="numeric" min={0} max={59} value={sleepM} placeholder="0" aria-label="Sleep minutes" onChange={(e) => changeSleep(sleepH, e.target.value)} className="w-16 text-center" />
+        m
+        <IconButton icon={Plus} label="More sleep" variant="secondary" onClick={() => stepSleep(SLEEP_STEP)} />
+      </div>
+    </>
+  )
+
+  if (layout === 'tiles') {
+    const sleepMin = parseSleepInput(sleepH, sleepM)
+    return (
+      <div className="grid gap-3">
+        {error && <Alert variant="danger">{error}</Alert>}
+        <div className={`grid gap-2 ${calories ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <HealthTile icon={Droplet} color={WATER_COLOR} value={String(water)} unit={` / ${waterGoal}`} sub="glasses" action="+1" actionLabel="Add a glass of water" onAction={() => stepGlass(1)} />
+          {calories && (
+            <HealthTile
+              icon={Flame}
+              color={KCAL_TO}
+              value={calories.kcal.toLocaleString('en-US')}
+              sub={calories.goal ? `of ${calories.goal.toLocaleString('en-US')} kcal` : 'kcal today'}
+              action="+ meal"
+              actionLabel="Add a meal"
+              onAction={onAddMeal}
+            />
+          )}
+          <HealthTile icon={Moon} color={SLEEP_COLOR} value={sleepText(sleepMin)} sub="sleep" action="Edit" actionLabel="Edit sleep" pressed={sleepOpen} onAction={() => setSleepOpen((o) => !o)} />
+        </div>
+        {sleepOpen && (
+          <Card className="rounded-2xl">
+            <h2 className="mb-2 text-sm font-semibold text-foreground">Sleep last night</h2>
+            {sleepEditor}
+          </Card>
+        )}
+        <Card className="rounded-2xl">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">How are you feeling?</h2>
+            <span className="text-xs font-medium" aria-live="polite" style={moodTag ? { color: MOOD_COLORS[moodTag] } : undefined}>
+              {status !== 'saved' ? statusText : moodTag ? MOOD_LABELS[moodTag] : <span className="text-subtle">Not logged yet</span>}
+            </span>
+          </div>
+          <div className="-mx-2 mt-3 sm:mx-0">
+            <MoodPicker variant="row" value={moodTag} onChange={logMood} />
+          </div>
+        </Card>
+        <Card className="rounded-2xl">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Zap size={15} aria-hidden="true" className="text-muted-foreground" />
+            Energy
+          </h2>
+          <EnergyBar value={energy ?? null} onChange={setEnergy} />
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <>
     <TodayBodies uid={uid} water={water} waterGoal={waterGoal} onStepWater={stepGlass} calories={calories} onAddMeal={onAddMeal} onSetGoal={onSetGoal} />
     <Card>
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">Today</h2>
-        <span className="text-xs text-muted-foreground" aria-live="polite">{status === 'saving' ? 'Saving...' : status === 'error' ? 'Not saved' : 'Saved'}</span>
+        <span className="text-xs text-muted-foreground" aria-live="polite">{statusText}</span>
       </div>
       {error && (
         <div className="mt-3">
@@ -332,27 +478,11 @@ function TodayForm({ uid, day, live, waterGoal, calories, onAddMeal, onSetGoal }
         </Tile>
         <div className="grid gap-4 md:grid-cols-2">
           <Tile icon={Moon} title="Sleep">
-            <SleepArc minutes={parseSleepInput(sleepH, sleepM) ?? 0} />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <IconButton icon={Minus} label="Less sleep" variant="secondary" onClick={() => stepSleep(-SLEEP_STEP)} />
-              <Input type="number" inputMode="numeric" min={0} max={24} value={sleepH} placeholder="0" aria-label="Sleep hours" onChange={(e) => changeSleep(e.target.value, sleepM)} className="w-16 text-center" />
-              h
-              <Input type="number" inputMode="numeric" min={0} max={59} value={sleepM} placeholder="0" aria-label="Sleep minutes" onChange={(e) => changeSleep(sleepH, e.target.value)} className="w-16 text-center" />
-              m
-              <IconButton icon={Plus} label="More sleep" variant="secondary" onClick={() => stepSleep(SLEEP_STEP)} />
-            </div>
+            {sleepEditor}
           </Tile>
           <div>
             <Tile icon={Zap} title="Energy">
-              <EnergyBar
-                value={energy ?? null}
-                onChange={(e) => {
-                  touch('energy')
-                  setEdits((p) => ({ ...p, energy: e }))
-                  pending.current = { ...pending.current, energy: e }
-                  queue()
-                }}
-              />
+              <EnergyBar value={energy ?? null} onChange={setEnergy} />
             </Tile>
           </div>
         </div>
@@ -404,6 +534,8 @@ export function HealthView({ uid, onNavigate }: { uid: string; onNavigate?: (v: 
   const [error, setError] = useState('')
   const [mealError, setMealError] = useState('')
   const [addingMeal, setAddingMeal] = useState(false)
+  // The main page is today's tiles; the two bodies, other periods and the charts sit one tap in.
+  const [bodyView, setBodyView] = useState(false)
 
   // Today's doc stays live so the form reflects what Echo chat logs while the page is open.
   useEffect(() => {
@@ -419,10 +551,12 @@ export function HealthView({ uid, onNavigate }: { uid: string; onNavigate?: (v: 
   }, [uid, day])
 
   // Date keys the charts and averages cover (today: the last 7 days, as before).
+  // The main page reads the last 14 days (this week's bars against the week before).
   const keys = useMemo(() => {
     const [y, m, d] = day.split('-').map(Number)
+    if (!bodyView) return Array.from({ length: 14 }, (_, i) => localDateKey(new Date(y, m - 1, d - 13 + i, 12)))
     return healthPeriodDates(period, new Date(y, m - 1, d, 12))
-  }, [day, period])
+  }, [day, period, bodyView])
   const startKey = keys[0]
   const endKey = keys[keys.length - 1]
 
@@ -492,9 +626,70 @@ export function HealthView({ uid, onNavigate }: { uid: string; onNavigate?: (v: 
 
   const nothingLogged = logs !== null && (!calEnabled || meals !== null) && !stats.moodDays && !stats.sleepDays && !stats.mealDays
 
+  const openBodyView = () => {
+    setBodyView(true)
+    window.scrollTo({ top: 0 })
+  }
+  const lastWater = perDay.slice(-7)
+  const prevWater = perDay.slice(0, 7).map((d) => d.water)
+  const liveWater = today?.waterGlasses ?? 0
+  const liveMood = moodTagOf(today ?? null)
+  const oneLiner = today === undefined || waterGoal === null ? undefined : `Today · ${liveWater}/${waterGoal} water${liveMood ? ` · ${MOOD_LABELS[liveMood].toLowerCase()}` : ''}`
+
+  if (!bodyView) {
+    return (
+      <div className="animate-in">
+        <PageHeader
+          title="Health"
+          description={oneLiner}
+          action={
+            <div className="flex justify-end">
+              <IconButton icon={CalendarDays} label="Body view and past days" variant="secondary" onClick={openBodyView} />
+            </div>
+          }
+        />
+        {error && (
+          <div className="mb-4">
+            <Alert variant="danger">{error}</Alert>
+          </div>
+        )}
+        <div className="grid gap-3">
+          {today === undefined || waterGoal === null || cal === null ? (
+            <Skeleton className="h-64" />
+          ) : (
+            <TodayForm key={`${uid}-${day}`} layout="tiles" uid={uid} day={day} live={today ?? {}} waterGoal={waterGoal} calories={calInfo} onAddMeal={() => setAddingMeal(true)} onSetGoal={onNavigate ? () => onNavigate('Settings') : undefined} />
+          )}
+          {calEnabled && <MealDialog uid={uid} day={day} defaultType={nextMealType(todayMeals)} open={addingMeal} onClose={() => setAddingMeal(false)} />}
+          {logs === null || waterGoal === null ? <Skeleton className="h-40" /> : <WaterWeek days={lastWater} prev={prevWater} waterGoal={waterGoal} />}
+          <button
+            type="button"
+            onClick={openBodyView}
+            className={`flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-2 ${FOCUS_RING}`}
+          >
+            <span className="text-sm font-semibold text-foreground">Body view</span>
+            <span className="text-sm text-muted-foreground">{calEnabled ? 'water and calories' : 'water'}, past days</span>
+            <ChevronRight size={18} aria-hidden="true" className="ml-auto text-subtle" />
+          </button>
+          {calEnabled && (
+            <>
+              {mealError && <Alert variant="danger">{mealError}</Alert>}
+              {meals === null ? <Skeleton className="h-48" /> : <CaloriesCard uid={uid} day={day} meals={todayMeals} />}
+            </>
+          )}
+        </div>
+        <p className="mt-5 text-xs text-muted-foreground">Echo logs and summarizes. It does not diagnose.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="animate-in">
-      <PageHeader title="Health" description="Log how you feel today and see your week." />
+      <div className="mb-3">
+        <Button variant="ghost" icon={ArrowLeft} onClick={() => setBodyView(false)} className="-ml-2 max-lg:h-11">
+          Health
+        </Button>
+      </div>
+      <PageHeader title="Body view" description="Water, calories and how you felt, day by day." />
       <div className="mb-5 max-w-full overflow-x-auto">
         <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
       </div>
