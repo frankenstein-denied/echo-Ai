@@ -98,6 +98,10 @@ public class FloatingCallService extends Service {
             // The call page has no panel.
         }
 
+        @Override public void onStartCall() {
+            // The call page is already the call.
+        }
+
         @Override public void onRendererGone() {
             discardPage(); // dead: nothing left to tell or to wait for
             session.onEnded("failed", now());

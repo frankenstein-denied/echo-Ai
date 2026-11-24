@@ -173,6 +173,21 @@ public class ChatheadService extends Service implements CheckInEngine.Host {
             closePanel();
             destroyWeb(); // recreated on the next open
         }
+
+        @Override public void onStartCall() {
+            if (tornDown) return;
+            closePanel();
+            // Same path as the notification's Talk: the trampoline checks sign-in, overlay and mic, and starts the
+            // call service while it is in front (Android 14+ only grants the mic to a foreground start).
+            // A visible overlay lets this service start an activity from the background.
+            try {
+                startActivity(new Intent(ChatheadService.this, FloatLaunchActivity.class)
+                    .putExtra(FloatLaunchActivity.EXTRA_ACTION, FloatLaunchActivity.ACTION_TALK)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            } catch (RuntimeException e) {
+                Log.w(TAG, "could not start the call from the chat", e);
+            }
+        }
     };
 
     private static volatile boolean showing;

@@ -57,6 +57,19 @@ describe('float-bridge', () => {
     fb.reportPanelReady()
     expect(onPanelReady).toHaveBeenCalledTimes(1)
   })
+  it('offers a floating call only when the APK has startCall (1.20+), and starts it', () => {
+    vi.stubGlobal('window', globalThis)
+    expect(fb.canStartFloatCall()).toBe(false)
+    expect(fb.startFloatCall()).toBe(false)
+    w().EchoFloat = { onCallPhase: vi.fn() } // 1.19 and older
+    expect(fb.canStartFloatCall()).toBe(false)
+    expect(fb.startFloatCall()).toBe(false)
+    const startCall = vi.fn()
+    w().EchoFloat = { startCall }
+    expect(fb.canStartFloatCall()).toBe(true)
+    expect(fb.startFloatCall()).toBe(true)
+    expect(startCall).toHaveBeenCalledTimes(1)
+  })
   it('isFloatingCallActive resolves false when the plugin method rejects', async () => {
     plugin.isFloatingCallActive.mockRejectedValue(new Error('not implemented'))
     expect(await fb.isFloatingCallActive()).toBe(false)

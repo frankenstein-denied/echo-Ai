@@ -40,7 +40,7 @@ import { showPinnedBriefOrb, showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { markPage } from '@/lib/echo/call-timing'
-import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
+import { canStartFloatCall, floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive, startFloatCall } from '@/lib/native/float-bridge'
 import { useMusicPlayer } from './music-player'
 import { SavedCard } from './saved-card'
 import { useDictation } from './use-dictation'
@@ -1108,6 +1108,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     stopAudio() // don't record Echo's own voice
     await dictation.start()
   }
+  // The chathead chat (APK 1.20+) can hand off to Echo's floating call; checked after mount so SSR markup matches.
+  const [floatCallOk, setFloatCallOk] = useState(false)
+  useEffect(() => {
+    if (embed === 'chat') setFloatCallOk(canStartFloatCall())
+  }, [embed])
   // The phone opened this chat to answer a check-in by voice ("Tell Echo" / "Yes, I ate"): start the mic.
   const toggleMicRef = useRef(toggleMic)
   toggleMicRef.current = toggleMic
@@ -1384,7 +1389,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                     </Button>
                   )}
                   {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                  {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => startCall()} disabled={disabled || thinking || recording || transcribing} />}
+                  {prefs?.enabled && (embed !== 'chat' || floatCallOk) && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => (embed === 'chat' ? void startFloatCall() : startCall())} disabled={disabled || thinking || recording || transcribing} />}
                   <button
                     type="button"
                     onClick={() => void toggleMic()}
