@@ -42,4 +42,14 @@ public class FloatLaunchDecisionTest {
     @Test public void appCallBlocks() {
         assertEquals(BLOCKED_BY_APP_CALL, decide("talk", true, true, true, false, true, false));
     }
+
+    @Test public void tellEchoOpensTheBubbleChat() {
+        assertEquals(OPEN_CHAT, decide("chat", true, true, false, false, false, false));
+        assertEquals(OPEN_CHAT, decide("chat", true, true, true, true, false, true)); // a call doesn't block typing
+    }
+
+    @Test public void tellEchoWithoutTheOverlayOpensTheDiaryInTheApp() {
+        assertEquals(OPEN_APP, decide("chat", true, false, true, false, false, false));
+        assertEquals(OPEN_APP, decide("chat", false, true, true, false, false, false));
+    }
 }

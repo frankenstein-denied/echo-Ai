@@ -1,6 +1,7 @@
 package com.echo.app.echo;
 
 import android.content.Context;
+import com.echo.app.floating.CheckInAnswer;
 import com.echo.app.floating.TodaySnapshot;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -181,6 +182,107 @@ public final class EchoApi {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** How a check-in answer went, and the page it went to, so a retry writes to the same page. */
+    public static final class AnswerResult {
+        public final boolean saved;
+        /** The page used, or null when it was never worked out. */
+        public final String pageId;
+
+        AnswerResult(boolean saved, String pageId) {
+            this.saved = saved;
+            this.pageId = pageId;
+        }
+    }
+
+    /**
+     * Saves a one-tap check-in answer in one commit: the answer (and the question, when questionText is given
+     * because it is not on the page yet) on today's page, plus the health log or reminder change. The answer's id
+     * comes from the check-in's, and it is create-only, so a retry or a second tap never writes twice: a refused
+     * commit whose answer is already there counts as saved. Pass the pageId of an earlier try, so a retry after
+     * midnight still finds that answer.
+     */
+    public AnswerResult writeCheckInAnswer(String checkInId, String questionText, CheckInAnswer.Save save,
+                                           String reminderId, String pageIdHint, TimeZone tz) {
+        String pageId = null;
+        try {
+            String answerId = CheckInAnswer.answerId(checkInId);
+            if (answerId == null || save == null || tz == null) return new AnswerResult(false, null);
+            if (save.writesReminder() && !isPlainId(reminderId)) return new AnswerResult(false, null);
+            long now = System.currentTimeMillis();
+            String newPageTitle = null;
+            if (isPlainId(pageIdHint)) {
+                String page = getDoc("/diaryPages/" + pageIdHint);
+                if (page == null) return new AnswerResult(false, pageIdHint);
+                pageId = pageIdHint;
+                if (page.equals(NOT_FOUND)) newPageTitle = FirestoreJson.pageTitle(now, tz);
+            } else {
+                String pages = runQuery(FirestoreJson.todaysPageQuery());
+                if (pages == null) return new AnswerResult(false, null);
+                pageId = FirestoreJson.pickTodayPageId(pages, now, tz);
+                if (pageId == null) {
+                    newPageTitle = FirestoreJson.pageTitle(now, tz);
+                    pageId = UUID.randomUUID().toString();
+                }
+            }
+
+            SessionStore s = SessionStore.get(ctx);
+            String userPath = base(s) + "/users/" + s.getUid();
+            String pagePath = "/diaryPages/" + pageId;
+            String answerPath = pagePath + "/messages/" + answerId;
+            String questionPath = questionText == null ? null : pagePath + "/messages/" + checkInId;
+
+            List<JSONObject> data = new ArrayList<>();
+            if (save.writesHealth()) {
+                String day = FirestoreJson.dateKey(now, tz);
+                String log = getDoc("/healthLogs/" + day);
+                if (log == null) return new AnswerResult(false, pageId);
+                Map<String, Object> fields = new LinkedHashMap<>();
+                if (save.moodTag != null) {
+                    fields.put("mood", save.mood);
+                    fields.put("moodTag", save.moodTag);
+                }
+                data.add(FirestoreJson.healthWrite(userPath + "/healthLogs/" + day, day, fields, save.waterDelta,
+                    !log.equals(NOT_FOUND)));
+            }
+            if (save.writesReminder()) {
+                Map<String, Object> fields = new LinkedHashMap<>();
+                if (save.reminderDone) fields.put("done", Boolean.TRUE);
+                if (save.reminderDueAtMs > 0) fields.put("dueAt", Long.valueOf(save.reminderDueAtMs));
+                data.add(FirestoreJson.updateWrite(userPath + "/reminders/" + reminderId, fields));
+            }
+
+            if (commit(FirestoreJson.buildCheckInAnswerCommit(userPath + pagePath, newPageTitle,
+                questionPath == null ? null : userPath + questionPath, questionText, userPath + answerPath,
+                save.answerText, save.category, data))) {
+                return new AnswerResult(true, pageId);
+            }
+            if (exists(answerPath)) return new AnswerResult(true, pageId); // an earlier try landed
+            if (questionPath != null && exists(questionPath)) {
+                // The check-in itself landed meanwhile, which refused this commit: send the answer alone.
+                String page = getDoc(pagePath);
+                if (page == null) return new AnswerResult(false, pageId);
+                String title = page.equals(NOT_FOUND) ? FirestoreJson.pageTitle(now, tz) : null;
+                if (commit(FirestoreJson.buildCheckInAnswerCommit(userPath + pagePath, title, null, null,
+                    userPath + answerPath, save.answerText, save.category, data))) {
+                    return new AnswerResult(true, pageId);
+                }
+                return new AnswerResult(exists(answerPath), pageId);
+            }
+            return new AnswerResult(false, pageId);
+        } catch (Exception e) {
+            return new AnswerResult(false, pageId);
+        }
+    }
+
+    private boolean exists(String path) {
+        String doc = getDoc(path);
+        return doc != null && !doc.equals(NOT_FOUND);
+    }
+
+    private static boolean isPlainId(String id) {
+        return id != null && !id.isEmpty() && id.indexOf('/') < 0;
     }
 
     private static String base(SessionStore s) {

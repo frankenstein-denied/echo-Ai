@@ -11,6 +11,8 @@ public final class CheckInRules {
     public enum Outcome {
         OFF,
         SLEEPING,
+        /** Today's check-ins are used up (see {@link CheckInPacing#MAX_PER_DAY}). */
+        CAPPED,
         NOT_DUE,
         WAIT,
         POPUP,
@@ -30,6 +32,8 @@ public final class CheckInRules {
         public boolean online;
         public boolean panelOpen;
         public boolean pendingWrite;
+        /** Today's check-ins are used up. */
+        public boolean capReached;
         public long nowMs;
         public long lastFiredMs;
         public int everyMinutes;
@@ -62,6 +66,7 @@ public final class CheckInRules {
     public static Outcome decide(State s) {
         if (!s.enabled || !s.signedIn) return Outcome.OFF;
         if (inSleep(s.minuteOfDay, s.sleepStartMin, s.sleepEndMin)) return Outcome.SLEEPING;
+        if (s.capReached) return Outcome.CAPPED;
         if (s.nowMs - s.lastFiredMs < s.everyMinutes * MINUTE_MS) return Outcome.NOT_DUE;
         if (!s.online || s.pendingWrite) return Outcome.WAIT;
         if (s.inCall || s.appInForeground) return Outcome.WAIT;
@@ -128,7 +133,8 @@ public final class CheckInRules {
     /** A worker run that did nothing must not hide the evidence that the alarm was delivered. */
     static boolean keepsLastWake(String source, String result, String lastSource) {
         return WAKE_WORKER.equals(source) && WAKE_ALARM.equals(lastSource)
-            && (Outcome.NOT_DUE.name().equals(result) || Outcome.SLEEPING.name().equals(result));
+            && (Outcome.NOT_DUE.name().equals(result) || Outcome.SLEEPING.name().equals(result)
+                || Outcome.CAPPED.name().equals(result));
     }
 
     /** Whether a failed restart may fall back to putting a visible window on screen. */

@@ -172,7 +172,7 @@ final class SmartCheckIns {
 
     /** The plan with the AI's words. Topic and everything that follows from it stay the planner's. */
     static CheckInPlanner.Plan apply(CheckInPlanner.Plan plan, Text text) {
-        return text == null ? plan : new CheckInPlanner.Plan(plan.topic, text.shortText, text.fullText);
+        return text == null ? plan : plan.withText(text.shortText, text.fullText);
     }
 
     private static Text request(Ask ask, String day) {

@@ -84,9 +84,10 @@ public class CheckInAlarm extends BroadcastReceiver {
                 cancel(app);
                 return;
             }
-            set(app, REQUEST_NEXT, CheckInRules.nextAlarmMs(CheckInEngine.storedLastFired(store, now),
-                CheckInEngine.allowedGap(p.everyMinutes), now, p.sleepStartMin, p.sleepEndMin,
-                TimeZone.getDefault(), CheckInEngine.bubbleWanted(app)));
+            TimeZone tz = TimeZone.getDefault();
+            set(app, REQUEST_NEXT, CheckInPacing.nextAlarmMs(CheckInEngine.storedLastFired(store, now),
+                CheckInEngine.pacedGap(store, p), now, p.sleepStartMin, p.sleepEndMin, tz,
+                CheckInEngine.bubbleWanted(app), CheckInEngine.capReached(store, now, tz)));
         } catch (RuntimeException e) {
             Log.w(TAG, "could not schedule the alarm", e);
         }

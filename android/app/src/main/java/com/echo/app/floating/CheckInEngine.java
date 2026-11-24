@@ -37,6 +37,8 @@ public final class CheckInEngine {
     public interface Host {
         boolean isPanelOpen();
         void showMessage(String shortText);
+        /** The check-in beside the bubble, with its one-tap answers. */
+        void showCheckIn(CheckInPlanner.Plan plan, String checkInId, long askedAtMs);
         void setUnread(int count);
         void setDozing(boolean dozing);
         void warmPanel();
@@ -155,7 +157,9 @@ public final class CheckInEngine {
     public void onPanelOpened() {
         if (!running) return;
         try {
-            clearUnread(SessionStore.get(ctx));
+            SessionStore store = SessionStore.get(ctx);
+            noteAnswered(store, store.getCurrentCheckInId()); // reading it in the chat is not ignoring it
+            clearUnread(store);
             CheckInNotifier.cancel(ctx);
             host.setUnread(0);
         } catch (RuntimeException e) {
@@ -194,8 +198,8 @@ public final class CheckInEngine {
         try {
             CheckInPrefs p = prefs;
             if (p != null) {
-                delay = msUntilNextTick(SessionStore.get(ctx).getLastFiredMs(), allowedGap(p.everyMinutes),
-                    System.currentTimeMillis());
+                SessionStore store = SessionStore.get(ctx);
+                delay = msUntilNextTick(store.getLastFiredMs(), pacedGap(store, p), System.currentTimeMillis());
             }
         } catch (IllegalStateException e) {
             // keep the plain minute
@@ -261,13 +265,15 @@ public final class CheckInEngine {
             long now = System.currentTimeMillis();
             TimeZone tz = TimeZone.getDefault();
             CheckInRules.State s = currentState(store, p, now, tz);
-            if (!s.enabled || !s.signedIn || !s.online || !SmartCheckIns.allowedForGap(s.everyMinutes)) return;
+            if (!s.enabled || !s.signedIn || !s.online || s.capReached
+                || !SmartCheckIns.allowedForGap(s.everyMinutes)) return;
             if (msUntilPrefetch(s.lastFiredMs, s.everyMinutes, now) > 0) return;
             long dueMs = Math.max(now, s.lastFiredMs + s.everyMinutes * MINUTE_MS);
             if (CheckInRules.inSleep(CheckInPlanner.minuteOfDay(dueMs, tz), s.sleepStartMin, s.sleepEndMin)) return;
             TodaySnapshot usable = pickSnapshot(snapshot, FirestoreJson.dateKey(dueMs, tz), now, false);
             if (usable == null) return;
             CheckInRules.State at = baseState(p, dueMs, s.lastFiredMs, tz);
+            at.everyMinutes = s.everyMinutes;
             CheckInPlanner.Plan plan = planFor(store, usable, at, tz);
             SmartCheckIns.ensure(ask(ctx, store, p, usable, at, plan.topic));
         } catch (RuntimeException e) {
@@ -293,18 +299,20 @@ public final class CheckInEngine {
         plan = SmartCheckIns.apply(plan, ai);
         if (!claim(store, plan, s, tz, today)) return;
         Log.i(TAG, "ai_used=" + (ai != null) + " ai_ms=" + (aiGaveUpSlot == s.lastFiredMs ? aiWaitMs : 0));
+        String checkInId = store.getCurrentCheckInId();
         if (outcome == CheckInRules.Outcome.POPUP) {
-            host.showMessage(plan.shortText);
+            host.showCheckIn(plan, checkInId, s.nowMs);
             Log.i(TAG, "due_to_visible_ms="
                 + (System.currentTimeMillis() - visibleFromMs(s.lastFiredMs, s.everyMinutes, unlockAtMs)));
             EchoBuzz.play(ctx);
         }
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
-            int unread = store.getUnreadCount() + 1;
+            int unread = replacedUnread();
             store.setUnreadCount(unread);
             host.setUnread(unread);
-            if (outcome == CheckInRules.Outcome.NOTIFY) CheckInNotifier.post(ctx, plan, unread);
+            if (outcome == CheckInRules.Outcome.NOTIFY) CheckInNotifier.post(ctx, plan, checkInId, s.nowMs);
         }
+        if (outcome == CheckInRules.Outcome.CHAT_ONLY) store.noteAnswered(checkInId); // seen as it lands in the open chat
         unlockAtMs = 0;
         writeInBackground(true);
         CheckInAlarm.schedule(ctx);
@@ -591,10 +599,12 @@ public final class CheckInEngine {
         if (!claim(store, plan, s, tz, day)) return;
         Log.i(TAG, "ai_used=" + (ai != null) + " ai_ms=" + aiMs);
         if (outcome != CheckInRules.Outcome.CHAT_ONLY) {
-            int unread = store.getUnreadCount() + 1;
+            int unread = replacedUnread();
             store.setUnreadCount(unread);
             showUnread(unread);
-            if (outcome == CheckInRules.Outcome.NOTIFY) CheckInNotifier.post(app, plan, unread);
+            if (outcome == CheckInRules.Outcome.NOTIFY) {
+                CheckInNotifier.post(app, plan, store.getCurrentCheckInId(), s.nowMs);
+            }
         }
         writeQuietly(app, api, store, true);
     }
@@ -630,6 +640,8 @@ public final class CheckInEngine {
     /** Everything {@link CheckInRules#decide} needs from the phone as it is now, seen from outside the engine. */
     private static CheckInRules.State liveState(Context ctx, SessionStore store, CheckInPrefs p, long now, TimeZone tz) {
         CheckInRules.State s = baseState(p, now, storedLastFired(store, now), tz);
+        s.everyMinutes = CheckInPacing.nextGapMinutes(s.everyMinutes, store.getIgnoredInARow());
+        s.capReached = capReached(store, now, tz);
         s.signedIn = store.hasSession();
         s.bubbleRunning = FloatState.bubbleRunning;
         s.screenOn = screenUsable(isInteractive(ctx), isKeyguardLocked(ctx));
@@ -642,6 +654,8 @@ public final class CheckInEngine {
     }
 
     private static CheckInPlanner.Plan planFor(SessionStore store, TodaySnapshot data, CheckInRules.State s, TimeZone tz) {
+        String skipped = skippedMealOn(store.getSkippedMeal(), FirestoreJson.dateKey(s.nowMs, tz));
+        if (skipped != null && data.mealTypes != null) data.mealTypes.add(skipped); // not asked again today
         String day = chatDay(s, tz);
         return CheckInPlanner.plan(data, parseTopic(store.getLastTopic()), s.nowMs, tz, s.everyMinutes, s.sleepStartMin,
             s.sleepEndMin, (int) (s.nowMs / MINUTE_MS), day.equals(store.getMorningChatDay()), day.equals(store.getNightChatDay()));
@@ -671,7 +685,9 @@ public final class CheckInEngine {
             if (plan.topic == CheckInPlanner.Topic.MORNING) store.setMorningChatDay(chatDay(s, tz));
             if (plan.topic == CheckInPlanner.Topic.NIGHT) store.setNightChatDay(chatDay(s, tz));
             store.setPendingCheckInText(plan.fullText);
-            store.setPendingCheckInId(newMessageId(today));
+            String id = newMessageId(today);
+            store.setPendingCheckInId(id);
+            store.noteCheckInFired(id, today);
             return true;
         }
     }
@@ -803,18 +819,87 @@ public final class CheckInEngine {
         }
         boolean on = turnedOn(cached, enabled);
         if (on) store.setBubbleRemoved(false);
-        if (on || gapChanged(cached, everyMinutes)) store.setLastFiredMs(System.currentTimeMillis());
+        if (on || gapChanged(cached, everyMinutes)) {
+            store.setLastFiredMs(System.currentTimeMillis());
+            store.resetPacing(); // new settings start fresh: no backoff, a new count for today
+        }
         store.setCachedPrefsJson(CheckInPrefs.merged(cached, enabled, everyMinutes, sleepStart, sleepEnd, waterGoal).toJson());
         RefreshWorker.sync(app);
         onActive(CheckInEngine::reloadPrefs);
         startBubbleWhileVisible(app);
     }
 
-    /** Clears the number, on the bubble if there is one, and the notification. */
+    /** Clears the number, on the bubble if there is one, and the notification. Reading the chat counts as an answer. */
     public static void markRead(Context ctx) {
-        clearUnread(SessionStore.get(ctx.getApplicationContext()));
+        SessionStore store = SessionStore.get(ctx.getApplicationContext());
+        noteAnswered(store, store.getCurrentCheckInId());
+        clearUnread(store);
         CheckInNotifier.cancel(ctx);
         onActive(e -> e.host.setUnread(0));
+        CheckInAlarm.schedule(ctx); // the normal gap is back
+    }
+
+    /**
+     * Any thread. The user answered a check-in (a tap, Later, Tell Echo): the normal gap comes back, and the
+     * number and the notification go. A failed save shows its own notice afterwards.
+     */
+    public static void onAnswered(Context ctx, String checkInId) {
+        Context app = ctx.getApplicationContext();
+        try {
+            SessionStore store = SessionStore.get(app);
+            noteAnswered(store, checkInId);
+            clearUnread(store);
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "could not note the answer");
+            return;
+        }
+        CheckInNotifier.cancel(app);
+        onActive(e -> {
+            e.host.setUnread(0);
+            e.tick(false);
+        });
+        CheckInAlarm.schedule(app);
+    }
+
+    /**
+     * Notes the answer. When that brings back a shorter gap, the wait starts again from now: a check-in that
+     * would have been due long ago under the normal gap must not fire the moment the user answers.
+     */
+    private static void noteAnswered(SessionStore store, String checkInId) {
+        if (!store.noteAnswered(checkInId)) return;
+        store.setLastFiredMs(Math.max(store.getLastFiredMs(), System.currentTimeMillis()));
+    }
+
+    /** Any thread. A short line beside the bubble, if there is one. */
+    static void showOnBubble(String text) {
+        onActive(e -> e.host.showMessage(text));
+    }
+
+    /** What {@link #whileWriting} runs. */
+    interface Write {
+        boolean run();
+    }
+
+    /**
+     * Blocking; call off the main thread. Runs the write holding the one lock the check-in writes share, so an
+     * answer and its check-in never each create today's page. Waits up to waitMs for the lock; false without it.
+     */
+    static boolean whileWriting(long waitMs, Write write) {
+        long until = SystemClock.elapsedRealtime() + waitMs;
+        while (!WRITING.compareAndSet(false, true)) {
+            if (SystemClock.elapsedRealtime() > until) return false;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        try {
+            return write.run();
+        } finally {
+            WRITING.set(false);
+        }
     }
 
     /** The single place sign-out shuts check-ins down. */
@@ -854,6 +939,29 @@ public final class CheckInEngine {
 
     static int allowedGap(int minutes) {
         return FirestoreJson.isCheckInGap(minutes) ? minutes : DEFAULT_GAP;
+    }
+
+    /** The user's gap, stretched by the check-ins ignored in a row. */
+    static int pacedGap(SessionStore store, CheckInPrefs p) {
+        return CheckInPacing.nextGapMinutes(allowedGap(p.everyMinutes), store.getIgnoredInARow());
+    }
+
+    /** Today's check-ins are used up. */
+    static boolean capReached(SessionStore store, long nowMs, TimeZone tz) {
+        int count = CheckInPacing.countToday(store.getCheckInCountDay(), store.getCheckInCount(), nowMs, tz);
+        return !CheckInPacing.allowedToday(count, CheckInPacing.MAX_PER_DAY);
+    }
+
+    /** A new check-in replaces an unanswered one, so the number never goes above 1. */
+    static int replacedUnread() {
+        return 1;
+    }
+
+    /** The meal skipped on this day, from the stored "day|meal", or null. */
+    static String skippedMealOn(String stored, String dayKey) {
+        if (stored == null || dayKey == null || !stored.startsWith(dayKey + "|")) return null;
+        String meal = stored.substring(dayKey.length() + 1);
+        return meal.isEmpty() ? null : meal;
     }
 
     /** Unset seeds to now, so nothing fires the moment the feature starts. A future time means the clock moved back. */

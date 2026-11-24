@@ -15,11 +15,26 @@ public final class CheckInPlanner {
         public final Topic topic;
         public final String shortText;
         public final String fullText;
+        /** For a REMINDER check-in: the reminder it is about, so Done and Snooze can change it. Null otherwise. */
+        public final String reminderId;
+        /** That reminder's due time, or 0. */
+        public final long reminderDueAtMs;
 
         Plan(Topic topic, String shortText, String fullText) {
+            this(topic, shortText, fullText, null, 0L);
+        }
+
+        Plan(Topic topic, String shortText, String fullText, String reminderId, long reminderDueAtMs) {
             this.topic = topic;
             this.shortText = shortText;
             this.fullText = fullText;
+            this.reminderId = reminderId;
+            this.reminderDueAtMs = reminderDueAtMs;
+        }
+
+        /** The same check-in in other words. */
+        Plan withText(String shortText, String fullText) {
+            return new Plan(topic, shortText, fullText, reminderId, reminderDueAtMs);
         }
     }
 
@@ -194,7 +209,8 @@ public final class CheckInPlanner {
                 String when = nameTheDay ? "on " + day + " at " + time : "at " + time;
                 String full = withName(REMINDER[Math.floorMod(step, REMINDER.length)], name)
                     .replace("{when}", when).replace("{title}", soonest.title);
-                return new Plan(topic, reminderShort(soonest.title, nameTheDay ? "on " + day : "at " + time, step), full);
+                return new Plan(topic, reminderShort(soonest.title, nameTheDay ? "on " + day : "at " + time, step), full,
+                    soonest.id, soonest.dueAtMs);
             }
             case MORNING:
                 return say(topic, s.energyLogged ? GOOD_MORNING_WARM : GOOD_MORNING, step, name);
@@ -308,7 +324,7 @@ public final class CheckInPlanner {
         return meal == null || s.mealTypes.contains(meal) ? null : meal;
     }
 
-    private static String mealNow(int minute) {
+    static String mealNow(int minute) {
         if (minute >= BREAKFAST_FROM && minute < BREAKFAST_UNTIL) return "breakfast";
         if (minute >= LUNCH_FROM && minute < LUNCH_UNTIL) return "lunch";
         return minute >= DINNER_FROM ? "dinner" : null;

@@ -190,4 +190,15 @@ public class CheckInEngineTest {
         assertFalse(CheckInEngine.gapChanged(p, 43201));
         assertFalse(CheckInEngine.gapChanged(null, 30));
     }
+
+    @Test public void aNewCheckInReplacesAnUnansweredOneSoTheNumberIsNeverAboveOne() {
+        assertEquals(1, CheckInEngine.replacedUnread());
+    }
+
+    @Test public void aSkippedMealCountsOnlyOnItsDay() {
+        assertEquals("lunch", CheckInEngine.skippedMealOn("2026-11-06|lunch", "2026-11-06"));
+        assertNull(CheckInEngine.skippedMealOn("2026-11-05|lunch", "2026-11-06"));
+        assertNull(CheckInEngine.skippedMealOn(null, "2026-11-06"));
+        assertNull(CheckInEngine.skippedMealOn("2026-11-06|", "2026-11-06"));
+    }
 }

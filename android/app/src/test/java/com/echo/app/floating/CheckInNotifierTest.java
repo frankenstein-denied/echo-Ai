@@ -26,4 +26,18 @@ public class CheckInNotifierTest {
         assertEquals(NotificationManagerCompat.IMPORTANCE_HIGH,
             CheckInNotifier.chimeImportance(NotificationManagerCompat.IMPORTANCE_MAX));
     }
+
+    @Test public void fiveFacesShareOneRow() {
+        assertEquals(5, CheckInNotifier.firstRowCount(CheckInAnswer.options(CheckInPlanner.Topic.MOOD)));
+    }
+
+    @Test public void upToThreeWordAnswersShareOneRow() {
+        assertEquals(3, CheckInNotifier.firstRowCount(CheckInAnswer.options(CheckInPlanner.Topic.REMINDER)));
+        assertEquals(3, CheckInNotifier.firstRowCount(CheckInAnswer.options(CheckInPlanner.Topic.WATER)));
+        assertEquals(2, CheckInNotifier.firstRowCount(CheckInAnswer.options(CheckInPlanner.Topic.OVERVIEW)));
+    }
+
+    @Test public void fourMealAnswersGoTwoAndTwo() {
+        assertEquals(2, CheckInNotifier.firstRowCount(CheckInAnswer.options(CheckInPlanner.Topic.MEAL)));
+    }
 }

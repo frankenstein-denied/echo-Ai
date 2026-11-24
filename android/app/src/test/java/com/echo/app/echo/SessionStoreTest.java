@@ -193,4 +193,63 @@ public class SessionStoreTest {
         assertFalse(store.isBubbleRemoved());
         assertCountersAndCacheCleared();
     }
+
+    @Test public void anUnansweredCheckInCountsAsIgnoredWhenTheNextOneGoesOut() {
+        store.noteCheckInFired("c1", "2026-11-06");
+        assertEquals(0, store.getIgnoredInARow());
+        store.noteCheckInFired("c2", "2026-11-06");
+        assertEquals(1, store.getIgnoredInARow());
+        store.noteCheckInFired("c3", "2026-11-06");
+        assertEquals(2, store.getIgnoredInARow());
+        assertEquals("c3", store.getCurrentCheckInId());
+        assertEquals(3, store.getCheckInCount());
+    }
+
+    @Test public void anAnswerBringsBackTheNormalGap() {
+        store.noteCheckInFired("c1", "2026-11-06");
+        store.noteCheckInFired("c2", "2026-11-06");
+        assertTrue(store.noteAnswered("c2")); // the gap was stretched, and now it is not
+        assertEquals(0, store.getIgnoredInARow());
+        assertFalse(store.noteAnswered("c2"));
+        store.noteCheckInFired("c3", "2026-11-06"); // c2 was answered, so nothing was ignored
+        assertEquals(0, store.getIgnoredInARow());
+    }
+
+    @Test public void anAnswerToAnOlderCheckInStillResetsTheGapButNotTheNewest() {
+        store.noteCheckInFired("c1", "2026-11-06");
+        store.noteCheckInFired("c2", "2026-11-06");
+        store.noteAnswered("c1");
+        assertEquals(0, store.getIgnoredInARow());
+        store.noteCheckInFired("c3", "2026-11-06"); // c2 itself was never answered
+        assertEquals(1, store.getIgnoredInARow());
+    }
+
+    @Test public void theDaysCountStartsOverOnANewLocalDay() {
+        store.noteCheckInFired("c1", "2026-11-06");
+        store.noteCheckInFired("c2", "2026-11-06");
+        store.noteCheckInFired("c3", "2026-11-07");
+        assertEquals("2026-11-07", store.getCheckInCountDay());
+        assertEquals(1, store.getCheckInCount());
+    }
+
+    @Test public void resetPacingClearsTheBackoffAndTheCount() {
+        store.noteCheckInFired("c1", "2026-11-06");
+        store.noteCheckInFired("c2", "2026-11-06");
+        store.resetPacing();
+        assertEquals(0, store.getIgnoredInARow());
+        assertEquals(0, store.getCheckInCount());
+        assertNull(store.getCheckInCountDay());
+    }
+
+    @Test public void signOutClearsThePacing() {
+        signIn("a");
+        store.noteCheckInFired("c1", "2026-11-06");
+        store.noteCheckInFired("c2", "2026-11-06");
+        store.setSkippedMeal("2026-11-06|lunch");
+        store.clearSession();
+        assertEquals(0, store.getIgnoredInARow());
+        assertEquals(0, store.getCheckInCount());
+        assertNull(store.getCurrentCheckInId());
+        assertNull(store.getSkippedMeal());
+    }
 }

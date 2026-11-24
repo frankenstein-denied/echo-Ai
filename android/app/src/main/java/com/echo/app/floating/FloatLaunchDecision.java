@@ -1,6 +1,6 @@
 package com.echo.app.floating;
 
-/** Pure decision for a Talk / Type tap on the pinned notification. */
+/** Pure decision for a Talk / Type tap on the pinned notification, or a check-in's Tell Echo. */
 public final class FloatLaunchDecision {
     public enum Outcome {
         OPEN_APP,
@@ -8,6 +8,8 @@ public final class FloatLaunchDecision {
         REQUEST_MIC,
         START_CALL,
         SHOW_CHATHEAD,
+        /** A check-in's Tell Echo: the bubble's chat, open, with the question in it. */
+        OPEN_CHAT,
         ALREADY_RUNNING,
         FINISHING_LAST_CALL,
         BLOCKED_BY_APP_CALL
@@ -19,6 +21,8 @@ public final class FloatLaunchDecision {
                                  boolean micGranted, boolean callRunning, boolean appCallActive,
                                  boolean callFinishing) {
         if (!signedIn) return Outcome.OPEN_APP;
+        boolean chat = FloatLaunchActivity.ACTION_CHAT.equals(action);
+        if (chat) return overlayGranted ? Outcome.OPEN_CHAT : Outcome.OPEN_APP; // the answer can't wait for a setting
         if (!overlayGranted) return Outcome.OPEN_OVERLAY_SETTINGS;
         boolean talk = FloatLaunchActivity.ACTION_TALK.equals(action);
         if (!talk) return Outcome.SHOW_CHATHEAD;
