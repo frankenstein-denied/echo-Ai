@@ -2,6 +2,7 @@ import type { ConnectorStatus } from './connectors'
 import type { EchoItemsContext, EchoMealType, EchoRequest } from './types'
 import { dropUnansweredCheckIns } from './today-orb'
 import { DEFAULT_LANGUAGE, languageCode, languagePromptName } from './languages'
+import { goalProgress } from './goal-progress'
 
 const PROFILE_MAX = 1500
 const RECENT_MAX = 20
@@ -177,7 +178,8 @@ export function buildItemsContext(src: RefSource, nowMs: number, timeZone: strin
         .map((m) => ({ text: clipText(m?.text, ITEM_CAPS.milestone), done: !!m?.done }))
         .filter((m) => m.text)
         .slice(0, ITEM_CAPS.milestones)
-      const progress = Math.round(Math.min(100, Math.max(0, typeof g.progress === 'number' && Number.isFinite(g.progress) ? g.progress : 0)))
+      // Derived from the full sub-goal list (before the cap below), never the stored number.
+      const progress = goalProgress({ progress: typeof g.progress === 'number' ? g.progress : undefined, milestones: Array.isArray(g.milestones) ? g.milestones : [] })
       return { ref: addRef(map, 'goal', g.id, title), title, progress, milestones }
     })
   const notes = [...src.notes]

@@ -17,14 +17,14 @@ describe('capJson', () => {
 })
 
 describe('shapeGoals', () => {
-  it('newest first, progress clamped, milestones done/total, optional targetDate', () => {
+  it('newest first, progress derived from sub-goals, milestones done/total, optional targetDate', () => {
     const out = shapeGoals([
-      { title: 'Old', category: 'Health', progress: 40, milestones: [{ done: true }, { done: false }], updatedAtMs: 1 },
+      { title: 'Old', category: 'Health', progress: 40, milestones: [{ text: 'a', done: true }, { text: 'b', done: false }], updatedAtMs: 1 },
       { title: 'New', progress: 140, targetDate: '2027-03-01', updatedAtMs: 2 },
     ])
     expect(out).toEqual([
       { title: 'New', category: 'Personal', progress: 100, targetDate: '2027-03-01', milestones: '0/0' },
-      { title: 'Old', category: 'Health', progress: 40, milestones: '1/2' },
+      { title: 'Old', category: 'Health', progress: 50, milestones: '1/2' },
     ])
   })
   it('stays under the size cap', () => {
@@ -130,13 +130,13 @@ describe('shapeMemories', () => {
 describe('buildSnapshot', () => {
   it('summarizes active goals, today reminders and today health in a few short lines', () => {
     const s = buildSnapshot(
-      [{ title: 'Half marathon', progress: 30, updatedAtMs: 2 }, { title: 'Done goal', progress: 100, updatedAtMs: 1 }],
+      [{ title: 'Half marathon', progress: 30, milestones: [{ text: '5K', done: true }, { text: '10K', done: false }, { text: '21K', done: false }], updatedAtMs: 2 }, { title: 'Done goal', progress: 100, updatedAtMs: 1 }],
       [{ title: 'Call Mama', dueAtMs: at('2026-10-25T20:30:00+08:00') }],
       [{ date: '2026-10-25', sleepMinutes: 360 }],
       NOW,
       TZ,
     )
-    expect(s).toBe('Active goals: Half marathon (30%)\nReminders today: Call Mama at Sun, Oct 25, 8:30 PM\nHealth today: sleepMinutes 360')
+    expect(s).toBe('Active goals: Half marathon (33%)\nReminders today: Call Mama at Sun, Oct 25, 8:30 PM\nHealth today: sleepMinutes 360')
   })
   it('falls back to next reminders and says when nothing is there', () => {
     const s = buildSnapshot([], [{ title: 'Dentist', dueAtMs: at('2026-10-27T09:00:00+08:00') }], [], NOW, TZ)

@@ -38,11 +38,13 @@ describe('applyMilestone doneAt', () => {
 
 describe('overallProgress', () => {
   it('is 0 for empty', () => expect(overallProgress([])).toBe(0))
-  it('rounds the mean', () => expect(overallProgress([{ progress: 10 }, { progress: 15 }])).toBe(13))
+  it('averages derived progress, rounded', () =>
+    expect(overallProgress([{ progress: 100 }, { progress: 0, milestones: [{ text: 'a', done: true }, { text: 'b', done: true }, { text: 'c', done: false }] }, { progress: 0 }])).toBe(56))
+  it('ignores stored partial percentages on goals without sub-goals', () => expect(overallProgress([{ progress: 10 }, { progress: 15 }])).toBe(0))
   it('clamps and handles non-finite', () => {
     expect(overallProgress([{ progress: 200 }])).toBe(100)
     expect(overallProgress([{ progress: -50 }])).toBe(0)
-    expect(overallProgress([{ progress: NaN }, { progress: 50 }])).toBe(25)
+    expect(overallProgress([{ progress: NaN }, { progress: 100 }])).toBe(50)
   })
 })
 

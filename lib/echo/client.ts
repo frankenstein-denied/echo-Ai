@@ -49,6 +49,7 @@ import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
 import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
 import { withDone } from './goals-helpers'
+import { goalWrite } from './goal-progress'
 
 export function localIsoWithOffset(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -229,14 +230,16 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
       case 'goal_update':
         await run('goal', opts.refs?.entries[a.ref]?.title ?? a.ref, async () => {
           const { id } = target(a.ref, 'goal')
-          const fields: { progress?: number; title?: string; milestones?: Milestone[] } = {}
-          if (a.progress !== undefined) fields.progress = a.progress
+          // Progress is never taken as given: it is derived from the sub-goals (or the done state) and stored.
+          const snap = await getDoc(doc(goalsCol(uid), id))
+          if (!snap.exists()) throw new ApplyError('that goal no longer exists')
+          const cur = snap.data()
+          const curMilestones: Milestone[] = Array.isArray(cur.milestones) ? cur.milestones : []
+          const fields: { progress?: number; title?: string; milestones?: Milestone[] } = goalWrite(
+            { progress: cur.progress, milestones: curMilestones },
+            { ...(a.progress !== undefined ? { progress: a.progress } : {}), ...(a.milestoneDone ? { milestones: applyMilestone(curMilestones, a.milestoneDone) } : {}) },
+          )
           if (a.title) fields.title = a.title
-          if (a.milestoneDone) {
-            const snap = await getDoc(doc(goalsCol(uid), id))
-            if (!snap.exists()) throw new ApplyError('that goal no longer exists')
-            fields.milestones = applyMilestone(Array.isArray(snap.data().milestones) ? snap.data().milestones : [], a.milestoneDone)
-          }
           await updateGoal(uid, id, fields)
           if (a.title) addRef(opts.refs!, 'goal', id, a.title)
           return { op: 'update', ref: a.ref }

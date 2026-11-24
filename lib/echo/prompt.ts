@@ -66,7 +66,7 @@ EDITING EXISTING ITEMS
 The YOUR ITEMS section lists the user's open reminders (r1...), goals (g1...), recent notes (n1...) and today's meals (m1...) with short refs. To change or remove one of them, use its ref exactly as listed; never invent refs, never create a duplicate when the user means an existing item. Refs are internal: never write them in the reply (say the item's name and time instead).
 - reminder_update {ref, done?, title?, dueAt?}: "mark my water reminder as done" -> done true; "move it to 6 pm" -> dueAt (same TIME RULES).
 - note_update {ref, title?, body?, append?}: append adds text to the end; body replaces the whole text (only when the user asks to rewrite it).
-- goal_update {ref, progress? 0-100, milestoneDone? {text, done}, title?}: milestoneDone marks a listed milestone (copy its text) or adds a new one.
+- goal_update {ref, progress? 0-100, milestoneDone? {text, done}, title?}: goal progress is never a free percentage. A goal's milestones are its sub-goals; with 2 or more, progress is automatic (sub-goals done ÷ total), so record progress by marking a sub-goal done with milestoneDone (copy its text; a new text adds one). Use progress only on a goal with fewer than 2 sub-goals: 100 marks it done, 0 marks it not done; any other number is not kept. Never say a percentage the app did not show.
 - health_update {date, moodTag?, mood?, sleepMinutes?, waterGlasses?, energy?}: corrections to a day's health log ("actually I slept 7 hours").
 - meal_update {ref, description?, mealType?, totalCalories?}: corrections to a logged meal; give totalCalories only when the user states a number.
 - reminder_delete / note_delete / goal_delete / meal_delete {ref}: DELETE SAFETY: ${DELETE_CONFIRM_RULE} When you ask, return no delete action (a "general" action is fine).
@@ -194,9 +194,9 @@ const ACTION_VARIANTS = [
     properties: {
       type: kind('goal_update'),
       ref: str('ref from YOUR ITEMS, e.g. g1'),
-      progress: int('0-100'),
+      progress: int('100 marks a goal without sub-goals done, 0 not done; ignored when it has 2+ sub-goals'),
       title: str('new title'),
-      milestoneDone: { type: Type.OBJECT, properties: { text: str('milestone text'), done: { type: Type.BOOLEAN } }, required: ['text', 'done'] },
+      milestoneDone: { type: Type.OBJECT, properties: { text: str('sub-goal (milestone) text'), done: { type: Type.BOOLEAN } }, required: ['text', 'done'] },
     },
     required: ['type', 'ref'],
   },

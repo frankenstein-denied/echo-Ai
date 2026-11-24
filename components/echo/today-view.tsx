@@ -21,6 +21,7 @@ import { MobileTitleBar } from './mobile-tabbar'
 import { OrbSwatch } from './memory-orb'
 import { Skeleton } from './ui'
 import { useDay } from './use-day'
+import { goalProgress } from '@/lib/echo/goal-progress'
 import type { TabView } from './mobile-tabbar'
 
 type ReminderRow = { id: string; title: string; dueMs: number }
@@ -88,7 +89,7 @@ export function TodayView({ user, profile, onNavigate, onOpenPage }: { user: Use
           setGoals(
             snap.docs.map((d) => {
               const g = d.data({ serverTimestamps: 'estimate' })
-              return { id: d.id, title: g.title, progress: Math.round(Number(g.progress) || 0), nextMilestone: (g.milestones ?? []).find((m) => !m.done)?.text }
+              return { id: d.id, title: g.title, progress: goalProgress(g), nextMilestone: (g.milestones ?? []).find((m) => !m.done)?.text }
             }),
           ),
         (e) => {

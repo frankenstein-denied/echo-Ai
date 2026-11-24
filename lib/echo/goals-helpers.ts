@@ -1,6 +1,7 @@
 import type { Milestone } from '@/lib/firestore'
 import { weekStartMs } from './sidebar'
 import type { Period } from './period'
+import { goalProgress, type GoalProgressLike } from './goal-progress'
 
 /** Builds a milestone with the given done state; doneAt is only present when done (Firestore rejects undefined). */
 export function withDone(m: Milestone, done: boolean, nowMs: number): Milestone {
@@ -13,10 +14,10 @@ export function toggleMilestone(list: Milestone[], i: number, nowMs: number): Mi
   return list.map((m, idx) => (idx === i ? withDone(m, !m.done, nowMs) : m))
 }
 
-export function overallProgress(goals: { progress: number }[]): number {
+/** Average of every goal's derived progress (sub-goals, or done/not done), rounded. */
+export function overallProgress(goals: GoalProgressLike[]): number {
   if (!goals.length) return 0
-  const sum = goals.reduce((s, g) => s + (Number.isFinite(g.progress) ? Math.min(100, Math.max(0, g.progress)) : 0), 0)
-  return Math.round(sum / goals.length)
+  return Math.round(goals.reduce((s, g) => s + goalProgress(g), 0) / goals.length)
 }
 
 const PERIOD_WORD: Record<Period, string> = { today: 'today', week: 'this week', month: 'this month', year: 'this year', all: 'this year' }

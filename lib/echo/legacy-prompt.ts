@@ -1,6 +1,7 @@
 import { Type } from '@google/genai'
 import type { SharedLegacy } from '@/lib/legacy-store'
 import { healthLogParts } from './legacy'
+import { goalProgress } from './goal-progress'
 
 // Prompts, request parsing and output sanitizing for the Legacy routes:
 // POST /api/legacy/voice (how the owner types) and POST /api/legacy/chat (the memorial chat).
@@ -298,7 +299,7 @@ export function buildLegacyContext(shared: SharedLegacy): string {
       ...goals.map((g) => {
         const done = (g.milestones ?? []).filter((m) => m.done).map((m) => flat(m.text, 100))
         const next = (g.milestones ?? []).find((m) => !m.done)
-        return `- ${flat(g.title, 200)} (${Math.round(g.progress ?? 0)}%${g.targetDate ? `, target ${flat(g.targetDate, 20)}` : ''})${done.length ? `; done: ${done.join(', ')}` : ''}${next ? `; next: ${flat(next.text, 100)}` : ''}`
+        return `- ${flat(g.title, 200)} (${goalProgress(g)}%${g.targetDate ? `, target ${flat(g.targetDate, 20)}` : ''})${done.length ? `; done: ${done.join(', ')}` : ''}${next ? `; next: ${flat(next.text, 100)}` : ''}`
       }),
     ])
   }

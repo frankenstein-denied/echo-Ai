@@ -41,7 +41,8 @@ describe('buildItemsContext', () => {
     const { items, refs } = buildItemsContext(src(), NOW, 'Asia/Manila')
     expect(items.reminders.map((r) => [r.ref, r.title])).toEqual([['r1', 'Drink water'], ['r2', 'Stretch']])
     expect(items.reminders[0].due).toBe('Mon, Oct 26, 9:15 AM')
-    expect(items.goals).toEqual([{ ref: 'g1', title: 'Half marathon', progress: 33, milestones: [{ text: 'Run 10 km', done: true }] }])
+    // One real sub-goal: progress is the done state (stored 33.4 is not done), never the stored partial number.
+    expect(items.goals).toEqual([{ ref: 'g1', title: 'Half marathon', progress: 0, milestones: [{ text: 'Run 10 km', done: true }] }])
     expect(items.notes).toHaveLength(10)
     expect(items.notes[0]).toEqual({ ref: 'n1', title: 'Note 13' })
     expect(items.health).toBe('mood 8 (happy), sleep 420 min')

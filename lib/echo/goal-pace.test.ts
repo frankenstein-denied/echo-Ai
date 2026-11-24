@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { goalFraction, goalMeta, nextStepLine, paceLine, progressStep, waterWeekLine, yearFraction } from './goal-pace'
+import { goalFraction, goalMeta, nextStepLine, paceLine, waterWeekLine, yearFraction } from './goal-pace'
 
 describe('paceLine', () => {
   it('says behind when progress trails the year by more than 10 points', () => {
@@ -20,45 +20,13 @@ describe('paceLine', () => {
   })
 })
 
-describe('progressStep', () => {
-  it('steps a count-like goal by one item', () => {
-    const s = progressStep({ title: 'Read 12 books', progress: 0 })
-    expect(s.label).toBe('+1 book')
-    expect(s.next).toBeCloseTo(100 / 12)
-  })
-  it('snaps to the next whole item and reaches exactly 100', () => {
-    expect(progressStep({ title: 'Read 12 books', progress: 75 }).next).toBeCloseTo(75 + 100 / 12)
-    expect(progressStep({ title: 'Read 12 books', progress: 95 }).next).toBe(100)
-    expect(progressStep({ title: 'Read 12 books', progress: 100 }).next).toBe(100)
-  })
-  it('singularises the item word', () => {
-    expect(progressStep({ title: 'Take 20 classes', progress: 0 }).label).toBe('+1 class')
-    expect(progressStep({ title: 'Visit 5 countries', progress: 0 }).label).toBe('+1 country')
-    expect(progressStep({ title: 'Meditate 30 days', progress: 0 }).label).toBe('+1 day')
-  })
-  it('falls back to + Progress (+10, capped at 100) for other goals', () => {
-    expect(progressStep({ title: 'Run a 10K', progress: 60 })).toEqual({ label: '+ Progress', next: 70 })
-    expect(progressStep({ title: 'Save ₱50,000', progress: 30 })).toEqual({ label: '+ Progress', next: 40 })
-    expect(progressStep({ title: 'Save ₱1,200 pesos', progress: 30 })).toEqual({ label: '+ Progress', next: 40 })
-    expect(progressStep({ title: 'Learn Spanish', progress: 95 })).toEqual({ label: '+ Progress', next: 100 })
-  })
-  it('ignores units and amounts that are not countable steps', () => {
-    expect(progressStep({ title: 'Walk 30 minutes a day', progress: 0 }).label).toBe('+ Progress')
-    expect(progressStep({ title: 'Lose 5 kg', progress: 0 }).label).toBe('+ Progress')
-    expect(progressStep({ title: 'Walk 10000 steps', progress: 0 }).label).toBe('+ Progress')
-    expect(progressStep({ title: 'Do 1 thing', progress: 0 }).label).toBe('+ Progress')
-  })
-})
-
 describe('goalMeta', () => {
-  it('counts items for count-like goals', () => {
-    expect(goalMeta({ title: 'Read 12 books', progress: 75, milestones: [] })).toBe('9 of 12')
+  it('counts sub-goals and shows the due date', () => {
+    expect(goalMeta({ progress: 60, milestones: [{ text: 'Run 5K', done: true }, { text: 'Run 8K', done: false }], targetDate: '2026-12-20' })).toBe('1 of 2 sub-goals · due Dec 20')
   })
-  it('shows the next milestone and the due date', () => {
-    expect(goalMeta({ title: 'Run a 10K', progress: 60, milestones: [{ text: 'Run 5K', done: true }, { text: 'Run 8K', done: false }], targetDate: '2026-12-20' })).toBe('Next: Run 8K · due Dec 20')
-  })
-  it('falls back to the percent', () => {
-    expect(goalMeta({ title: 'Learn Spanish', progress: 42.4, milestones: [] })).toBe('42%')
+  it('says done or not done without sub-goals (stored percentages no longer show)', () => {
+    expect(goalMeta({ progress: 42.4, milestones: [] })).toBe('Not done yet')
+    expect(goalMeta({ progress: 100, milestones: [{ text: 'only one', done: false }] })).toBe('Done')
   })
 })
 
@@ -81,10 +49,17 @@ describe('goalFraction', () => {
 describe('nextStepLine', () => {
   it('names the next milestone of the goal furthest behind', () => {
     const goals = [
-      { title: 'Read 12 books', progress: 80, milestones: [] },
-      { title: 'Run a 10K', progress: 20, milestones: [{ text: 'Run 8K', done: false }] },
+      { title: 'Read 12 books', progress: 80, milestones: [{ text: 'Book 1', done: true }, { text: 'Book 2', done: true }, { text: 'Book 3', done: false }] },
+      { title: 'Run a 10K', progress: 20, milestones: [{ text: 'Run 5K', done: true }, { text: 'Run 8K', done: false }] },
     ]
     expect(nextStepLine(goals)).toBe('Next: Run 8K, for Run a 10K.')
+  })
+  it('derives progress from sub-goals, not the stored value', () => {
+    const goals = [
+      { title: 'A', progress: 0, milestones: [{ text: 'a1', done: true }, { text: 'a2', done: true }] },
+      { title: 'B', progress: 100, milestones: [{ text: 'b1', done: false }, { text: 'b2', done: false }] },
+    ]
+    expect(nextStepLine(goals)).toBe('Next: b1, for B.')
   })
   it('suggests a push when the goal has no open milestone', () => {
     expect(nextStepLine([{ title: 'Learn Spanish', progress: 10, milestones: [] }])).toBe('Give “Learn Spanish” a small push today.')

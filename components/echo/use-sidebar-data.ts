@@ -6,14 +6,9 @@ import { diaryPagesCol, goalsCol, notesCol, remindersCol } from '@/lib/firestore
 import { dueTodayCount, weekStartMs, weekStrip, type WeekDay, type WeekPage } from '@/lib/echo/sidebar'
 import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
+import { overallProgress } from '@/lib/echo/goals-helpers'
 
 type DueItem = { dueMs: number; done: boolean }
-
-/** Average progress (0-100, rounded) over the given goals, or null with none. */
-export function goalsPercent(progress: number[]): number | null {
-  const ok = progress.filter((p) => Number.isFinite(p)).map((p) => Math.min(100, Math.max(0, p)))
-  return ok.length ? Math.round(ok.reduce((a, b) => a + b, 0) / ok.length) : null
-}
 
 /**
  * Live data for the sidebar: reminders due today (or overdue), this week's diary strip, the notes count and the
@@ -100,7 +95,7 @@ export function useSidebarData(uid: string | undefined, refreshKey?: string): { 
     }
     return onSnapshot(
       goalsCol(uid),
-      (snap) => setGoalsPct(goalsPercent(snap.docs.map((d) => Number(d.data().progress)))),
+      (snap) => setGoalsPct(snap.empty ? null : overallProgress(snap.docs.map((d) => d.data()))),
       (err) => {
         console.error('Echo: sidebar goals listener failed', err)
         setGoalsPct(null)

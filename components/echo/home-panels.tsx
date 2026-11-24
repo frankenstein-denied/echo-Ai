@@ -9,6 +9,7 @@ import { ORB_COLOR } from '@/lib/echo/orbs'
 import { Button, IconButton, Skeleton } from './ui'
 import type { HomeView } from './home'
 import { GlowDot, ProgressRing, TimeChip } from './glow'
+import { goalProgress } from '@/lib/echo/goal-progress'
 
 export function localDateString(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -138,9 +139,9 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
       ) : (
         goals.map((g) => (
           <button key={g.id} onClick={() => onNavigate('Goals')} className="mt-3 flex min-h-11 w-full items-center gap-3 rounded-md text-left max-lg:mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-            <ProgressRing value={g.progress} size={28} label={`${Math.round(g.progress)}% complete`} />
+            <ProgressRing value={goalProgress(g)} size={28} label={`${goalProgress(g)}% complete`} />
             <span className="min-w-0 flex-1 truncate text-sm text-foreground">{g.title}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{Math.round(g.progress)}%</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{goalProgress(g)}%</span>
           </button>
         ))
       )}
