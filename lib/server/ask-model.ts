@@ -9,11 +9,27 @@ const aad = (uid: string, provider: AiProvider) => `ai-key:${uid}:${provider}`
 export const sealAiKey = (uid: string, provider: AiProvider, key: string) => seal({ key }, aad(uid, provider))
 const openAiKey = (uid: string, provider: AiProvider, sealed: string) => open<{ key?: string }>(sealed, aad(uid, provider))?.key ?? null
 
-const OPENAI_STYLE: Partial<Record<AiProvider, { url: string; model: string }>> = {
-  chatgpt: { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
-  perplexity: { url: 'https://api.perplexity.ai/chat/completions', model: 'sonar' },
-  groq: { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile' },
-  openrouter: { url: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/auto' },
+// Providers retire models (Groq shut llama-3.3-70b-versatile down on 2026-08-16; OpenAI shuts gpt-4o-mini down on
+// 2027-01-14). Each id can be replaced on Vercel with ASK_MODEL_<PROVIDER> (e.g. ASK_MODEL_CHATGPT) without a release.
+const MODELS: Record<AiProvider, string> = {
+  claude: 'claude-sonnet-5-5',
+  gemini: 'gemini-3.5-flash-lite',
+  chatgpt: 'gpt-4o-mini',
+  perplexity: 'sonar',
+  groq: 'openai/gpt-oss-120b',
+  openrouter: 'openrouter/auto',
+}
+
+/** The model id to ask: the ASK_MODEL_<PROVIDER> env override when set, else the built-in one. */
+export function askModelId(provider: AiProvider, env: Record<string, string | undefined> = process.env): string {
+  return env[`ASK_MODEL_${provider.toUpperCase()}`]?.trim() || MODELS[provider]
+}
+
+const OPENAI_STYLE_URL: Partial<Record<AiProvider, string>> = {
+  chatgpt: 'https://api.openai.com/v1/chat/completions',
+  perplexity: 'https://api.perplexity.ai/chat/completions',
+  groq: 'https://api.groq.com/openai/v1/chat/completions',
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
 }
 const SYSTEM = 'Answer in at most 5 short sentences, plainly.'
 
@@ -22,7 +38,7 @@ async function ask(provider: AiProvider, key: string, question: string, signal: 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 500, system: SYSTEM, messages: [{ role: 'user', content: question }] }),
+      body: JSON.stringify({ model: askModelId('claude'), max_tokens: 500, system: SYSTEM, messages: [{ role: 'user', content: question }] }),
       signal,
     })
     if (!r.ok) throw new Error(String(r.status))
@@ -30,7 +46,7 @@ async function ask(provider: AiProvider, key: string, question: string, signal: 
     return (d.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n')
   }
   if (provider === 'gemini') {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent', {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(askModelId('gemini'))}:generateContent`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: 'user', parts: [{ text: question }] }] }),
@@ -40,11 +56,10 @@ async function ask(provider: AiProvider, key: string, question: string, signal: 
     const d = (await r.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
     return (d.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('')
   }
-  const cfg = OPENAI_STYLE[provider]!
-  const r = await fetch(cfg.url, {
+  const r = await fetch(OPENAI_STYLE_URL[provider]!, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: cfg.model, max_tokens: 500, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: question }] }),
+    body: JSON.stringify({ model: askModelId(provider), max_tokens: 500, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: question }] }),
     signal,
   })
   if (!r.ok) throw new Error(String(r.status))
@@ -73,6 +88,8 @@ export async function resolveAskModel(res: EchoResponse, deps: { uid: string; ai
     const status = (err as Error)?.message
     console.warn(`[echo] ask ${action.provider} failed:`, status)
     if (status === '401' || status === '403') return done(`${name} turned down your API key. Check it in Connectors.`, `${name}: key refused`)
+    // A retired or renamed model: the fix is a new ASK_MODEL_<PROVIDER> id, not the user's key.
+    if (status === '404') return done(`The ${name} model Echo asks for isn't available any more. Please tell the Echo team.`, `${name}: model not found`)
     if (status === '429') return done(`${name} says you're over your limit right now. Try again later.`, `${name}: rate limited`)
     return done(`I couldn't reach ${name} just now. Try again in a moment.`, `${name} failed`)
   }
