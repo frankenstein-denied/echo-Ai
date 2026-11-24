@@ -2,24 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, orderBy, query } from 'firebase/firestore'
-import { Plus, Target, Trash2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, Briefcase, HeartPulse, Moon, Palette, PiggyBank, Plus, Target, Trash2, Users, X, type LucideIcon } from 'lucide-react'
 import { addGoal, deleteGoal, goalsCol, updateGoal, type Goal } from '@/lib/firestore'
-import { areaShares, debounce, goalsInPeriod, type Debounced } from '@/lib/echo/view-helpers'
-import { DEFAULT_PERIOD, emptyPeriodText, PERIOD_OPTIONS, periodElapsed, type Period } from '@/lib/echo/period'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Segmented, Select, Skeleton } from './ui'
+import { debounce, type Debounced } from '@/lib/echo/view-helpers'
+import { goalFraction, goalMeta, nextStepLine, paceLine, progressStep, yearFraction } from '@/lib/echo/goal-pace'
+import { Alert, Button, Card, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, Select, Skeleton } from './ui'
 import { useDay } from './use-day'
 import { useIsMobile } from './use-mobile'
 import { glowCardStyle, goalSubtitle } from '@/lib/echo/glow'
 import { KindTag, ProgressRing } from './glow'
 import { ORB_COLOR } from '@/lib/echo/orbs'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
-import { milestonePath, milestonesDoneThisWeek, overallProgress, paceLine, periodWord, toggleMilestone } from '@/lib/echo/goals-helpers'
+import { milestonePath, milestonesDoneThisWeek, overallProgress, toggleMilestone } from '@/lib/echo/goals-helpers'
 import { newlyDone, playCue } from '@/lib/echo/cues'
 
 type GoalRow = Goal & { id: string }
 
 const AREAS = ['Personal', 'Career', 'Health', 'Learning', 'Family', 'Friends', 'Creativity', 'Money', 'Rest']
-const AREA_COLORS = ['bg-primary', 'bg-success', 'bg-warning', 'bg-info', 'bg-node-person', 'bg-node-interest']
 
 const AMBER_GLOW = `drop-shadow(0 0 3px color-mix(in srgb, ${ORB_COLOR.goal} 60%, transparent))`
 
@@ -191,17 +190,70 @@ function GoalCard({ uid, goal, onError }: { uid: string; goal: GoalRow; onError:
   )
 }
 
+const AREA_LOOK: Record<string, { icon: LucideIcon; color: string }> = {
+  Health: { icon: HeartPulse, color: ORB_COLOR.health },
+  Learning: { icon: BookOpen, color: ORB_COLOR.note },
+  Money: { icon: PiggyBank, color: ORB_COLOR.person },
+  Career: { icon: Briefcase, color: ORB_COLOR.goal },
+  Family: { icon: Users, color: ORB_COLOR.person },
+  Friends: { icon: Users, color: ORB_COLOR.person },
+  Creativity: { icon: Palette, color: ORB_COLOR.interest },
+  Rest: { icon: Moon, color: ORB_COLOR.interest },
+}
+const DEFAULT_LOOK = { icon: Target, color: ORB_COLOR.goal }
+const lookOf = (area: string) => AREA_LOOK[area] ?? DEFAULT_LOOK
+
+/** One slim goal: icon, title, next step, bar, and the one-tap progress button. Tapping the rest opens the detail. */
+function GoalSlim({ goal, onOpen, onStep }: { goal: GoalRow; onOpen: () => void; onStep: (next: number) => void }) {
+  const { icon: Icon, color } = lookOf(goal.category)
+  const pct = Math.round(Math.min(100, Math.max(0, goal.progress)))
+  const done = pct >= 100
+  const step = progressStep(goal)
+  return (
+    <li className="relative rounded-2xl border border-border bg-surface px-3 pb-3 pt-2.5 transition-[filter] hover:brightness-125">
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ background: `color-mix(in srgb, ${color} 14%, transparent)`, color }}>
+          <Icon size={17} />
+        </span>
+        {/* The whole card opens the detail (stretched ::after); the progress button sits above it. */}
+        <button type="button" onClick={onOpen} className={`min-w-0 flex-1 text-left after:absolute after:inset-0 after:rounded-2xl ${FOCUS_RING}`}>
+          <span className="block truncate text-[15px] font-semibold text-foreground lg:text-sm">{goal.title}</span>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">{goalMeta(goal)}</span>
+        </button>
+        {done ? (
+          <span className="relative shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ color }}>
+            Done
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onStep(step.next)}
+            aria-label={`${step.label} for ${goal.title}`}
+            className={`relative inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-primary/40 bg-primary-soft px-3.5 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground lg:min-h-8 ${FOCUS_RING}`}
+          >
+            {step.label}
+          </button>
+        )}
+      </div>
+      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-label={`${goal.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+        <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, background: color, boxShadow: pct > 0 ? `0 0 8px color-mix(in srgb, ${color} 50%, transparent)` : undefined }} />
+      </div>
+    </li>
+  )
+}
+
 export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: string; focusGoalId?: string | null; onFocusHandled?: () => void }) {
   const day = useDay()
   const [goals, setGoals] = useState<GoalRow[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [error, setError] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [area, setArea] = useState('Personal')
   const [target, setTarget] = useState('')
   const [adding, setAdding] = useState(false)
-  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
-  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const q = query(goalsCol(uid), orderBy('createdAt', 'desc'))
@@ -218,32 +270,37 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
     )
   }, [uid])
 
-  const shown = useMemo(
-    () => goalsInPeriod((goals ?? []).map((g) => ({ ...g, createdMs: g.createdAt?.toMillis?.() ?? null, updatedMs: g.updatedAt?.toMillis?.() ?? null })), period, new Date()),
-    [goals, period, day],
-  )
-
-  // Deep link (?goal=<id>): make sure the goal is listed (widen to "all" if the period hides it), scroll to it, ring it ~2 s.
+  // Deep link (?goal=<id>): open that goal's detail.
   useEffect(() => {
     if (!focusGoalId || goals === null) return
-    if (!goals.some((g) => g.id === focusGoalId)) return onFocusHandled?.()
-    if (!shown.some((g) => g.id === focusGoalId)) return setPeriod('all')
-    setHighlightId(focusGoalId)
-    document.getElementById(`goal-${focusGoalId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (goals.some((g) => g.id === focusGoalId)) setOpenId(focusGoalId)
     onFocusHandled?.()
-  }, [focusGoalId, goals, shown, onFocusHandled])
-  useEffect(() => {
-    if (!highlightId) return
-    const t = setTimeout(() => setHighlightId(null), 2000)
-    return () => clearTimeout(t)
-  }, [highlightId])
+  }, [focusGoalId, goals, onFocusHandled])
 
-  const shares = useMemo(() => areaShares(goals ?? []), [goals])
-  const now = new Date()
-  // The ring and pace line follow the selected period: only the goals in it, against how much of it has passed.
-  const goalsPct = overallProgress(shown)
-  const elapsed = periodElapsed(period, now)
-  const weekDone = milestonesDoneThisWeek(goals ?? [], now)
+  useEffect(() => {
+    if (formOpen) titleRef.current?.focus()
+  }, [formOpen])
+
+  const list = useMemo(() => goals ?? [], [goals])
+  const opened = openId ? list.find((g) => g.id === openId) ?? null : null
+
+  // If the open goal disappears (deleted), return to the list.
+  useEffect(() => {
+    if (openId && goals !== null && !opened) setOpenId(null)
+  }, [openId, goals, opened])
+
+  // `day` refreshes the pace words when the date rolls over.
+  const { goalsPct, weekDone, behind, active, nowMs } = useMemo(() => {
+    const t = Date.now()
+    return {
+      nowMs: t,
+      goalsPct: overallProgress(list),
+      weekDone: milestonesDoneThisWeek(list, new Date(t)),
+      active: list.filter((g) => g.progress < 100).length,
+      behind: list.filter((g) => g.progress < 100 && paceLine(g.progress, goalFraction({ createdMs: g.createdAt?.toMillis?.() ?? null, targetDate: g.targetDate }, t)) === 'A bit behind the year').length,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, day])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -255,6 +312,7 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
       await addGoal(uid, { title: t.slice(0, 500), category: area, ...(target ? { targetDate: target } : {}) })
       setTitle('')
       setTarget('')
+      setFormOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add the goal.')
     } finally {
@@ -262,26 +320,67 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
     }
   }
 
+  const step = (g: GoalRow, next: number) => {
+    if (next >= 100 && g.progress < 100) playCue('goal')
+    updateGoal(uid, g.id, { progress: next }).catch((e) => setError(e instanceof Error ? e.message : 'Could not save progress.'))
+  }
+
+  if (opened) {
+    return (
+      <div className="animate-in">
+        <div className="mb-3">
+          <Button variant="ghost" icon={ArrowLeft} onClick={() => setOpenId(null)} className="-ml-2 max-lg:h-11">
+            All goals
+          </Button>
+        </div>
+        {error && (
+          <div className="mb-4">
+            <Alert variant="danger">{error}</Alert>
+          </div>
+        )}
+        <div className="max-w-xl">
+          <GoalCard key={opened.id} uid={uid} goal={opened} onError={setError} />
+        </div>
+      </div>
+    )
+  }
+
+  const oneLiner =
+    goals === null ? undefined
+    : list.length === 0 ? 'No goals yet'
+    : active === 0 ? `${list.length} done`
+    : `${active} active${behind ? ` · ${behind} ${behind === 1 ? 'needs' : 'need'} you` : ''}`
+
   return (
     <div className="animate-in">
-      <PageHeader title="Goals" description="Set goals, track progress and break them into milestones." />
+      <PageHeader
+        title="Goals"
+        description={oneLiner}
+        action={
+          <div className="flex justify-end">
+            <IconButton icon={formOpen ? X : Plus} label={formOpen ? 'Close the new goal form' : 'New goal by hand'} variant="secondary" aria-expanded={formOpen} onClick={() => setFormOpen((o) => !o)} />
+          </div>
+        }
+      />
 
-      <Card className="mb-5">
-        <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
-          <Input label="New goal" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What do you want to achieve?" maxLength={500} />
-          <Select label="Area" value={area} onChange={(e) => setArea(e.target.value)}>
-            {AREAS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-          <Input label="Target date" type="date" value={target} onChange={(e) => setTarget(e.target.value)} />
-          <Button type="submit" icon={Plus} loading={adding} disabled={!title.trim()} className="max-md:w-full">
-            Add goal
-          </Button>
-        </form>
-      </Card>
+      {formOpen && (
+        <Card className="mb-4">
+          <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+            <Input ref={titleRef} label="New goal" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What do you want to achieve?" maxLength={500} />
+            <Select label="Area" value={area} onChange={(e) => setArea(e.target.value)}>
+              {AREAS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </Select>
+            <Input label="Target date" type="date" value={target} onChange={(e) => setTarget(e.target.value)} />
+            <Button type="submit" icon={Plus} loading={adding} disabled={!title.trim()} className="max-md:w-full">
+              Add goal
+            </Button>
+          </form>
+        </Card>
+      )}
 
       {(error || loadError) && (
         <div className="mb-4">
@@ -289,67 +388,40 @@ export function GoalsView({ uid, focusGoalId = null, onFocusHandled }: { uid: st
         </div>
       )}
 
-      <div className="mb-5 max-w-full overflow-x-auto">
-        <Segmented ariaLabel="Time period" value={period} onChange={(v) => setPeriod(v as Period)} options={PERIOD_OPTIONS} />
-      </div>
-
-      <Card className="mb-5" style={glowCardStyle('goal')}>
-        <div className="flex items-center gap-4">
-          <OverallRing pct={goalsPct} />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-foreground">{goalsPct}% of your goals done</h2>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Time gone {periodWord(period)}: {elapsed}%
-            </p>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-label={`Time gone ${periodWord(period)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={elapsed}>
-              <div className="h-full rounded-full bg-primary" style={{ width: `${elapsed}%` }} />
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">{paceLine(goalsPct, elapsed, period, shown.length)}</p>
-            {weekDone > 0 && (
-              <p className="mt-1 text-xs text-foreground">
-                {weekDone} milestone{weekDone === 1 ? '' : 's'} finished this week ✨
-              </p>
-            )}
-          </div>
-        </div>
-        {shares.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">Add goals and their areas will appear here.</p>
-        ) : (
-          <>
-            <div className="mt-4 flex h-3 gap-1">
-              {shares.map((s, i) => (
-                <div key={s.category} title={`${s.category}: ${s.count}`} className={`h-3 rounded-full ${AREA_COLORS[i % AREA_COLORS.length]}`} style={{ width: `${s.pct}%` }} />
-              ))}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {shares.map((s, i) => (
-                <span key={s.category} className="flex items-center gap-1.5">
-                  <span aria-hidden="true" className={`size-2 rounded-full ${AREA_COLORS[i % AREA_COLORS.length]}`} />
-                  {s.category} ({s.count})
-                </span>
-              ))}
-            </div>
-          </>
-        )}
-      </Card>
-
       {goals === null ? (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3">
+          <Skeleton className="h-24" />
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-64" />
+            <Skeleton key={i} className="h-16" />
           ))}
         </div>
       ) : goals.length === 0 ? (
-        <EmptyState icon={Target} title="No goals yet" description="Add one above, or tell Echo a goal." />
-      ) : shown.length === 0 ? (
-        <EmptyState icon={Target} title="No goals here" description={period === 'all' ? emptyPeriodText(period) : `${emptyPeriodText(period)} Pick another period.`} action={<Button variant="secondary" onClick={() => setPeriod('all')}>Show all</Button>} />
+        <EmptyState icon={Target} title="No goals yet" description="Tell Echo a goal in the diary (“I want to read 12 books this year”), or tap + to add one yourself." />
       ) : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {shown.map((g) => (
-            <div key={g.id} id={`goal-${g.id}`} className={`flex flex-col rounded-xl transition-shadow duration-300 [&>*]:flex-1 ${highlightId === g.id ? 'ring-2 ring-primary' : ''}`}>
-              <GoalCard uid={uid} goal={g} onError={setError} />
+        <div className="grid gap-3">
+          <Card style={glowCardStyle('goal')} className="rounded-2xl">
+            <div className="flex items-center gap-4">
+              <div className="relative grid shrink-0 place-items-center">
+                <OverallRing pct={goalsPct} />
+                <span aria-hidden="true" className="absolute text-sm font-bold tabular-nums text-foreground">{goalsPct}%</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-foreground">{paceLine(goalsPct, yearFraction(nowMs))}</h2>
+                <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{nextStepLine(list)}</p>
+                {weekDone > 0 && (
+                  <p className="mt-1 text-xs text-foreground">
+                    {weekDone} milestone{weekDone === 1 ? '' : 's'} finished this week ✨
+                  </p>
+                )}
+              </div>
             </div>
-          ))}
+          </Card>
+          <ul className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+            {list.map((g) => (
+              <GoalSlim key={g.id} goal={g} onOpen={() => setOpenId(g.id)} onStep={(next) => step(g, next)} />
+            ))}
+          </ul>
+          <p className="text-center text-xs text-muted-foreground">Tap a goal for milestones</p>
         </div>
       )}
     </div>

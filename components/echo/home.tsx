@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { limit, limitToLast, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
-import { CalendarCheck, Check, PanelRightClose, PanelRightOpen, Phone, Send, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
-import { addPageMessage, connectorsCol, listensCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, saveBrief, setConnectorSecret, watchBriefDone, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
-import { applyEchoResponseWithMusic, restoreDeleted, saveReply, sendToEcho, watchRefSource, type SavedItem } from '@/lib/echo/client'
+import { CalendarCheck, Check, Droplet, Flame, Loader2, Mic, Moon, PanelRightClose, PanelRightOpen, Phone, Send, Smile, Sparkles, Square, Undo2, Volume2 } from 'lucide-react'
+import { addPageMessage, addWaterGlass, saveHealthChanges, connectorsCol, listensCol, loadPlaylists, playlistsCol, memoriesCol, pageMessagesCol, saveBrief, setConnectorSecret, watchBriefDone, watchLanguage, type EchoCategory, type Memory, type Message, type UserProfile } from '@/lib/firestore'
+import { applyEchoResponseWithMusic, connectorContext, restoreDeleted, saveReply, saveWebSearchLogin, sendToEcho, watchRefSource, webSearchKeyOf, type SavedItem } from '@/lib/echo/client'
 import { noteLegacyActivity } from '@/lib/echo/legacy-activity'
 import { isPermissionDenied, RULES_MESSAGE } from '@/lib/echo/diary'
 import { deriveCategory, dropTrailingUser, queueTranscript } from '@/lib/echo/send-helpers'
 import { sanitizeSources, type Source } from '@/lib/echo/view-helpers'
-import { connectorStatuses, isConnected, type ConnectorState, AI_PROVIDERS } from '@/lib/echo/connectors'
+import { connectorStatuses, isConnected, type ConnectorState } from '@/lib/echo/connectors'
 import { fetchForecast, formatWeather } from '@/lib/echo/weather'
 import { rainUntilMs } from '@/lib/echo/chathead-mood'
 import { setNativeChatheadMood } from '@/lib/native/echo-bridge'
@@ -42,6 +42,14 @@ import { embedCallStep } from '@/lib/echo/embed'
 import { markPage } from '@/lib/echo/call-timing'
 import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
 import { useMusicPlayer } from './music-player'
+import { SavedCard } from './saved-card'
+import { useDictation } from './use-dictation'
+import { MOOD_COLORS, MOOD_ICONS } from './health/mood-picker'
+import { undoSaved } from '@/lib/echo/quick-send'
+import { quickReplies } from '@/lib/echo/quick-replies'
+import { MOOD_LABELS, MOOD_TAGS, moodScore, type MoodTag } from '@/lib/echo/health-helpers'
+import { buttonClass } from '@/lib/echo/ui-classes'
+import { cn } from '@/lib/utils'
 
 export type HomeView = 'Notes' | 'Goals' | 'Health' | 'Reminders' | 'Connectors' | '2nd Brain' | 'Legacy'
 
@@ -62,34 +70,159 @@ const VIEW_FOR: Record<string, HomeView> = {
 }
 const LABEL_FOR: Record<string, string> = { note: 'Note', goal: 'Goal', health: 'Health', reminder: 'Reminder', connector: 'Connector' }
 
-type BadgeItem = Pick<SavedItem, 'op' | 'kcal'> & { type: string }
+/** A create can be undone from its saved card for this long after Echo's reply; after that the card shows Open. */
+const UNDO_WINDOW_MS = 10 * 60_000
 
-/** Badge text: "Reminder", "Reminder updated", "Note deleted", "Meal · 540 kcal". */
-export function badgeLabel(i: BadgeItem): string {
-  const base = i.kcal !== undefined ? 'Meal' : LABEL_FOR[i.type]
-  const verb = i.op === 'update' ? ' updated' : i.op === 'delete' ? ' deleted' : ''
-  return `${base}${verb}${i.kcal !== undefined && i.op !== 'delete' ? ` · ${i.kcal.toLocaleString('en-US')} kcal` : ''}`
-}
-
-function ActionBadges({ items, onNavigate }: { items: BadgeItem[]; onNavigate: (v: HomeView) => void }) {
+/**
+ * Saved cards under one Echo reply: one card per thing saved (2nd Brain memories stay out, as before).
+ * `cardKey` names each card for the undone set; Undo is offered on creates only while `canUndo` (a fresh reply).
+ */
+function SavedList({ items, onNavigate, cardKey, canUndo = false, undone, onUndo }: { items: SavedItem[]; onNavigate?: (v: HomeView) => void; cardKey?: (i: number) => string; canUndo?: boolean; undone?: Set<string>; onUndo?: (key: string, item: SavedItem) => void }) {
   const seen = new Set<string>()
-  const shown = items.filter((i) => {
-    if (!LABEL_FOR[i.type]) return false
-    const label = badgeLabel(i)
-    // Meals are listed one by one (each has its own total); other kinds collapse to one badge per label.
-    const key = i.kcal !== undefined ? `${label}#${seen.size}` : label
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  const shown = items
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => {
+      if (!VIEW_FOR[item.type]) return false
+      // The same update reported twice (e.g. two fields of today's health log) shows once; creates and meals are distinct.
+      const key = item.docId ?? `${item.type}|${item.label}|${item.op ?? ''}|${item.kcal ?? ''}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   if (!shown.length) return null
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {shown.map((i, n) => (
-        <button key={`${badgeLabel(i)}-${n}`} onClick={() => onNavigate(VIEW_FOR[i.type])} title={`Open ${VIEW_FOR[i.type]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <KindTag kind={kindForCategory(i.type)}>{badgeLabel(i)}</KindTag>
+    <div className="mt-2 grid gap-1.5">
+      {shown.map(({ item, i }) => {
+        const view = VIEW_FOR[item.type]
+        const key = cardKey?.(i)
+        const undoable = canUndo && !!key && !!onUndo && !!item.docId && item.op === undefined
+        return (
+          <SavedCard
+            key={`${item.type}-${item.docId ?? item.label}-${i}`}
+            item={item}
+            undone={!!key && !!undone?.has(key)}
+            onUndo={undoable && key && onUndo ? () => onUndo(key, item) : undefined}
+            onOpen={onNavigate ? () => onNavigate(view) : undefined}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+/** Older replies (from before this visit) only know their category: one tag that opens that page. */
+function CategoryTag({ category, onNavigate }: { category?: string; onNavigate: (v: HomeView) => void }) {
+  if (!category || !LABEL_FOR[category]) return null
+  return (
+    <div className="mt-2 flex">
+      <button onClick={() => onNavigate(VIEW_FOR[category])} title={`Open ${VIEW_FOR[category]}`} className="touch-hit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <KindTag kind={kindForCategory(category)}>{LABEL_FOR[category]}</KindTag>
+      </button>
+    </div>
+  )
+}
+
+/** "Yes please" / "No thanks" under Echo's latest reply when it asks a yes/no question. */
+function QuickReplyChips({ replies, onPick }: { replies: string[]; onPick: (t: string) => void }) {
+  if (!replies.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Quick answers">
+      {replies.map((r, i) => (
+        <button
+          key={r}
+          type="button"
+          onClick={() => onPick(r)}
+          className={cn(
+            'touch-hit inline-flex h-8 items-center rounded-full border px-3.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background max-lg:h-9 max-lg:text-[13px]',
+            i === 0 ? 'border-primary bg-primary text-primary-foreground hover:bg-primary-hover' : 'border-primary/40 bg-primary-soft text-primary hover:border-primary',
+          )}
+        >
+          {r}
         </button>
       ))}
+    </div>
+  )
+}
+
+type Shortcut = 'meal' | 'water' | 'mood' | 'sleep'
+
+/** Shortcut chips above the composer: Meal and Sleep prefill, +1 water saves at once, Mood opens the faces. */
+function ShortcutChips({ disabled, moodOpen, onPick }: { disabled: boolean; moodOpen: boolean; onPick: (s: Shortcut) => void }) {
+  const chips: { id: Shortcut; label: string; icon: typeof Flame; color: string }[] = [
+    { id: 'meal', label: 'Meal', icon: Flame, color: 'var(--color-node-goal)' },
+    { id: 'water', label: '+1 water', icon: Droplet, color: 'var(--color-node-topic)' },
+    { id: 'mood', label: 'Mood', icon: Smile, color: 'var(--color-node-health)' },
+    { id: 'sleep', label: 'Sleep', icon: Moon, color: 'var(--color-node-interest)' },
+  ]
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5" role="group" aria-label="Shortcuts">
+      {chips.map(({ id, label, icon: Icon, color }) => (
+        <button
+          key={id}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(id)}
+          data-mood-chip={id === 'mood' ? '' : undefined}
+          aria-haspopup={id === 'mood' ? 'true' : undefined}
+          aria-expanded={id === 'mood' ? moodOpen : undefined}
+          aria-label={id === 'water' ? 'Add a glass of water' : id === 'mood' ? 'Log your mood' : id === 'meal' ? 'Tell Echo about a meal' : 'Tell Echo how you slept'}
+          className={cn(
+            'touch-hit inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50',
+            id === 'mood' && moodOpen && 'border-primary/60 bg-primary-soft text-primary',
+          )}
+        >
+          <Icon size={14} aria-hidden="true" style={{ color }} />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Seven faces above the composer; a tap saves today's mood (the same fields the Health page writes). */
+function MoodFaces({ onPick, onClose }: { onPick: (tag: MoodTag) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    ref.current?.querySelector('button')?.focus()
+    const onDown = (e: PointerEvent) => {
+      const el = ref.current
+      // The Mood chip toggles the panel itself.
+      const target = e.target instanceof Element ? e.target : null
+      if (el && target && !el.contains(target) && !target.closest('[data-mood-chip]')) onClose()
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [onClose])
+  return (
+    <div
+      ref={ref}
+      role="group"
+      aria-label="How are you feeling?"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose()
+      }}
+      className="absolute inset-x-0 bottom-full z-20 mb-2 rounded-2xl border border-border-strong bg-surface p-2 shadow-lg"
+    >
+      <p className="px-1 pb-1.5 text-xs text-muted-foreground">How are you feeling?</p>
+      <div className="grid grid-cols-7 gap-1">
+        {MOOD_TAGS.map((tag) => {
+          const Icon = MOOD_ICONS[tag]
+          const c = MOOD_COLORS[tag]
+          return (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onPick(tag)}
+              aria-label={MOOD_LABELS[tag]}
+              title={MOOD_LABELS[tag]}
+              className="grid h-11 place-items-center rounded-xl border transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              style={{ borderColor: `color-mix(in srgb, ${c} 30%, var(--color-border))` }}
+            >
+              <Icon size={22} aria-hidden="true" style={{ color: c }} />
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -183,7 +316,7 @@ function CallTurnBubbles({ user, echo, saved, live = false, onNavigate }: { user
       {(echo || saved.length > 0) && (
         <EchoRow live={live}>
           {echo && <EchoBubble>{echo}</EchoBubble>}
-          {onNavigate ? <ActionBadges items={saved} onNavigate={onNavigate} /> : null}
+          {onNavigate ? <SavedList items={saved} onNavigate={onNavigate} /> : null}
         </EchoRow>
       )}
     </>
@@ -199,7 +332,7 @@ export function companionGreeting(name: string | undefined, hour = new Date().ge
   return n ? `Good ${part}, ${n}.` : `Good ${part}.`
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed, isTodayPage }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call'; /** The page shown is today's (the daily brief can start from it). */ isTodayPage: boolean }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed, isTodayPage, autoCall = false, onAutoCallHandled }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call'; /** The page shown is today's (the daily brief can start from it). */ isTodayPage: boolean; /** Start a voice call once the page is ready (the Echo sheet's "Full call"), then onAutoCallHandled. */ autoCall?: boolean; onAutoCallHandled?: () => void }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
@@ -284,6 +417,33 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const [error, setError] = useState<SendError | null>(null)
   const [extras, setExtras] = useState<Record<string, Extras>>({})
   const day = useToday()
+  // Saved cards undone from the chat ("messageId:index"), and the clock that ends their Undo window.
+  const [undoneSaved, setUndoneSaved] = useState<Set<string>>(() => new Set())
+  const [now, setNow] = useState(() => Date.now())
+  const hasExtras = Object.keys(extras).length > 0
+  useEffect(() => {
+    if (!hasExtras) return
+    // A reply newer than `now` counts as fresh, so the clock only needs to move forward from here.
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [hasExtras])
+  // Shortcut chips: the mood faces and a short confirmation line (with Undo for water).
+  const [moodOpen, setMoodOpen] = useState(false)
+  const closeMood = useCallback(() => setMoodOpen(false), [])
+  const [quickNote, setQuickNote] = useState<{ text: string; warn?: boolean; undo?: () => void } | null>(null)
+  useEffect(() => {
+    if (!quickNote) return
+    const t = setTimeout(() => setQuickNote(null), 6000)
+    return () => clearTimeout(t)
+  }, [quickNote])
+  // Dictation fills the box; the user taps send.
+  const fillHeard = useCallback((heard: string) => {
+    setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard))
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
+  const dictation = useDictation(user, { onAutoStop: fillHeard })
+  const recording = dictation.state === 'recording'
+  const transcribing = dictation.state === 'transcribing'
   const scroller = useRef<HTMLDivElement>(null)
   const scrollEnd = useCallback(() => {
     const el = scroller.current
@@ -454,10 +614,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       connectorsCol(uid),
       (snap) => {
         const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
-        const web = docs.find((d) => d.id === 'web-search')
-        // Sealed AI model keys (ask Claude…), sent with each message; only the server can open them.
-        const aiKeys = Object.fromEntries(docs.filter((d) => (AI_PROVIDERS as readonly string[]).includes(d.id) && d.connected && typeof d.sealed === 'string' && d.sealed).map((d) => [d.id, d.sealed as string]))
-        connectorsRef.current = { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '', aiKeys }
+        connectorsRef.current = connectorContext(docs)
         const wx = docs.find((d) => d.id === 'weather')
         weatherLocRef.current =
           isConnected(connectorsRef.current.statuses, 'weather') && typeof wx?.lat === 'number' && typeof wx?.lon === 'number'
@@ -493,10 +650,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     clearTimeout(timer)
     return cached()?.text
   }, [])
-  const webSearchKey = () => {
-    const { statuses, sealed } = connectorsRef.current
-    return isConnected(statuses, 'web-search') && sealed ? sealed : undefined
-  }
+  const webSearchKey = () => webSearchKeyOf(connectorsRef.current)
 
   useEffect(() => {
     scrollEnd()
@@ -549,6 +703,19 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     },
     [uid],
   )
+  // Undo on a saved card: deletes only the doc Echo created (by its id), see undoSaved.
+  const undoCreated = useCallback(
+    async (key: string, item: SavedItem) => {
+      setUndoError(null)
+      try {
+        if (await undoSaved(uid, item)) setUndoneSaved((s) => new Set(s).add(key))
+      } catch (err) {
+        console.error('Echo: could not undo a saved item', err)
+        setUndoError(isPermissionDenied(err) ? RULES_MESSAGE : `Couldn't undo "${item.label}". Try again.`)
+      }
+    },
+    [uid],
+  )
 
   // Shared send path (typed text now; voice transcripts later).
   const send = useCallback(
@@ -596,9 +763,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
           return
         }
         const res = await echoP
-        // Web search login: keep refreshed tokens, or disconnect when Tavily no longer accepts the login.
-        if (res.webSearchRevoked) void setConnectorSecret(uid, 'web-search', null).catch((e) => console.error('Echo: could not disconnect Web search', e))
-        else if (res.webSearchResealed) void setConnectorSecret(uid, 'web-search', res.webSearchResealed).catch((e) => console.error('Echo: could not save the Web search login', e))
+        saveWebSearchLogin(uid, res)
         if (res.error) {
           setError({ text: msg, userSaved, message: 'Echo is having trouble right now.', reply: res.reply, trace: res.trace })
           return
@@ -849,6 +1014,16 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     else startCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embed, disabled, messagesLoaded, memoriesLoaded, prefs])
+  // "Full call" from the Echo sheet: start once the page, its messages, the memories and the voice prefs are ready.
+  useEffect(() => {
+    if (!autoCall || embed || call.active) return
+    const step = embedCallStep({ voiceEnabled: prefs?.enabled ?? null, disabled, messagesLoaded, memoriesLoaded })
+    if (step === 'wait') return
+    onAutoCallHandled?.()
+    if (step === 'voice_off') setCallBlocked('Turn on voice in Settings to talk with Echo out loud.')
+    else startCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCall, embed, disabled, messagesLoaded, memoriesLoaded, prefs])
   // Floating panel: tell native once the chat is readable. Before the page list lands the page is the empty state, not ready.
   const panelReported = useRef(false)
   useEffect(() => {
@@ -916,8 +1091,75 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   const submit = () => {
     const t = text.trim()
     if (!t || disabled || thinking || call.active) return
+    if (recording || dictation.state === 'error') dictation.cancel()
     setText('')
     void send(t)
+  }
+
+  // Mic in the composer: record, then the words go into the box (never sent on their own).
+  const toggleMic = async () => {
+    if (disabled || transcribing || call.active) return
+    if (recording) {
+      const heard = await dictation.stop()
+      if (heard) fillHeard(heard)
+      return
+    }
+    setMoodOpen(false)
+    stopAudio() // don't record Echo's own voice
+    await dictation.start()
+  }
+  // The phone opened this chat to answer a check-in by voice ("Tell Echo" / "Yes, I ate"): start the mic.
+  const toggleMicRef = useRef(toggleMic)
+  toggleMicRef.current = toggleMic
+  useEffect(() => {
+    if (embed !== 'chat') return
+    const onAnswer = (e: Event) => {
+      if ((e as CustomEvent<{ mic?: boolean }>).detail?.mic && !recording) void toggleMicRef.current()
+    }
+    window.addEventListener('echofloat:checkin-answer', onAnswer)
+    return () => window.removeEventListener('echofloat:checkin-answer', onAnswer)
+  }, [embed, recording])
+  // A call takes the microphone: drop a recording in progress.
+  const cancelDictation = dictation.cancel
+  useEffect(() => {
+    if (call.active && recording) cancelDictation()
+  }, [call.active, recording, cancelDictation])
+
+  // Shortcut chips. Water and mood save straight to today's health log (the same writes the Health page makes).
+  const addWater = async () => {
+    const d = day
+    try {
+      await addWaterGlass(uid, d)
+      setQuickNote({
+        text: '+1 glass of water saved',
+        undo: () => {
+          setQuickNote(null)
+          saveHealthChanges(uid, d, {}, -1).catch((e) => setQuickNote({ text: isPermissionDenied(e) ? RULES_MESSAGE : "Couldn't undo the water.", warn: true }))
+        },
+      })
+    } catch (e) {
+      console.error('Echo: could not add water', e)
+      setQuickNote({ text: isPermissionDenied(e) ? RULES_MESSAGE : "Couldn't save the water. Try again.", warn: true })
+    }
+  }
+  const logMood = async (tag: MoodTag) => {
+    setMoodOpen(false)
+    try {
+      await saveHealthChanges(uid, day, { mood: moodScore(tag), moodTag: tag })
+      setQuickNote({ text: `Mood saved: ${MOOD_LABELS[tag]}` })
+    } catch (e) {
+      console.error('Echo: could not save mood', e)
+      setQuickNote({ text: isPermissionDenied(e) ? RULES_MESSAGE : "Couldn't save your mood. Try again.", warn: true })
+    }
+  }
+  const onShortcut = (s: Shortcut) => {
+    if (disabled) return
+    if (s === 'mood') return setMoodOpen((o) => !o)
+    setMoodOpen(false)
+    if (s === 'water') return void addWater()
+    const prefix = s === 'meal' ? 'I ate ' : 'I slept '
+    // Never wipe words already typed: the prefix goes after them.
+    fillComposer(text.trim() ? `${text.trimEnd()} ${prefix}` : prefix)
   }
 
   // Quick-start chips on a fresh page: send a question, or prefill the composer and focus it.
@@ -943,6 +1185,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
   if (embed === 'call') return null
 
   const welcomeShown = showTodayWelcome(messages) && !thinking && !error && !call.active && !pendingTurns.length
+  const micLabel = recording ? 'Stop and use what I said' : transcribing ? 'Turning speech into text' : 'Speak instead of typing'
+  // Tap answers only on the latest message when it is Echo's, and only while a send could go out.
+  const lastMessage = messages?.length ? messages[messages.length - 1] : null
+  const lastReplyId = lastMessage?.role === 'assistant' ? lastMessage.id : null
+  const replyChips = lastMessage && lastReplyId && !thinking && !error && !call.active && !disabled && !queuedText ? quickReplies(lastMessage.text) : []
   // Voice entry points (welcome orb tap, pinned brief orb): the full app with voice on.
   const voiceEntry = embed !== 'chat' && !!prefs?.enabled && !disabled
   const pinnedBriefOrb = showPinnedBriefOrb({ isTodayPage, briefDone, welcomeShown, callActive: call.active, voiceEnabled: !!prefs?.enabled, embed })
@@ -957,11 +1204,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 max-lg:gap-1 max-lg:py-1.5 max-lg:pl-1 max-lg:pr-3">
           <div className="min-w-0 flex-1">{header}</div>
           {meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{meta}</span>}
-          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden 2xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
           <Button variant="secondary" size="sm" icon={CalendarCheck} className="shrink-0 lg:hidden" aria-label="Open Today" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)}>
             Today
           </Button>
-          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden 2xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
+          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
         </div>
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
@@ -1002,12 +1249,18 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
               const at = m.createdAt?.toDate?.() ?? null
               if (m.role === 'user') return <UserBubble key={m.id} text={m.text} at={at} />
               const ex = extras[m.id]
-              const badgeItems: BadgeItem[] = ex ? ex.saved : m.category ? [{ type: m.category }] : []
+              // Undo while the reply is fresh (a reply still being written has no time yet and counts as fresh).
+              const fresh = !at || now - at.getTime() < UNDO_WINDOW_MS
               return (
                 <EchoRow key={m.id}>
                   <EchoBubble>{m.text}</EchoBubble>
                   <SourceLinks sources={m.sources} />
-                  <ActionBadges items={badgeItems} onNavigate={onNavigate} />
+                  {ex ? (
+                    <SavedList items={ex.saved} onNavigate={onNavigate} cardKey={(i) => `${m.id}:${i}`} canUndo={fresh} undone={undoneSaved} onUndo={(k, item) => void undoCreated(k, item)} />
+                  ) : (
+                    <CategoryTag category={m.category} onNavigate={onNavigate} />
+                  )}
+                  {m.id === lastReplyId && <QuickReplyChips replies={replyChips} onPick={ask} />}
                   {ex?.failed.length ? <p className="mt-2 text-xs text-warning">Could not save: {ex.failed.join(', ')}</p> : null}
                   {ex ? <Trace steps={ex.trace} /> : null}
                   {at && <time className="mt-1 block px-1 text-xs text-subtle">{timeLabel(at)}</time>}
@@ -1089,32 +1342,63 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                 <CallBar phase={call.phase} muted={call.muted} startedAt={call.startedAt} onMute={call.toggleMute} onEnd={call.end} />
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 max-lg:gap-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
-                <input
-                  ref={inputRef}
-                  aria-label="Message Echo"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                      e.preventDefault()
-                      submit()
-                    }
-                  }}
-                  maxLength={2000}
-                  disabled={disabled}
-                  placeholder="Tell Echo about your day..."
-                  enterKeyHint="send"
-                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-lg:h-11 max-lg:px-2"
-                />
-                {tapToPlay && (
-                  <Button variant="secondary" size="sm" icon={Volume2} onClick={() => void playAudio(tapToPlay)}>
-                    Tap to play
-                  </Button>
+              <div className="relative">
+                {moodOpen && <MoodFaces onPick={(t) => void logMood(t)} onClose={closeMood} />}
+                {quickNote && (
+                  <div role="status" className={cn('mb-2 flex items-center justify-between gap-3 px-1 text-xs', quickNote.warn ? 'text-warning' : 'text-muted-foreground')}>
+                    <span className="min-w-0 truncate">{quickNote.text}</span>
+                    {quickNote.undo && (
+                      <button type="button" onClick={quickNote.undo} className="touch-hit flex-none rounded-md px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        UNDO
+                      </button>
+                    )}
+                  </div>
                 )}
-                {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => startCall()} disabled={disabled || thinking} />}
-                <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking || !text.trim()} />
+                {dictation.state === 'error' && dictation.error && (
+                  <p role="alert" className="mb-2 px-1 text-xs text-warning">
+                    {dictation.error}
+                  </p>
+                )}
+                <ShortcutChips disabled={disabled} moodOpen={moodOpen} onPick={onShortcut} />
+                <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-2 p-1.5 max-lg:gap-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background">
+                  <input
+                    ref={inputRef}
+                    aria-label="Message Echo"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                        e.preventDefault()
+                        submit()
+                      }
+                    }}
+                    maxLength={2000}
+                    disabled={disabled}
+                    placeholder={recording ? 'Listening… tap the mic to stop' : transcribing ? 'Turning speech into text…' : 'Tell Echo about your day...'}
+                    enterKeyHint="send"
+                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-lg:h-11 max-lg:px-2"
+                  />
+                  {tapToPlay && (
+                    <Button variant="secondary" size="sm" icon={Volume2} onClick={() => void playAudio(tapToPlay)}>
+                      Tap to play
+                    </Button>
+                  )}
+                  {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
+                  {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => startCall()} disabled={disabled || thinking || recording || transcribing} />}
+                  <button
+                    type="button"
+                    onClick={() => void toggleMic()}
+                    aria-label={micLabel}
+                    title={micLabel}
+                    aria-pressed={recording}
+                    disabled={disabled || transcribing}
+                    className={buttonClass(recording ? 'danger' : text.trim() ? 'secondary' : 'primary', 'md', 'size-10 px-0 max-lg:size-11')}
+                    style={recording ? { boxShadow: `0 0 0 ${2 + Math.min(1, dictation.level * 6) * 6}px color-mix(in srgb, var(--color-danger) 25%, transparent)` } : !text.trim() ? { boxShadow: '0 0 16px #2dd4bf66' } : undefined}
+                  >
+                    {transcribing ? <Loader2 size={20} className="animate-spin" aria-hidden="true" /> : recording ? <Square size={18} aria-hidden="true" /> : <Mic size={20} aria-hidden="true" />}
+                  </button>
+                  {text.trim() && <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking} />}
+                </div>
               </div>
             )}
           </div>
@@ -1122,7 +1406,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       </div>
 
       {!todayCollapsed && (
-        <aside aria-label="Today" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border 2xl:block">
+        <aside aria-label="Today" className="hidden w-64 shrink-0 overflow-y-auto border-l border-border xl:block 2xl:w-72">
           <TodayPanel uid={uid} day={day} onNavigate={onNavigate} />
         </aside>
       )}

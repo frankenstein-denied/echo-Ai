@@ -3,6 +3,7 @@ import {
   base64ToBytes,
   bytesToBase64,
   bytesToPcm16,
+  pcm16ToWav,
   CaptureEncoder,
   decodeServerAudio,
   floatToPcm16,
@@ -150,5 +151,16 @@ describe('rmsLevel', () => {
   })
   it('is 0 for no samples', () => {
     expect(rmsLevel(new Float32Array(0))).toBe(0)
+  })
+})
+
+describe('pcm16ToWav', () => {
+  it('writes a 16 kHz mono PCM WAV that the server reader accepts', async () => {
+    const { readWavInfo } = await import('@/lib/server/wav')
+    const wav = pcm16ToWav(new Int16Array(16000).fill(1000))
+    expect(wav.length).toBe(44 + 32000)
+    const info = readWavInfo(Buffer.from(wav))
+    expect(info).toMatchObject({ sampleRate: 16000, channels: 1, bitsPerSample: 16, dataLength: 32000 })
+    expect(info?.durationSec).toBeCloseTo(1)
   })
 })

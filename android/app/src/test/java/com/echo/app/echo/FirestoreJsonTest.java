@@ -413,6 +413,130 @@ public class FirestoreJsonTest {
         assertTransforms(page, "createdAt", "updatedAt", "lastMessageAt");
     }
 
+    private static final String QUESTION = PAGE + "/messages/checkin-2026-11-06-q";
+    private static final String ANSWER = PAGE + "/messages/checkin-2026-11-06-q-answer";
+    private static final String HEALTH = "projects/p/databases/(default)/documents/users/u/healthLogs/2026-11-06";
+
+    private static JSONArray answerWrites(String newPageTitle, String questionPath, List<JSONObject> data) throws Exception {
+        return new JSONObject(FirestoreJson.buildCheckInAnswerCommit(PAGE, newPageTitle, questionPath,
+            "How are you feeling right now?", ANSWER, "🙂 Happy", "health", data)).getJSONArray("writes");
+    }
+
+    @Test public void answerCommitAddsTheQuestionAndTheAnswerToTodaysPage() throws Exception {
+        JSONArray writes = answerWrites(null, QUESTION, new ArrayList<>());
+        assertEquals(3, writes.length());
+
+        JSONObject q = writes.getJSONObject(0);
+        assertEquals(QUESTION, q.getJSONObject("update").getString("name"));
+        JSONObject qf = q.getJSONObject("update").getJSONObject("fields");
+        assertEquals("assistant", qf.getJSONObject("role").getString("stringValue"));
+        assertEquals("How are you feeling right now?", qf.getJSONObject("text").getString("stringValue"));
+        assertTrue(qf.getJSONObject("checkIn").getBoolean("booleanValue"));
+        assertFalse(q.getJSONObject("currentDocument").getBoolean("exists"));
+        assertTransforms(q, "createdAt");
+
+        JSONObject a = writes.getJSONObject(1);
+        assertEquals(ANSWER, a.getJSONObject("update").getString("name"));
+        JSONObject af = a.getJSONObject("update").getJSONObject("fields");
+        assertEquals(3, af.length()); // the keys validPageMessage allows: role, text, category (+ createdAt)
+        assertEquals("user", af.getJSONObject("role").getString("stringValue"));
+        assertEquals("🙂 Happy", af.getJSONObject("text").getString("stringValue"));
+        assertEquals("health", af.getJSONObject("category").getString("stringValue"));
+        // Create-only: a retry with the same answer id is refused, so nothing is written twice.
+        assertFalse(a.getJSONObject("currentDocument").getBoolean("exists"));
+        assertTransforms(a, "createdAt");
+
+        JSONObject page = writes.getJSONObject(2);
+        assertEquals(PAGE, page.getJSONObject("update").getString("name"));
+        assertEquals("🙂 Happy", page.getJSONObject("update").getJSONObject("fields")
+            .getJSONObject("preview").getString("stringValue"));
+        JSONArray mask = page.getJSONObject("updateMask").getJSONArray("fieldPaths");
+        assertEquals(1, mask.length());
+        assertEquals("preview", mask.getString(0));
+        assertTrue(page.getJSONObject("currentDocument").getBoolean("exists"));
+        JSONArray t = page.getJSONArray("updateTransforms");
+        assertEquals(3, t.length());
+        assertEquals("messageCount", t.getJSONObject(0).getString("fieldPath"));
+        assertEquals("1", t.getJSONObject(0).getJSONObject("increment").getString("integerValue"));
+        assertEquals("updatedAt", t.getJSONObject(1).getString("fieldPath"));
+        assertEquals("lastMessageAt", t.getJSONObject(2).getString("fieldPath"));
+    }
+
+    @Test public void answerCommitLeavesOutAQuestionAlreadyOnThePage() throws Exception {
+        JSONArray writes = answerWrites(null, null, new ArrayList<>());
+        assertEquals(2, writes.length());
+        assertEquals(ANSWER, writes.getJSONObject(0).getJSONObject("update").getString("name"));
+        assertEquals(PAGE, writes.getJSONObject(1).getJSONObject("update").getString("name"));
+    }
+
+    @Test public void answerCommitCreatesTodaysPageWhenThereIsNone() throws Exception {
+        JSONArray writes = answerWrites("Fri, Nov 6", QUESTION, new ArrayList<>());
+        JSONObject page = writes.getJSONObject(2);
+        JSONObject f = page.getJSONObject("update").getJSONObject("fields");
+        assertEquals("Fri, Nov 6", f.getJSONObject("title").getString("stringValue"));
+        assertEquals("🙂 Happy", f.getJSONObject("preview").getString("stringValue"));
+        assertEquals("1", f.getJSONObject("messageCount").getString("integerValue"));
+        assertFalse(page.getJSONObject("currentDocument").getBoolean("exists"));
+        assertFalse(page.has("updateMask"));
+        assertTransforms(page, "createdAt", "updatedAt", "lastMessageAt");
+    }
+
+    @Test public void answerCommitCarriesTheDataWritesInTheSameCommit() throws Exception {
+        Map<String, Object> mood = new LinkedHashMap<>();
+        mood.put("mood", 8);
+        mood.put("moodTag", "happy");
+        List<JSONObject> data = new ArrayList<>();
+        data.add(FirestoreJson.healthWrite(HEALTH, "2026-11-06", mood, 0, true));
+        JSONArray writes = answerWrites(null, null, data);
+        assertEquals(3, writes.length());
+        assertEquals(HEALTH, writes.getJSONObject(2).getJSONObject("update").getString("name"));
+    }
+
+    @Test public void moodOnAnExistingHealthLogUpdatesOnlyTheMoodFields() throws Exception {
+        Map<String, Object> mood = new LinkedHashMap<>();
+        mood.put("mood", 8);
+        mood.put("moodTag", "happy");
+        JSONObject w = FirestoreJson.healthWrite(HEALTH, "2026-11-06", mood, 0, true);
+        JSONObject f = w.getJSONObject("update").getJSONObject("fields");
+        assertEquals("8", f.getJSONObject("mood").getString("integerValue"));
+        assertEquals("happy", f.getJSONObject("moodTag").getString("stringValue"));
+        JSONArray mask = w.getJSONObject("updateMask").getJSONArray("fieldPaths");
+        assertEquals(2, mask.length());
+        assertTrue(w.getJSONObject("currentDocument").getBoolean("exists"));
+        assertTransforms(w, "updatedAt");
+    }
+
+    @Test public void waterOnAnExistingHealthLogIsAnIncrement() throws Exception {
+        JSONObject w = FirestoreJson.healthWrite(HEALTH, "2026-11-06", new LinkedHashMap<>(), 2, true);
+        assertEquals(0, w.getJSONObject("updateMask").getJSONArray("fieldPaths").length());
+        JSONArray t = w.getJSONArray("updateTransforms");
+        assertEquals(2, t.length());
+        assertEquals("waterGlasses", t.getJSONObject(0).getString("fieldPath"));
+        assertEquals("2", t.getJSONObject(0).getJSONObject("increment").getString("integerValue"));
+        assertEquals("updatedAt", t.getJSONObject(1).getString("fieldPath"));
+        assertTrue(w.getJSONObject("currentDocument").getBoolean("exists"));
+    }
+
+    @Test public void aNewHealthLogIsCreatedTheWayTheWebCreatesOne() throws Exception {
+        JSONObject w = FirestoreJson.healthWrite(HEALTH, "2026-11-06", new LinkedHashMap<>(), 1, false);
+        JSONObject f = w.getJSONObject("update").getJSONObject("fields");
+        assertEquals(2, f.length());
+        assertEquals("2026-11-06", f.getJSONObject("date").getString("stringValue"));
+        assertEquals("1", f.getJSONObject("waterGlasses").getString("integerValue"));
+        assertFalse(w.has("updateMask"));
+        assertFalse(w.getJSONObject("currentDocument").getBoolean("exists"));
+        assertTransforms(w, "createdAt", "updatedAt");
+    }
+
+    @Test public void previewIsOneLineAndFitsTheRules() {
+        assertEquals("a b", FirestoreJson.previewOf("  a\n b "));
+        StringBuilder long1 = new StringBuilder();
+        for (int i = 0; i < 200; i++) long1.append('x');
+        String p = FirestoreJson.previewOf(long1.toString());
+        assertEquals(160, p.length());
+        assertTrue(p.endsWith("…"));
+    }
+
     private static String pageEntry(String id, String createdAt) {
         String created = createdAt == null ? "" : "\"createdAt\":{\"timestampValue\":\"" + createdAt + "\"}";
         return "{\"document\":{\"name\":\"x/diaryPages/" + id + "\",\"fields\":{" + created + "}},\"readTime\":\"t\"}";

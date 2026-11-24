@@ -212,6 +212,8 @@ export function DiaryView({
   onNavigate,
   openPageId,
   onOpenPageHandled,
+  startCall = false,
+  onStartCallHandled,
   embed,
 }: {
   user: User
@@ -220,6 +222,9 @@ export function DiaryView({
   /** A page to open once (e.g. from the 2nd Brain); cleared through onOpenPageHandled. */
   openPageId?: string | null
   onOpenPageHandled?: () => void
+  /** Start the voice call once today's page is picked (the Echo sheet's "Full call"); cleared through onStartCallHandled. */
+  startCall?: boolean
+  onStartCallHandled?: () => void
   /** Floating Echo: only today's page, no page list, no chrome. */
   embed?: 'chat' | 'call'
 }) {
@@ -241,9 +246,21 @@ export function DiaryView({
   const [creating, setCreating] = useState(false)
   const [, tick] = useState(0)
   const callActive = useRef(false)
+  // Also kept as state: a call started from the Echo orb on an empty diary must keep Home mounted (and shown on
+  // phones) until its first turn creates the page, or the empty state would unmount it and end the call.
+  // Set when the orb asks for a call; cleared only once that call has been active and ended (never in between).
+  const [keepForCall, setKeepForCall] = useState(false)
+  const wasInCall = useRef(false)
   const onCallActiveChange = useCallback((a: boolean) => {
     callActive.current = a
+    if (wasInCall.current && !a) setKeepForCall(false)
+    wasInCall.current = a
   }, [])
+  useEffect(() => {
+    if (!startCall) return
+    setKeepForCall(true)
+    setMobileOpen(true)
+  }, [startCall])
   // Local date key when the current selection was made (for the new-day rollover).
   const openedDay = useRef(localDateKey(new Date()))
   const selRef = useRef<Selection>({ id: null, key: 0 })
@@ -339,14 +356,15 @@ export function DiaryView({
     }
   }, [pages, auto])
 
-  // The landing above runs once, so a floating panel loaded before today's page existed moves to it when it appears.
+  // The landing above runs once, so a view still on the fresh "today" state (no page yet) moves to today's page when
+  // one appears: a floating panel loaded before it existed, or a page the Echo sheet / a tell-Echo box created.
   useEffect(() => {
     if (!auto || pages === null) return
-    const id = embedPageToAdopt(sel.id, !!embed, pages)
+    const id = embedPageToAdopt(sel.id, true, pages)
     if (!id) return
     openedDay.current = localDateKey(new Date())
     setSel((s) => (s.id ? s : { id, key: s.key }))
-  }, [embed, pages, auto, sel.id])
+  }, [pages, auto, sel.id])
 
   selRef.current = sel
   pagesRef.current = pages
@@ -557,7 +575,7 @@ export function DiaryView({
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
-      {!embed && pages !== null && pages.length === 0 && !sel.id ? (
+      {!embed && pages !== null && pages.length === 0 && !sel.id && !startCall && !keepForCall ? (
         <>
           <MobileTitleBar title="Diary" />
           <PageHeader title="Diary" description={desc} />
@@ -581,7 +599,7 @@ export function DiaryView({
           )}
           {!embed && list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
-            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} isTodayPage={sel.id === null || isFromToday(active?.createdAt?.toMillis?.())} />
+            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} autoCall={startCall && auto && !embed} onAutoCallHandled={onStartCallHandled} isTodayPage={sel.id === null || isFromToday(active?.createdAt?.toMillis?.())} />
           </div>
         </div>
       )}

@@ -65,6 +65,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".floating.CheckInAnswerReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".echo.BootReceiver"
             android:exported="true">
             <intent-filter>

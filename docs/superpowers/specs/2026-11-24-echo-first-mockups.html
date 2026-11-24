@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Echo redesign v2</title>
+<style>
+:root{--bg:#0b0f14;--s:#12171e;--s2:#181f28;--b:#232b36;--b2:#313b48;--fg:#e6eaf0;--mu:#9aa4b2;--sub:#6b7684;--p:#2dd4bf;--ph:#5eead4;--pf:#04201c;--am:#fbbf24;--or:#fb923c;--bl:#60a5fa;--gr:#34d399;--pk:#f472b6;--vi:#a78bfa;--rd:#f87171}
+*{box-sizing:border-box}
+body{margin:0;background:#06090d;color:var(--fg);font-family:Inter,system-ui,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+.page{max-width:1280px;margin:0 auto;padding:36px 24px 80px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em} .lead{color:var(--mu);max-width:720px;line-height:1.55;margin:0 0 8px}
+.rule{display:inline-flex;gap:8px;align-items:center;background:#0f2b27;border:1px solid #2dd4bf44;color:#99f6e4;border-radius:999px;padding:7px 14px;font-size:13px;margin:10px 0 34px}
+h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--p);margin:44px 0 18px;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:34px 26px}
+.item{cursor:pointer;border-radius:26px;padding:14px;border:1px solid transparent;transition:.15s}
+.item:hover{background:#0d1218;border-color:var(--b)} .item.selected{background:#0f2b27;border-color:var(--p)}
+.cap{margin:14px 4px 0} .cap b{display:block;font-size:15px;margin-bottom:4px} .cap p{margin:0;color:var(--mu);font-size:13px;line-height:1.5}
+.cap .was{color:var(--sub);font-size:12px;margin-top:6px}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.s{width:14px;height:14px} svg.l{width:22px;height:22px}
+/* phone */
+.ph{width:272px;height:570px;margin:0 auto;border-radius:38px;background:var(--bg);border:1px solid #2a3340;box-shadow:0 0 0 7px #05070a,0 0 0 8px #1c232c,0 30px 60px -20px #000;overflow:hidden;position:relative;display:flex;flex-direction:column;font-size:12px}
+.sb{height:26px;display:flex;justify-content:space-between;align-items:center;padding:6px 20px 0;font-size:10px;font-weight:600;color:var(--fg)}
+.hd{padding:10px 16px 10px;display:flex;align-items:center;gap:10px}
+.hd .tt{flex:1;min-width:0} .hd h3{margin:0;font-size:19px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd small{color:var(--mu);font-size:11px}
+.ib{width:32px;height:32px;border-radius:11px;background:var(--s2);border:1px solid var(--b);display:grid;place-items:center;color:var(--mu)}
+.bd{flex:1;padding:0 14px;overflow:hidden;position:relative}
+/* tab bar */
+.tb{height:60px;background:#0d1218ee;border-top:1px solid var(--b);display:flex;align-items:center;justify-content:space-around;padding:0 6px 4px;position:relative}
+.tb a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9.5px;color:var(--sub);width:50px;font-weight:500}
+.tb a.on{color:var(--p)}
+.orb{width:54px;height:54px;border-radius:50%;margin-top:-30px;background:radial-gradient(circle at 32% 28%,#a7f3d0,#2dd4bf 38%,#0f766e 78%);box-shadow:0 0 0 5px var(--bg),0 0 26px #2dd4bf88,inset 0 -6px 12px #0b4f48;display:grid;place-items:center;color:var(--pf)}
+/* bits */
+.card{background:var(--s);border:1px solid var(--b);border-radius:16px;padding:11px 12px;margin-bottom:8px}
+.glow{background:radial-gradient(120% 140% at 100% 0%,var(--g,#2dd4bf22),transparent 55%),var(--s)}
+.t{font-weight:600;font-size:13px} .m{color:var(--mu);font-size:11px} .x{color:var(--sub);font-size:10px}
+.row{display:flex;align-items:center;gap:10px} .sp{margin-left:auto}
+.lbl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);margin:12px 2px 7px;font-weight:600}
+.ask{display:flex;align-items:center;gap:9px;background:linear-gradient(var(--s2),var(--s2)) padding-box,linear-gradient(120deg,#2dd4bf88,#60a5fa55,#a78bfa55) border-box;border:1px solid transparent;border-radius:16px;padding:11px 12px;color:var(--mu);margin-bottom:10px}
+.ask .dot{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#a7f3d0,#2dd4bf 45%,#0f766e);flex:none}
+.ask svg{margin-left:auto;color:var(--p)}
+.chips{display:flex;gap:6px;margin-bottom:10px;overflow:hidden}
+.chip{white-space:nowrap;border:1px solid var(--b);background:var(--s);border-radius:999px;padding:5px 10px;font-size:11px;color:var(--mu);display:inline-flex;gap:5px;align-items:center}
+.chip.on{background:#0f2b27;border-color:#2dd4bf66;color:var(--ph)}
+.pill{font-size:10.5px;font-weight:600;color:var(--p);border:1px solid #2dd4bf55;background:#0f2b2788;border-radius:999px;padding:5px 10px;white-space:nowrap;display:inline-flex;gap:4px;align-items:center}
+.pill.solid{background:var(--p);color:var(--pf);border-color:var(--p)}
+.dotc{width:8px;height:8px;border-radius:50%;flex:none}
+/* chat */
+.me{background:linear-gradient(135deg,#115e55,#0f3f3a);border-radius:16px 16px 5px 16px;padding:9px 11px;margin:8px 0 8px 46px;line-height:1.4}
+.ec{background:var(--s);border:1px solid var(--b);border-radius:16px 16px 16px 5px;padding:9px 11px;margin:8px 34px 5px 0;line-height:1.4}
+.sv{display:flex;align-items:center;gap:8px;background:#0e141b;border:1px solid var(--b);border-radius:12px;padding:7px 9px;margin:5px 34px 5px 0;font-size:11px}
+.sv .k{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;flex:none}
+.sv .a{margin-left:auto;color:var(--sub);font-size:10px;font-weight:600}
+.comp{padding:8px 12px 10px;display:flex;gap:7px;align-items:center}
+.comp .in{flex:1;background:var(--s2);border:1px solid var(--b);border-radius:18px;padding:10px 13px;color:var(--sub)}
+.rb{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--s2);border:1px solid var(--b);color:var(--mu);flex:none}
+.rb.p{background:var(--p);border-color:var(--p);color:var(--pf);box-shadow:0 0 16px #2dd4bf66}
+/* ring */
+.ring{--v:50;--c:var(--p);width:40px;height:40px;border-radius:50%;flex:none;background:conic-gradient(var(--c) calc(var(--v)*1%),#232b36 0);display:grid;place-items:center}
+.ring i{width:30px;height:30px;border-radius:50%;background:var(--s);display:grid;place-items:center;font-style:normal;font-size:9.5px;font-weight:700}
+.bar{height:5px;border-radius:9px;background:#232b36;overflow:hidden;margin-top:7px} .bar i{display:block;height:100%;border-radius:9px;background:var(--c,var(--p))}
+.chk{width:18px;height:18px;border-radius:6px;border:1.6px solid var(--b2);flex:none}
+.tile{flex:1;border-radius:16px;border:1px solid var(--b);padding:10px 9px;background:radial-gradient(130% 120% at 50% 0%,var(--g),transparent 60%),var(--s)}
+.tile .v{font-size:17px;font-weight:700;letter-spacing:-.02em} .tile .v small{font-size:10px;color:var(--mu);font-weight:500}
+.faces{display:flex;justify-content:space-between;margin-top:8px}
+.face{width:28px;height:28px;border-radius:50%;border:1.6px solid var(--c);display:grid;place-items:center;color:var(--c);opacity:.55}
+.face.on{opacity:1;background:color-mix(in srgb,var(--c) 22%,transparent);box-shadow:0 0 12px color-mix(in srgb,var(--c) 55%,transparent)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:10px} .bars i{flex:1;border-radius:5px 5px 2px 2px;background:#1c3a52} .bars i.on{background:linear-gradient(#93c5fd,#3b82f6)}
+.dim{position:absolute;inset:0;background:#05080bcc}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#10161d;border-top:1px solid var(--b2);border-radius:24px 24px 0 0;padding:10px 14px 14px}
+.grab{width:36px;height:4px;border-radius:4px;background:var(--b2);margin:0 auto 12px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.g3 div{background:var(--s2);border:1px solid var(--b);border-radius:14px;padding:12px 4px 9px;text-align:center;font-size:10.5px;color:var(--mu)}
+.g3 .k{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;margin:0 auto 6px}
+.wave{display:flex;align-items:center;justify-content:center;gap:3px;height:44px} .wave i{width:3px;border-radius:3px;background:var(--p)}
+.mb{position:relative;border-radius:50%;flex:none;box-shadow:0 0 24px var(--g)}
+.sw{width:42px;height:24px;border-radius:99px;background:var(--p);position:relative;flex:none} .sw:after{content:"";position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#04201c}
+.sw.off{background:var(--b2)} .sw.off:after{right:auto;left:3px;background:#9aa4b2}
+.art{width:38px;height:38px;border-radius:10px;flex:none}
+/* desktop */
+.desk{border-radius:16px;border:1px solid #2a3340;background:var(--bg);overflow:hidden;display:flex;height:400px;font-size:12px;box-shadow:0 30px 60px -20px #000}
+.side{width:200px;background:#0d1218;border-right:1px solid var(--b);padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.side a{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;color:var(--mu)} .side a.on{background:#0f2b27;color:var(--ph)}
+.side .n{margin-left:auto;font-size:10px;background:var(--s2);border-radius:99px;padding:1px 7px;color:var(--mu)}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6"/></symbol>
+<symbol id="note" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+<symbol id="bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0"/></symbol>
+<symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+<symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+<symbol id="phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></symbol>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+<symbol id="heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.5-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.500-9 9-9 9z"/></symbol>
+<symbol id="brain" viewBox="0 0 24 24"><circle cx="7" cy="8" r="3"/><circle cx="17" cy="7" r="2.500"/><circle cx="14" cy="17" r="3.500"/><path d="m9.500 9.500 2.500 5M15.500 9l-1 4.500"/></symbol>
+<symbol id="music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+<symbol id="plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3"/></symbol>
+<symbol id="feather" viewBox="0 0 24 24"><path d="M20 4a6 6 0 0 0-8.500 0L5 10.500V19h8.500L20 12.500A6 6 0 0 0 20 4zM16 8 3 21M17 15H9"/></symbol>
+<symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+<symbol id="drop" viewBox="0 0 24 24"><path d="M12 3s6 6.500 6 11a6 6 0 0 1-12 0c0-4.500 6-11 6-11z"/></symbol>
+<symbol id="flame" viewBox="0 0 24 24"><path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/></symbol>
+<symbol id="play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8z"/></symbol>
+<symbol id="next" viewBox="0 0 24 24"><path d="m5 5 10 7-10 7zM19 5v14"/></symbol>
+<symbol id="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+<symbol id="smile" viewBox="0 0 24 24"><path d="M8 14s1.500 2 4 2 4-2 4-2M9 9.500v.010M15 9.500v.010"/></symbol>
+<symbol id="meh" viewBox="0 0 24 24"><path d="M8.500 15h7M9 9.500v.010M15 9.500v.010"/></symbol>
+<symbol id="sad" viewBox="0 0 24 24"><path d="M8 16s1.500-2 4-2 4 2 4 2M9 9.500v.010M15 9.500v.010"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.500 1.500M17.500 17.500 19 19M19 5l-1.500 1.500M6.500 17.500 5 19"/></symbol>
+<symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+<symbol id="spark" viewBox="0 0 24 24"><path d="M12 3l1.800 5.200L19 10l-5.200 1.800L12 17l-1.800-5.200L5 10l5.200-1.800z"/></symbol>
+<symbol id="dots" viewBox="0 0 24 24"><path d="M5 12h.010M12 12h.010M19 12h.010"/></symbol>
+</defs></svg>
+
+<div class="page">
+<h1>Echo, redesigned</h1>
+<p class="lead">Second pass, drawn in Echo's own colours and glow style. Every page and bar, including Music, Connectors, Settings and the desktop sidebar. Click any screen you like; tell me what to change on the rest.</p>
+<div class="rule"><svg class="i s"><use href="#spark"/></svg> One rule everywhere: the easiest way to add anything is to tell Echo. Forms stay, one tap deeper.</div>
+
+<h2>Bars and getting to Echo</h2>
+<div class="grid">
+
+<div class="item" data-choice="tabbar" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Good morning, Sam</h3><small>Thursday · 2 reminders · 6/8 water</small></div><div class="ib"><svg class="i s"><use href="#cal"/></svg></div></div>
+<div class="bd">
+ <div class="card glow" style="--g:#2dd4bf30"><div class="row"><div class="mb" style="--g:#2dd4bf66;width:42px;height:42px;background:radial-gradient(circle at 30% 30%,#fde68a,#34d399 45%,#3b82f6)"></div><div><div class="t">Today's page</div><div class="m">3 things saved so far</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div></div>
+ <div class="lbl">Up next</div>
+ <div class="card row"><div class="chk"></div><div><div class="t">Call Maya</div><div class="m" style="color:var(--or)">in 15 min</div></div></div>
+ <div class="card row"><div class="ring" style="--v:60"><i>60%</i></div><div><div class="t">Run a 10K</div><div class="m">Next: run 8K</div></div></div>
+ <div class="lbl">Echo noticed</div>
+ <div class="card glow" style="--g:#a78bfa2a"><div class="m" style="color:var(--fg);line-height:1.45">You sleep better on days you run. Want a run reminder for tomorrow?</div><div class="row" style="margin-top:8px"><span class="pill solid">Yes, 6:30 AM</span><span class="pill">Not now</span></div></div>
+</div>
+<div class="tb"><a class="on"><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>1 · Bottom bar with the Echo orb</b><p>Echo sits in the middle of every page. The first tab becomes "Today": your page, what's next, and one thing Echo noticed.</p><p class="was">Now: Diary · Notes · 2nd Brain · Reminders · More. Echo is only inside the Diary.</p></div></div>
+
+<div class="item" data-choice="echo-sheet" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Goals</h3></div></div>
+<div class="bd"><div class="card" style="height:70px"></div><div class="card" style="height:70px"></div><div class="card" style="height:70px"></div>
+ <div class="dim"></div>
+ <div class="sheet"><div class="grab"></div>
+  <div style="text-align:center"><div class="mb" style="--g:#2dd4bf77;width:64px;height:64px;margin:4px auto 0;background:radial-gradient(circle at 32% 28%,#a7f3d0,#2dd4bf 40%,#0f766e 80%)"></div>
+  <div class="t" style="margin-top:12px;font-size:14px">I'm listening…</div>
+  <div class="wave"><i style="height:10px"></i><i style="height:22px"></i><i style="height:34px"></i><i style="height:18px"></i><i style="height:28px"></i><i style="height:40px"></i><i style="height:20px"></i><i style="height:30px"></i><i style="height:12px"></i><i style="height:24px"></i><i style="height:8px"></i></div>
+  <div class="m" style="color:var(--fg);font-size:13px;line-height:1.4">"I finished my eighth book last night"</div></div>
+  <div class="sv" style="margin:12px 0 0"><div class="k" style="background:#34d39922;color:var(--gr)"><svg class="i s"><use href="#target"/></svg></div><span><b>Read 12 books</b> → 8 of 12</span><span class="a">UNDO</span></div>
+  <div class="row" style="margin-top:12px;justify-content:center"><span class="chip"><svg class="i s"><use href="#note"/></svg>Type instead</span><span class="chip"><svg class="i s"><use href="#phone"/></svg>Full call</span></div>
+ </div></div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>2 · Tap the orb, say it, done</b><p>From any page: speak one sentence, Echo files it and shows what it saved, with Undo. No page change, no typing.</p><p class="was">Now: go to Diary, type, send, wait, then check the other page.</p></div></div>
+
+<div class="item" data-choice="more" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Notes</h3></div></div>
+<div class="bd"><div class="card" style="height:70px"></div><div class="card" style="height:70px"></div>
+ <div class="dim"></div>
+ <div class="sheet"><div class="grab"></div>
+  <div class="row" style="margin-bottom:12px"><div class="mb" style="--g:#0000;width:38px;height:38px;background:linear-gradient(135deg,#2dd4bf,#3b82f6);display:grid;place-items:center;font-weight:700;color:#04201c">S</div><div><div class="t">Sam</div><div class="m">12-day streak with Echo</div></div><div class="ib sp"><svg class="i s"><use href="#gear"/></svg></div></div>
+  <div class="g3">
+   <div><div class="k" style="background:#fbbf2422;color:var(--am)"><svg class="i"><use href="#target"/></svg></div>Goals</div>
+   <div><div class="k" style="background:#34d39922;color:var(--gr)"><svg class="i"><use href="#heart"/></svg></div>Health</div>
+   <div><div class="k" style="background:#a78bfa22;color:var(--vi)"><svg class="i"><use href="#brain"/></svg></div>2nd Brain</div>
+   <div><div class="k" style="background:#f472b622;color:var(--pk)"><svg class="i"><use href="#music"/></svg></div>Music</div>
+   <div><div class="k" style="background:#60a5fa22;color:var(--bl)"><svg class="i"><use href="#plug"/></svg></div>Connectors</div>
+   <div><div class="k" style="background:#9aa4b222;color:var(--mu)"><svg class="i"><use href="#feather"/></svg></div>Legacy</div>
+  </div></div></div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a class="on"><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>3 · "More" as a colour grid</b><p>Six tiles in each page's own colour, your profile and Settings on top.</p><p class="was">Now: a plain list of six rows with descriptions.</p></div></div>
+</div>
+
+<h2>Daily pages</h2>
+<div class="grid">
+
+<div class="item" data-choice="diary" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>A good morning run</h3><small>Thu, Nov 5 · 3 saved</small></div><div class="ib"><svg class="i s"><use href="#cal"/></svg></div></div>
+<div class="bd">
+ <div class="me">Ran 3K this morning, feel great. Remind me to call Maya at 6.</div>
+ <div class="ec">Your longest run this month! Logged it, and I'll remind you at 6.</div>
+ <div class="sv"><div class="k" style="background:#fbbf2422;color:var(--am)"><svg class="i s"><use href="#target"/></svg></div><span><b>Run a 10K</b> → 60%</span><span class="a">UNDO</span></div>
+ <div class="sv"><div class="k" style="background:#fb923c22;color:var(--or)"><svg class="i s"><use href="#bell"/></svg></div><span><b>Call Maya</b> · 6:00 PM</span><span class="a">EDIT</span></div>
+ <div class="me">Maya might visit next month</div>
+ <div class="ec">Saved. Want a reminder closer to the date?</div>
+ <div class="row" style="margin:6px 0"><span class="pill solid">Yes please</span><span class="pill">No thanks</span></div>
+</div>
+<div class="chips" style="padding:0 12px;margin:0"><span class="chip"><svg class="i s" style="color:var(--am)"><use href="#flame"/></svg>Meal</span><span class="chip"><svg class="i s" style="color:var(--bl)"><use href="#drop"/></svg>+1 water</span><span class="chip"><svg class="i s" style="color:var(--gr)"><use href="#smile"/></svg>Mood</span><span class="chip">Sleep</span></div>
+<div class="comp"><div class="in">Tell Echo about your day…</div><div class="rb"><svg class="i"><use href="#phone"/></svg></div><div class="rb p"><svg class="i"><use href="#mic"/></svg></div></div></div>
+<div class="cap"><b>4 · Diary: see what Echo saved, answer with a tap</b><p>Saved cards with Undo or Edit, tap-answers when Echo asks yes or no, a mic in the box, and shortcuts for the daily four.</p><p class="was">Now: a small "Reminder" label under the reply; every answer is typed.</p></div></div>
+
+<div class="item" data-choice="notes" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Notes</h3><small>12 notes · 4 this week</small></div><div class="ib"><svg class="i s"><use href="#search"/></svg></div><div class="ib"><svg class="i s"><use href="#plus"/></svg></div></div>
+<div class="bd">
+ <div class="ask"><span class="dot"></span>Tell Echo something to remember<svg class="i s"><use href="#mic"/></svg></div>
+ <div class="chips"><span class="chip on">All</span><span class="chip"><span class="dotc" style="background:var(--bl)"></span>Personal</span><span class="chip"><span class="dotc" style="background:var(--am)"></span>Ideas</span><span class="chip"><span class="dotc" style="background:var(--gr)"></span>Health</span></div>
+ <div class="lbl">Today</div>
+ <div class="card glow" style="--g:#60a5fa26"><div class="t">Maya may visit next month</div><div class="m" style="margin:3px 0 7px">She might come over in December. Plan a dinner.</div><div class="row"><span class="x" style="color:var(--bl)">Personal</span><span class="x">· maya · family</span><span class="x sp">2h</span></div></div>
+ <div class="card glow" style="--g:#fbbf2422"><div class="t">New project ideas</div><div class="m" style="margin:3px 0 7px">An app for neighbourhood events.</div><div class="row"><span class="x" style="color:var(--am)">Ideas</span><span class="x">· project</span><span class="x sp">3h</span></div></div>
+ <div class="lbl">Yesterday</div>
+ <div class="card glow" style="--g:#60a5fa26"><div class="t">Book recommendation</div><div class="m" style="margin-top:3px">Atomic Habits, from Maya.</div></div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a class="on"><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>5 · Notes</b><p>One "tell Echo" box, one row of colour filters, notes grouped by day. Search and blank note move to small buttons in the header.</p><p class="was">Now: New note button, period tabs, search box and category button stacked above the first note.</p></div></div>
+
+<div class="item" data-choice="reminders" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Reminders</h3><small>2 left today</small></div><div class="ib"><svg class="i s"><use href="#cal"/></svg></div></div>
+<div class="bd">
+ <div class="ask" style="color:var(--fg)"><span class="dot"></span>call mom tomorrow at 7pm<svg class="i s"><use href="#mic"/></svg></div>
+ <div class="card row" style="border-style:dashed;border-color:#2dd4bf77;background:#0f2b2766;margin-top:-4px"><svg class="i s" style="color:var(--p)"><use href="#clock"/></svg><div><div class="t">Call mom</div><div class="m">Fri, Nov 6 · 7:00 PM</div></div><span class="pill solid sp">Add</span></div>
+ <div class="lbl">Today</div>
+ <div class="card row glow" style="--g:#fb923c2e;border-color:#fb923c55"><div class="chk" style="border-color:var(--or)"></div><div><div class="t">Call Maya</div><div class="m" style="color:var(--or)">in 15 min · from chat</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#dots"/></svg></div>
+ <div class="card row"><div class="chk"></div><div><div class="t">Evening check-in</div><div class="m">11:22 PM · every day</div></div></div>
+ <div class="lbl">Tomorrow</div>
+ <div class="card row"><div class="chk"></div><div><div class="t">Morning run</div><div class="m">6:30 AM · weekdays</div></div></div>
+ <div class="card row" style="opacity:.5"><div class="chk" style="background:var(--p);border-color:var(--p);display:grid;place-items:center;color:var(--pf)"><svg class="i s"><use href="#check"/></svg></div><div class="t" style="text-decoration:line-through">Buy shoes</div></div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a class="on"><svg class="i"><use href="#bell"/></svg>Reminders</a><a><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>6 · Reminders</b><p>Write or say it the way you'd say it; Echo shows the time it understood and you tap Add. Today, Tomorrow and Done in one list. Swipe for done or snooze.</p><p class="was">Now: a title box plus a date-time picker, then buttons to open Tomorrow and This week.</p></div></div>
+
+<div class="item" data-choice="goals" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Goals</h3><small>3 active · 1 needs you</small></div><div class="ib"><svg class="i s"><use href="#plus"/></svg></div></div>
+<div class="bd">
+ <div class="card glow" style="--g:#fbbf2433;padding:14px"><div class="row"><div class="ring" style="--v:57;--c:var(--am);width:58px;height:58px"><i style="width:46px;height:46px;font-size:13px">57%</i></div><div><div class="t" style="font-size:14px">A bit behind the year</div><div class="m" style="line-height:1.4">Run 8K this week and you're back on pace.</div></div></div></div>
+ <div class="card"><div class="row"><div class="k" style="width:30px;height:30px;border-radius:10px;background:#34d39922;color:var(--gr);display:grid;place-items:center"><svg class="i s"><use href="#heart"/></svg></div><div style="flex:1"><div class="t">Run a 10K</div><div class="m">Next: run 8K · due Dec 20</div></div><span class="pill">+ Progress</span></div><div class="bar" style="--c:var(--gr)"><i style="width:60%"></i></div></div>
+ <div class="card"><div class="row"><div class="k" style="width:30px;height:30px;border-radius:10px;background:#60a5fa22;color:var(--bl);display:grid;place-items:center"><svg class="i s"><use href="#book"/></svg></div><div style="flex:1"><div class="t">Read 12 books</div><div class="m">9 of 12 · on pace</div></div><span class="pill">+1 book</span></div><div class="bar" style="--c:var(--bl)"><i style="width:75%"></i></div></div>
+ <div class="card"><div class="row"><div class="k" style="width:30px;height:30px;border-radius:10px;background:#f472b622;color:var(--pk);display:grid;place-items:center"><svg class="i s"><use href="#target"/></svg></div><div style="flex:1"><div class="t">Save ₱50,000</div><div class="m">₱15,000 · next ₱20,000</div></div><span class="pill">+ Progress</span></div><div class="bar" style="--c:var(--pk)"><i style="width:30%"></i></div></div>
+ <div class="m" style="text-align:center;margin-top:10px">Tap a goal for milestones</div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>7 · Goals</b><p>One slim card per goal with a one-tap progress button. Milestones, slider and delete open when you tap the goal. The top card says in words where you stand.</p><p class="was">Now: each goal shows slider, milestone track, checklist and add box at once; two goals fill the screen.</p></div></div>
+
+<div class="item" data-choice="health" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Health</h3><small>Today · looking good</small></div><div class="ib"><svg class="i s"><use href="#cal"/></svg></div></div>
+<div class="bd">
+ <div class="row" style="gap:7px;margin-bottom:8px;align-items:stretch">
+  <div class="tile" style="--g:#60a5fa33"><svg class="i s" style="color:var(--bl)"><use href="#drop"/></svg><div class="v">6<small> / 8</small></div><div class="x">glasses</div><div class="pill" style="margin-top:7px;color:var(--bl);border-color:#60a5fa55;background:#60a5fa14">+1</div></div>
+  <div class="tile" style="--g:#fbbf2430"><svg class="i s" style="color:var(--am)"><use href="#flame"/></svg><div class="v">930</div><div class="x">of 2,000 kcal</div><div class="pill" style="margin-top:7px;color:var(--am);border-color:#fbbf2455;background:#fbbf2414">+ meal</div></div>
+  <div class="tile" style="--g:#a78bfa30"><svg class="i s" style="color:var(--vi)"><use href="#moon"/></svg><div class="v">7h</div><div class="x">of 8h sleep</div><div class="pill" style="margin-top:7px;color:var(--vi);border-color:#a78bfa55;background:#a78bfa14">Edit</div></div>
+ </div>
+ <div class="card"><div class="row"><div class="t">How are you feeling?</div><span class="x sp" style="color:var(--gr)">Happy</span></div>
+  <div class="faces"><div class="face" style="--c:var(--am)"><svg class="i s"><use href="#smile"/></svg></div><div class="face on" style="--c:var(--gr)"><svg class="i s"><use href="#smile"/></svg></div><div class="face" style="--c:var(--mu)"><svg class="i s"><use href="#meh"/></svg></div><div class="face" style="--c:var(--vi)"><svg class="i s"><use href="#meh"/></svg></div><div class="face" style="--c:var(--bl)"><svg class="i s"><use href="#sad"/></svg></div><div class="face" style="--c:var(--pk)"><svg class="i s"><use href="#sad"/></svg></div><div class="face" style="--c:var(--rd)"><svg class="i s"><use href="#sad"/></svg></div></div></div>
+ <div class="card"><div class="row"><div class="t">Water this week</div><span class="x sp">avg 6.2</span></div><div class="bars"><i style="height:60%"></i><i style="height:82%"></i><i style="height:45%"></i><i class="on" style="height:75%"></i><i style="height:6%"></i><i style="height:6%"></i><i style="height:6%"></i></div><div class="m" style="margin-top:7px">Up 20% on last week.</div></div>
+ <div class="card row"><div class="t">Body view</div><div class="m">water and calories</div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>8 · Health</b><p>Water, calories and sleep as three glowing tiles with their one-tap action. Mood is one row. A week chart with one plain sentence. The two bodies stay, one tap in.</p><p class="was">Now: the bodies fill the first screen, mood is a 7-button grid, sleep is below the fold.</p></div></div>
+</div>
+
+<h2>Sometimes pages</h2>
+<div class="grid">
+
+<div class="item" data-choice="brain" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>2nd Brain</h3><small>4 memories this week</small></div><div class="ib"><svg class="i s"><use href="#search"/></svg></div></div>
+<div class="bd" style="padding:0">
+ <div class="chips" style="padding:0 14px"><span class="chip on">This week</span><span class="chip">Month</span><span class="chip">All</span><span class="chip"><span class="dotc" style="background:var(--pk)"></span>People</span></div>
+ <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 272 440"><path d="M95 130 190 105M95 130 150 230M190 105 150 230M150 230 70 300" stroke="#3b4656" stroke-width="1.5" fill="none"/></svg>
+ <div class="mb" style="position:absolute;left:58px;top:92px;width:74px;height:74px;--g:#a78bfa66;background:radial-gradient(circle at 30% 30%,#fbcfe8,#a78bfa 50%,#3b82f6)"></div>
+ <div class="mb" style="position:absolute;left:164px;top:78px;width:54px;height:54px;--g:#34d39966;background:radial-gradient(circle at 30% 30%,#a7f3d0,#34d399 55%,#6366f1)"></div>
+ <div class="mb" style="position:absolute;left:104px;top:184px;width:92px;height:92px;--g:#fbbf2466;background:radial-gradient(circle at 30% 30%,#fde68a,#fb923c 40%,#34d399 80%)"></div>
+ <div class="mb" style="position:absolute;left:44px;top:276px;width:50px;height:50px;--g:#60a5fa66;background:radial-gradient(circle at 30% 30%,#fde68a,#60a5fa 55%,#a78bfa)"></div>
+ <div class="sheet" style="border-radius:20px 20px 0 0"><div class="grab"></div><div class="row"><div><div class="t">A good morning run</div><div class="m">Thu, Nov 5 · 3 saved · Maya, running</div></div><span class="pill solid sp">Open</span></div><div class="row" style="margin-top:9px;gap:6px"><span class="chip"><span class="dotc" style="background:var(--am)"></span>1 goal</span><span class="chip"><span class="dotc" style="background:var(--or)"></span>1 reminder</span><span class="chip"><span class="dotc" style="background:var(--pk)"></span>Maya</span></div></div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>9 · 2nd Brain</b><p>The orbs get the whole screen. Filters are one row of chips; tapping an orb slides up a small card with what's inside and an Open button.</p><p class="was">Now: a search box, a boxed canvas, and separate filter, legend and zoom buttons.</p></div></div>
+
+<div class="item" data-choice="music" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Music</h3><small>Evening · you usually play lo-fi</small></div><div class="ib"><svg class="i s"><use href="#plus"/></svg></div></div>
+<div class="bd">
+ <div class="ask"><span class="dot"></span>Play something, or paste a link<svg class="i s"><use href="#mic"/></svg></div>
+ <div class="card glow" style="--g:#f472b633;padding:13px"><div class="row"><div class="art" style="width:52px;height:52px;background:linear-gradient(135deg,#f472b6,#7c3aed)"></div><div style="flex:1;min-width:0"><div class="x" style="color:var(--pk)">YOUR USUAL NOW</div><div class="t">Lo-fi evening mix</div><div class="m">played 9 evenings</div></div><div class="rb p" style="background:var(--pk);border-color:var(--pk);box-shadow:0 0 16px #f472b666"><svg class="i s"><use href="#play"/></svg></div></div></div>
+ <div class="lbl">Playlists</div>
+ <div class="row" style="gap:8px;margin-bottom:8px">
+  <div class="card" style="flex:1;margin:0;padding:9px"><div class="art" style="width:100%;height:54px;background:linear-gradient(135deg,#fb923c,#ef4444)"></div><div class="t" style="margin-top:7px">Gym</div><div class="m">14 songs</div></div>
+  <div class="card" style="flex:1;margin:0;padding:9px"><div class="art" style="width:100%;height:54px;background:linear-gradient(135deg,#60a5fa,#34d399)"></div><div class="t" style="margin-top:7px">Chill Sunday</div><div class="m">9 songs</div></div>
+ </div>
+ <div class="lbl">Recently played</div>
+ <div class="row" style="margin-bottom:9px"><div class="art" style="background:linear-gradient(135deg,#a78bfa,#60a5fa)"></div><div><div class="t">Morning coffee jazz</div><div class="m">Cafe Music</div></div></div>
+</div>
+<div class="card row" style="margin:0 10px 8px;border-radius:16px;background:#151c25;border-color:var(--b2)"><div class="art" style="width:32px;height:32px;background:linear-gradient(135deg,#f472b6,#7c3aed)"></div><div style="flex:1"><div class="t">Lo-fi evening mix</div><div class="bar" style="--c:var(--pk);margin-top:5px"><i style="width:35%"></i></div></div><svg class="i"><use href="#play"/></svg><svg class="i" style="color:var(--mu)"><use href="#next"/></svg></div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>10 · Music</b><p>"Your usual now" one tap away on top, playlists as covers, a slim player above the bar. Queue and listening stats open from the player.</p><p class="was">Now: paste-links card, Up next card, listening card and playlist cards, all text.</p></div></div>
+
+<div class="item" data-choice="connectors" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Connectors</h3><small>9 on · 2 need setup</small></div><div class="ib"><svg class="i s"><use href="#search"/></svg></div></div>
+<div class="bd">
+ <div class="chips"><span class="chip on">All</span><span class="chip">AI models</span><span class="chip">Health</span><span class="chip">Live info</span></div>
+ <div class="lbl">Needs you</div>
+ <div class="card row glow" style="--g:#fbbf2426;border-color:#fbbf2444"><div class="k" style="width:34px;height:34px;border-radius:11px;background:#fbbf2422;color:var(--am);display:grid;place-items:center"><svg class="i s"><use href="#globe"/></svg></div><div style="flex:1"><div class="t">Web search</div><div class="m">Sign in once to search the web</div></div><span class="pill solid">Connect</span></div>
+ <div class="lbl">On</div>
+ <div class="card row"><div class="k" style="width:34px;height:34px;border-radius:11px;background:#60a5fa22;color:var(--bl);display:grid;place-items:center"><svg class="i s"><use href="#sun"/></svg></div><div style="flex:1"><div class="t">Weather</div><div class="m">29° and cloudy in Manila</div></div><div class="sw"></div></div>
+ <div class="card row"><div class="k" style="width:34px;height:34px;border-radius:11px;background:#34d39922;color:var(--gr);display:grid;place-items:center"><svg class="i s"><use href="#flame"/></svg></div><div style="flex:1"><div class="t">Nutrition</div><div class="m">Try: "calories in adobo"</div></div><div class="sw"></div></div>
+ <div class="card row"><div class="k" style="width:34px;height:34px;border-radius:11px;background:#a78bfa22;color:var(--vi);display:grid;place-items:center"><svg class="i s"><use href="#spark"/></svg></div><div style="flex:1"><div class="t">Claude</div><div class="m">Try: "ask Claude about my plan"</div></div><div class="sw"></div></div>
+ <div class="card row" style="opacity:.55"><div class="k" style="width:34px;height:34px;border-radius:11px;background:#9aa4b222;color:var(--mu);display:grid;place-items:center"><svg class="i s"><use href="#heart"/></svg></div><div style="flex:1"><div class="t">Strava</div><div class="m">Coming soon</div></div></div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>11 · Connectors</b><p>What needs you comes first. Each connector shows a real example of what to ask Echo, so people learn what it's for.</p><p class="was">Now: sections of tiles with a description and a status word.</p></div></div>
+
+<div class="item" data-choice="settings" onclick="toggleSelect(this)">
+<div class="ph"><div class="sb"><span>9:41</span><span>5G ▮</span></div>
+<div class="hd"><div class="tt"><h3>Settings</h3></div></div>
+<div class="bd">
+ <div class="card glow row" style="--g:#2dd4bf2a;padding:13px"><div class="mb" style="--g:#0000;width:44px;height:44px;background:linear-gradient(135deg,#2dd4bf,#3b82f6);display:grid;place-items:center;font-weight:700;font-size:16px;color:#04201c">S</div><div><div class="t" style="font-size:14px">Sam</div><div class="m">sam@example.com</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div>
+ <div class="lbl">Echo</div>
+ <div class="card" style="padding:2px 12px">
+  <div class="row" style="padding:10px 0;border-bottom:1px solid var(--b)"><svg class="i s" style="color:var(--p)"><use href="#bell"/></svg><div><div class="t">Check-ins</div><div class="m">Up to 4 a day · quiet 10 PM–7 AM</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div>
+  <div class="row" style="padding:10px 0;border-bottom:1px solid var(--b)"><svg class="i s" style="color:var(--vi)"><use href="#mic"/></svg><div><div class="t">Voice and language</div><div class="m">Aoede · English</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div>
+  <div class="row" style="padding:10px 0"><svg class="i s" style="color:var(--am)"><use href="#flame"/></svg><div><div class="t">Calorie tracking</div><div class="m">2,000 kcal a day</div></div><div class="sw sp"></div></div>
+ </div>
+ <div class="lbl">Phone</div>
+ <div class="card" style="padding:2px 12px">
+  <div class="row" style="padding:10px 0;border-bottom:1px solid var(--b)"><div><div class="t">Pinned notification</div><div class="m">Reminders and goals in your bar</div></div><div class="sw sp"></div></div>
+  <div class="row" style="padding:10px 0"><div><div class="t">Permissions</div><div class="m" style="color:var(--gr)">All 4 allowed</div></div><svg class="i s sp" style="color:var(--sub)"><use href="#chev"/></svg></div>
+ </div>
+ <div class="m" style="text-align:center;margin-top:12px;color:var(--rd)">Sign out</div>
+</div>
+<div class="tb"><a><svg class="i"><use href="#book"/></svg>Today</a><a><svg class="i"><use href="#note"/></svg>Notes</a><div class="orb"><svg class="i l"><use href="#mic"/></svg></div><a><svg class="i"><use href="#bell"/></svg>Reminders</a><a class="on"><svg class="i"><use href="#grid"/></svg>More</a></div></div>
+<div class="cap"><b>12 · Settings</b><p>Short grouped rows that each show their current value; details open on tap.</p><p class="was">Now: seven long cards with every control open on one scrolling page.</p></div></div>
+</div>
+
+<h2>Desktop</h2>
+<div class="item" data-choice="desktop" onclick="toggleSelect(this)" style="max-width:900px">
+<div class="desk">
+ <div class="side">
+  <div class="row" style="padding:4px 8px 14px"><div class="mb" style="--g:#2dd4bf66;width:26px;height:26px;background:radial-gradient(circle at 32% 28%,#a7f3d0,#2dd4bf 40%,#0f766e 80%)"></div><b style="font-size:15px">Echo</b></div>
+  <a class="on"><svg class="i s"><use href="#book"/></svg>Today</a>
+  <a><svg class="i s"><use href="#note"/></svg>Notes<span class="n">12</span></a>
+  <a><svg class="i s"><use href="#bell"/></svg>Reminders<span class="n" style="background:#fb923c22;color:var(--or)">2</span></a>
+  <a><svg class="i s"><use href="#target"/></svg>Goals<span class="n">57%</span></a>
+  <a><svg class="i s"><use href="#heart"/></svg>Health</a>
+  <a><svg class="i s"><use href="#brain"/></svg>2nd Brain</a>
+  <a><svg class="i s"><use href="#music"/></svg>Music</a>
+  <div style="flex:1"></div>
+  <a><svg class="i s"><use href="#plug"/></svg>Connectors</a>
+  <a><svg class="i s"><use href="#gear"/></svg>Settings</a>
+ </div>
+ <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+  <div class="hd" style="padding:16px 22px 8px"><div class="tt"><h3>A good morning run</h3><small>Thursday, Nov 5 · 3 saved</small></div></div>
+  <div style="flex:1;padding:0 22px;max-width:520px">
+   <div class="me" style="margin-left:120px">Ran 3K this morning, feel great. Remind me to call Maya at 6.</div>
+   <div class="ec" style="margin-right:100px">Your longest run this month! Logged it, and I'll remind you at 6.</div>
+   <div class="sv" style="margin-right:100px"><div class="k" style="background:#fb923c22;color:var(--or)"><svg class="i s"><use href="#bell"/></svg></div><span><b>Call Maya</b> · 6:00 PM</span><span class="a">EDIT</span></div>
+  </div>
+  <div class="comp" style="padding:10px 22px 16px"><div class="in">Tell Echo about your day…</div><div class="rb"><svg class="i"><use href="#phone"/></svg></div><div class="rb p"><svg class="i"><use href="#mic"/></svg></div></div>
+ </div>
+ <div style="width:210px;border-left:1px solid var(--b);padding:16px 12px">
+  <div class="lbl" style="margin-top:0">Today</div>
+  <div class="row" style="gap:6px;margin-bottom:8px"><div class="tile" style="--g:#60a5fa33;padding:8px"><div class="v" style="font-size:14px">6<small>/8</small></div><div class="x">water</div></div><div class="tile" style="--g:#fbbf2430;padding:8px"><div class="v" style="font-size:14px">930</div><div class="x">kcal</div></div></div>
+  <div class="card row"><div class="chk"></div><div><div class="t">Call Maya</div><div class="m" style="color:var(--or)">in 15 min</div></div></div>
+  <div class="card row"><div class="ring" style="--v:60;width:32px;height:32px"><i style="width:24px;height:24px;font-size:8px">60</i></div><div><div class="t">Run a 10K</div><div class="m">Next: 8K</div></div></div>
+ </div>
+</div>
+<div class="cap"><b>13 · Desktop: sidebar, chat, today</b><p>The sidebar shows live counts next to each page. Echo's chat is the middle column, and a slim "Today" column on the right updates as Echo saves things, so you watch it work.</p><p class="was">Now: sidebar and one page at a time.</p></div></div>
+
+</div>
+<script>if(typeof toggleSelect!=='function'){window.toggleSelect=function(el){el.classList.toggle('selected')}}</script>
+</body></html>

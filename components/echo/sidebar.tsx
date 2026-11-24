@@ -7,6 +7,7 @@ import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { ORB_COLOR } from '@/lib/echo/orbs'
 import { BRAIN_GRADIENT, NAV_COLOR, NAV_GROUPS, type NavName, type WeekDay } from '@/lib/echo/sidebar'
 import { GuideInfoButton } from './guide'
+import type { TabView } from './mobile-tabbar'
 import { EchoMark, IconButton } from './ui'
 import { OrbSwatch } from './memory-orb'
 
@@ -16,7 +17,18 @@ function navColor(name: Exclude<NavName, 'Settings'>): string {
   return name === '2nd Brain' ? ORB_COLOR.interest : NAV_COLOR[name]
 }
 
-function NavList({ view, onSelect, collapsed, dueCount, legacyCount }: { view: NavName; onSelect: (v: NavName) => void; collapsed: boolean; dueCount: number; legacyCount: number }) {
+type Count = { text: string; aria: string; color: string | null }
+
+/** The live count beside a page name: notes count, reminders left today, goals' average progress, new legacies. */
+function navCount(name: NavName, c: { dueCount: number; legacyCount: number; notesCount: number | null; goalsPct: number | null }): Count | null {
+  if (name === 'Reminders' && c.dueCount > 0) return { text: String(c.dueCount), aria: `${c.dueCount} left today`, color: ORB_COLOR.reminder }
+  if (name === 'Legacy' && c.legacyCount > 0) return { text: String(c.legacyCount), aria: `${c.legacyCount} new`, color: NAV_COLOR.Legacy }
+  if (name === 'Notes' && c.notesCount) return { text: String(c.notesCount), aria: `${c.notesCount} notes`, color: null }
+  if (name === 'Goals' && c.goalsPct !== null) return { text: `${c.goalsPct}%`, aria: `${c.goalsPct}% on average`, color: null }
+  return null
+}
+
+function NavList({ view, onSelect, collapsed, dueCount, legacyCount, notesCount, goalsPct }: { view: TabView; onSelect: (v: NavName) => void; collapsed: boolean; dueCount: number; legacyCount: number; notesCount: number | null; goalsPct: number | null }) {
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
       {NAV_GROUPS.map((group, gi) => (
@@ -27,14 +39,14 @@ function NavList({ view, onSelect, collapsed, dueCount, legacyCount }: { view: N
             <p className={`px-3 text-[10px] uppercase tracking-wider text-muted-foreground ${gi > 0 ? 'mt-3' : ''}`}>{group.label}</p>
           )}
           {group.items.map((name) => {
-            const active = view === name
+            // The mobile Today tab is the diary's home; on desktop it lights up Diary.
+            const active = view === name || (name === 'Diary' && view === 'Today')
             const c = navColor(name)
             const dotColor = name === '2nd Brain' ? BRAIN_GRADIENT : c
-            const count = name === 'Reminders' ? dueCount : name === 'Legacy' ? legacyCount : 0
-            const showBadge = count > 0
-            const countText = name === 'Legacy' ? `${count} new` : `${count} due`
-            const badgeColor = name === 'Legacy' ? NAV_COLOR.Legacy : 'var(--color-danger)'
-            const label = showBadge && collapsed ? `${name}, ${countText}` : collapsed ? name : undefined
+            const count = navCount(name, { dueCount, legacyCount, notesCount, goalsPct })
+            // Collapsed, only the counts that need attention show (as a dot).
+            const alert = count?.color ?? null
+            const label = collapsed ? (count ? `${name}, ${count.aria}` : name) : undefined
             const style: CSSProperties | undefined = active
               ? {
                   background: `color-mix(in srgb, ${c} 14%, transparent)`,
@@ -55,19 +67,20 @@ function NavList({ view, onSelect, collapsed, dueCount, legacyCount }: { view: N
               >
                 <span className="relative flex size-[10px] shrink-0">
                   <span aria-hidden="true" className="size-[10px] rounded-full" style={{ background: dotColor, boxShadow: `0 0 8px ${c}` }} />
-                  {showBadge && collapsed && <span aria-hidden="true" className="absolute -right-1 -top-1 size-2 rounded-full" style={{ background: badgeColor }} />}
+                  {alert && collapsed && <span aria-hidden="true" className="absolute -right-1 -top-1 size-2 rounded-full" style={{ background: alert }} />}
                 </span>
                 {!collapsed && <span>{name}</span>}
-                {showBadge && !collapsed && (
+                {count && !collapsed && (
                   <span
-                    aria-label={countText}
+                    aria-label={count.aria}
                     className="ml-auto rounded-full px-2 text-[11px] font-semibold"
-                    style={{
-                      background: `color-mix(in srgb, ${badgeColor} 18%, transparent)`,
-                      color: `color-mix(in srgb, ${badgeColor} 80%, white)`,
-                    }}
+                    style={
+                      count.color
+                        ? { background: `color-mix(in srgb, ${count.color} 18%, transparent)`, color: `color-mix(in srgb, ${count.color} 80%, white)` }
+                        : { background: 'var(--color-surface-2)', color: 'var(--color-muted-foreground)' }
+                    }
                   >
-                    {count}
+                    {count.text}
                   </span>
                 )}
               </button>
@@ -156,16 +169,20 @@ export function Sidebar({
   days,
   dueCount,
   legacyCount = 0,
+  notesCount = null,
+  goalsPct = null,
   week,
   onOpenPage,
 }: {
-  view: NavName
+  view: TabView
   setView: (v: NavName) => void
   collapsed: boolean
   setCollapsed: (x: boolean) => void
   days: number | null
   dueCount: number
   legacyCount?: number
+  notesCount?: number | null
+  goalsPct?: number | null
   week: WeekDay[]
   onOpenPage: (pageId: string) => void
 }) {
@@ -182,7 +199,7 @@ export function Sidebar({
           onClick={() => setCollapsed(!collapsed)}
         />
       </div>
-      <NavList view={view} onSelect={setView} collapsed={collapsed} dueCount={dueCount} legacyCount={legacyCount} />
+      <NavList view={view} onSelect={setView} collapsed={collapsed} dueCount={dueCount} legacyCount={legacyCount} notesCount={notesCount} goalsPct={goalsPct} />
       {!collapsed && <WeekCard days={days} week={week} onOpenPage={onOpenPage} />}
       <UserFooter collapsed={collapsed} settingsActive={view === 'Settings'} onSettings={() => setView('Settings')} />
     </aside>

@@ -1,0 +1,96 @@
+<style>
+  .ph { --bg:#0b0f14; --s:#12171e; --s2:#181f28; --b:#232b36; --fg:#e6eaf0; --mu:#9aa4b2; --p:#2dd4bf; --pf:#04201c;
+        width:300px; border-radius:34px; border:8px solid #000; background:#3a4a5c; overflow:hidden; font-family:system-ui,sans-serif; color:var(--fg); box-shadow:0 10px 30px rgba(0,0,0,.35); }
+  .scr { height:560px; position:relative; background:linear-gradient(160deg,#5b6b7f,#2c3846); padding:14px 12px; box-sizing:border-box; }
+  .status { display:flex; justify-content:space-between; font-size:11px; color:#e8edf3; margin-bottom:10px; }
+  .appgrid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:16px; opacity:.55 }
+  .appgrid div { height:46px; border-radius:12px; background:rgba(255,255,255,.25) }
+  .orb { width:54px; height:54px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#5eead4,#0f766e 70%); box-shadow:0 0 18px #2dd4bf88; position:absolute; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--pf) }
+  .badge { position:absolute; top:-3px; right:-3px; background:#ef4444; color:#fff; font-size:10px; border-radius:9px; padding:1px 5px }
+  .card { background:var(--s); border:1px solid var(--b); border-radius:18px; padding:12px; }
+  .say { font-size:14px; line-height:1.35; margin:0 0 10px }
+  .row { display:flex; gap:6px; flex-wrap:wrap }
+  .chip { border:1px solid var(--b); background:var(--s2); color:var(--fg); border-radius:999px; padding:8px 12px; font-size:13px; }
+  .chip.p { background:var(--p); color:var(--pf); border-color:var(--p); font-weight:600 }
+  .chip.mic { color:var(--p); border-color:#2dd4bf66 }
+  .emo { font-size:22px; padding:6px 8px }
+  .meta { font-size:11px; color:var(--mu); margin-top:8px }
+  .notif { background:#1c232c; border-radius:16px; padding:10px 12px; margin-bottom:8px; }
+  .nh { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--mu); margin-bottom:4px }
+  .dot { width:14px; height:14px; border-radius:50%; background:var(--p) }
+  .nb { font-size:13px; margin-bottom:8px }
+  .acts { display:flex; gap:14px; font-size:12px; color:var(--p); font-weight:600; border-top:1px solid #2b3440; padding-top:8px }
+  .toast { background:#0f2b27; border:1px solid #2dd4bf55; color:#99f6e4; border-radius:12px; padding:8px 10px; font-size:12px }
+  .cap { text-align:center; margin-top:10px; font-size:13px; color:var(--text-secondary,#555) }
+  .wrap { display:flex; gap:28px; flex-wrap:wrap; justify-content:center }
+  .tl { font-family:system-ui,sans-serif; font-size:13px; }
+  .tl .bar { display:flex; align-items:center; gap:4px; margin:6px 0 14px }
+  .tl .h { width:22px; height:22px; border-radius:6px; background:#e5e7eb; display:flex; align-items:center; justify-content:center; font-size:11px }
+  .tl .q { background:#f59e0b; color:#fff } .tl .a { background:#14b8a6; color:#fff } .tl .z { background:#e5e7eb; color:#9ca3af }
+</style>
+
+<h2>One-tap check-ins</h2>
+<p class="subtitle">Echo asks less often, and you answer with a tap or your voice instead of typing. Click the screens you like.</p>
+
+<div class="cards">
+  <div class="card" data-choice="bubble" onclick="toggleSelect(this)" style="background:none;border:none;box-shadow:none">
+    <div class="wrap"><div class="ph"><div class="scr">
+      <div class="status"><span>12:41</span><span>▲ ▮ 82%</span></div>
+      <div class="appgrid"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+      <div class="orb" style="right:14px; top:250px">E</div>
+      <div class="card" style="position:absolute; left:12px; right:12px; top:315px">
+        <p class="say">Lunch time! Did you eat yet? 🍜</p>
+        <div class="row">
+          <span class="chip p">Yes, I ate</span>
+          <span class="chip">Not yet</span>
+          <span class="chip">Skipping</span>
+          <span class="chip mic">🎤 Tell Echo</span>
+        </div>
+        <div class="meta">Tap "Yes" and Echo asks one more tap: what was it? (rice + adobo, usual lunch…)</div>
+      </div>
+    </div></div></div>
+    <div class="card-body"><h3>1 · Bubble check-in</h3><p>The chathead opens with tap answers. "Tell Echo" records a short voice reply, so there's no keyboard.</p></div>
+  </div>
+
+  <div class="card" data-choice="notification" onclick="toggleSelect(this)" style="background:none;border:none;box-shadow:none">
+    <div class="wrap"><div class="ph"><div class="scr" style="background:linear-gradient(160deg,#1e2a36,#0e141b)">
+      <div class="status"><span>15:02</span><span>▲ ▮ 64%</span></div>
+      <div class="notif">
+        <div class="nh"><span class="dot"></span>Echo · now</div>
+        <div class="nb">How's your afternoon going?</div>
+        <div class="row" style="justify-content:space-between"><span class="emo">😄</span><span class="emo">🙂</span><span class="emo">😐</span><span class="emo">😔</span><span class="emo">😣</span></div>
+      </div>
+      <div class="notif">
+        <div class="nh"><span class="dot"></span>Echo · 1 h ago</div>
+        <div class="nb">💧 Water: 3 of 8 glasses</div>
+        <div class="acts"><span>+1 GLASS</span><span>+2</span><span>LATER</span></div>
+      </div>
+      <div class="notif">
+        <div class="nh"><span class="dot"></span>Echo · reminder</div>
+        <div class="nb">Call Maya at 4 PM</div>
+        <div class="acts"><span>DONE</span><span>SNOOZE 30 MIN</span><span>🎤 REPLY</span></div>
+      </div>
+      <div class="toast" style="margin-top:14px">✓ Saved: mood 🙂 · Echo won't ask again today</div>
+    </div></div></div>
+    <div class="card-body"><h3>2 · Answer from the notification</h3><p>No app opening at all: mood faces, +1 glass, Done / Snooze. A small "Saved" confirms it.</p></div>
+  </div>
+
+  <div class="card" data-choice="pacing" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#fff">
+      <div class="tl">
+        <b>Today (every 2 h, no matter what)</b>
+        <div class="bar"><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span><span class="h q">?</span> <span style="margin-left:6px;color:#ef4444">8 asked · badge "7"</span></div>
+        <b>New (backs off when ignored)</b>
+        <div class="bar"><span class="h q">?</span><span class="h z">·</span><span class="h q">?</span><span class="h z">·</span><span class="h z">·</span><span class="h z">·</span><span class="h q">?</span><span class="h a">✓</span><span class="h q">?</span> <span style="margin-left:6px;color:#0f766e">max 4–5 a day</span></div>
+        <div style="font-size:12px;color:#555;line-height:1.5">
+          <span class="h q" style="display:inline-flex">?</span> Echo asks &nbsp;
+          <span class="h a" style="display:inline-flex">✓</span> you answered &nbsp;
+          <span class="h z" style="display:inline-flex">·</span> skipped: Echo waits longer<br>
+          Ignored → next gap doubles (2 h → 4 h → 8 h). One answer → back to normal.<br>
+          A new check-in replaces the old one, so there's never a pile of unread.
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>3 · Fewer, smarter check-ins</h3><p>Echo learns when you're busy and stops asking so much.</p></div>
+  </div>
+</div>

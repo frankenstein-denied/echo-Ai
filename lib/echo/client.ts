@@ -1,5 +1,5 @@
 import type { User } from 'firebase/auth'
-import { doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, type CollectionReference, type DocumentData } from 'firebase/firestore'
+import { doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, type CollectionReference, type DocumentData } from 'firebase/firestore'
 import {
   addGoal,
   addMeal,
@@ -17,12 +17,15 @@ import {
   mealsForDate,
   notesCol,
   remindersCol,
+  setConnectorSecret,
   updateGoal,
   updateMeal,
   updateNote,
   upsertHealthLog,
   upsertMemories,
+  userDoc,
   watchCalorieSettings,
+  type Connector,
   type EchoCategory,
   type Milestone,
   type PageMix,
@@ -41,7 +44,7 @@ import {
 } from './search-replies'
 import { deriveCategory, fallbackReply, fetchWithTimeout, readEchoResponse } from './send-helpers'
 import { resolvePlayMusic, type FindOutcome, type MusicTrack } from './music-play'
-import type { LookupSource } from './connectors'
+import { AI_PROVIDERS, connectorStatuses, isConnected, type ConnectorState, type LookupSource } from './connectors'
 import { sanitizeSources, type Source } from './view-helpers'
 import { restoreData, type UndoEntry, type UndoInput } from './undo'
 import { queueNativeNotificationRefresh } from '@/lib/native/echo-bridge'
@@ -79,8 +82,11 @@ export async function sendToEcho(user: User, text: string, context: EchoRequest[
   return readEchoResponse(await res.json())
 }
 
-/** A saved item for badges. op is absent for creations (older callers), kcal is set for meals. */
-export type SavedItem = { type: EchoCategory | 'memory'; label: string; op?: 'update' | 'delete'; ref?: string; kcal?: number }
+/**
+ * A saved item for badges and saved cards. op is absent for creations, kcal is set for meals.
+ * docId is the created doc's id (notes, goals, reminders, meals; never health logs), so a create can be undone.
+ */
+export type SavedItem = { type: EchoCategory | 'memory'; label: string; op?: 'update' | 'delete'; ref?: string; kcal?: number; docId?: string }
 export type ApplyResult = { saved: SavedItem[]; failed: string[]; category: EchoCategory; reply: string; messageId?: string; sources?: Source[] }
 
 export type ApplyOptions = {
@@ -146,14 +152,14 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
     if (!hit) throw new ApplyError(`couldn't find that ${kind}`)
     return hit
   }
-  const newRef = (kind: RefKind, id: string, title: string) => (opts.refs ? { ref: addRef(opts.refs, kind, id, title) } : {})
+  const created = (kind: RefKind, id: string, title: string) => ({ docId: id, ...(opts.refs ? { ref: addRef(opts.refs, kind, id, title) } : {}) })
   for (const a of res.actions) {
     switch (a.type) {
       case 'note':
-        await run('note', a.title, async () => newRef('note', await addNote(uid, { title: a.title, body: a.body, category: a.category, tags: a.tags }), a.title))
+        await run('note', a.title, async () => created('note', await addNote(uid, { title: a.title, body: a.body, category: a.category, tags: a.tags }), a.title))
         break
       case 'goal':
-        await run('goal', a.title, async () => newRef('goal', await addGoal(uid, { title: a.title, category: a.category, targetDate: a.targetDate }), a.title))
+        await run('goal', a.title, async () => created('goal', await addGoal(uid, { title: a.title, category: a.category, targetDate: a.targetDate }), a.title))
         break
       case 'health':
       case 'health_update': {
@@ -171,7 +177,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
           failed.push(`reminder: ${a.title}`)
           break
         }
-        await run('reminder', a.title, async () => newRef('reminder', await addReminder(uid, { title: a.title, dueAt: due, source: 'chat' }), a.title))
+        await run('reminder', a.title, async () => created('reminder', await addReminder(uid, { title: a.title, dueAt: due, source: 'chat' }), a.title))
         break
       }
       case 'connector':
@@ -183,7 +189,7 @@ export async function applyActions(uid: string, res: Pick<EchoResponse, 'actions
           const n = a.nutrition ?? (opts.estimateMeal ? await opts.estimateMeal(a.description, a.mealType) : null)
           if (!n) throw new ApplyError("couldn't estimate calories")
           const id = await addMeal(uid, { date: a.date, mealType: a.mealType, description: a.description, items: n.items, totalCalories: n.totalCalories, source: opts.source ?? 'chat', estimated: true })
-          return { kcal: n.totalCalories, ...newRef('meal', id, a.description) }
+          return { kcal: n.totalCalories, ...created('meal', id, a.description) }
         })
         break
       case 'reminder_update':
@@ -405,6 +411,24 @@ export async function lookupViaApi(user: Pick<User, 'getIdToken'>, source: Looku
 
 const msOf = (t: unknown) => (t && typeof (t as Timestamp).toMillis === 'function' ? (t as Timestamp).toMillis() : 0)
 
+type Snap = { id: string; data: (o?: { serverTimestamps: 'estimate' }) => DocumentData }
+
+// The short-ref sources: one set of queries and mappers shared by the live watcher (diary chat) and the one-off read (quickSend).
+const refQueries = (uid: string, day: string) => ({
+  reminders: query(remindersCol(uid), where('dueAt', '>=', Timestamp.fromMillis(Date.now() - 36 * 3600e3)), orderBy('dueAt'), limit(60)),
+  goals: query(goalsCol(uid), limit(50)),
+  notes: query(notesCol(uid), orderBy('updatedAt', 'desc'), limit(10)),
+  health: doc(healthLogsCol(uid), day),
+  meals: query(mealsCol(uid), where('date', '>=', day), where('date', '<=', day)),
+})
+const toRefReminder = (d: Snap) => ({ id: d.id, title: d.data().title, dueAtMs: msOf(d.data().dueAt), done: d.data().done })
+const toRefGoal = (d: Snap) => {
+  const g = d.data({ serverTimestamps: 'estimate' })
+  return { id: d.id, title: g.title, progress: g.progress, milestones: g.milestones, updatedAtMs: msOf(g.updatedAt) }
+}
+const toRefNote = (d: Snap) => ({ id: d.id, title: d.data().title, updatedAtMs: msOf(d.data({ serverTimestamps: 'estimate' }).updatedAt) })
+const toRefMeal = (m: { id: string; mealType: EchoMealType; description: string; totalCalories: number; createdAt?: unknown }) => ({ id: m.id, mealType: m.mealType, description: m.description, totalCalories: m.totalCalories, createdAtMs: msOf(m.createdAt) })
+
 /**
  * Live source data for the short-ref lists (open reminders, goals, recent notes, today's health and meals,
  * the calorie switch). Emits whenever any part changes; `day` is the local YYYY-MM-DD.
@@ -413,36 +437,34 @@ export function watchRefSource(uid: string, day: string, onData: (src: RefSource
   const src: RefSource = { reminders: [], goals: [], notes: [], health: null, meals: [], caloriesEnabled: true }
   const emit = () => onData({ ...src })
   const warn = (what: string) => () => console.warn(`Echo: could not watch ${what}`)
+  const q = refQueries(uid, day)
   const subs = [
     onSnapshot(
-      query(remindersCol(uid), where('dueAt', '>=', Timestamp.fromMillis(Date.now() - 36 * 3600e3)), orderBy('dueAt'), limit(60)),
+      q.reminders,
       (snap) => {
-        src.reminders = snap.docs.map((d) => ({ id: d.id, title: d.data().title, dueAtMs: msOf(d.data().dueAt), done: d.data().done }))
+        src.reminders = snap.docs.map(toRefReminder)
         emit()
       },
       warn('reminders'),
     ),
     onSnapshot(
-      query(goalsCol(uid), limit(50)),
+      q.goals,
       (snap) => {
-        src.goals = snap.docs.map((d) => {
-          const g = d.data({ serverTimestamps: 'estimate' })
-          return { id: d.id, title: g.title, progress: g.progress, milestones: g.milestones, updatedAtMs: msOf(g.updatedAt) }
-        })
+        src.goals = snap.docs.map(toRefGoal)
         emit()
       },
       warn('goals'),
     ),
     onSnapshot(
-      query(notesCol(uid), orderBy('updatedAt', 'desc'), limit(10)),
+      q.notes,
       (snap) => {
-        src.notes = snap.docs.map((d) => ({ id: d.id, title: d.data().title, updatedAtMs: msOf(d.data({ serverTimestamps: 'estimate' }).updatedAt) }))
+        src.notes = snap.docs.map(toRefNote)
         emit()
       },
       warn('notes'),
     ),
     onSnapshot(
-      doc(healthLogsCol(uid), day),
+      q.health,
       (snap) => {
         src.health = snap.exists() ? snap.data() : null
         emit()
@@ -453,7 +475,7 @@ export function watchRefSource(uid: string, day: string, onData: (src: RefSource
       uid,
       day,
       (meals) => {
-        src.meals = meals.map((m) => ({ id: m.id, mealType: m.mealType, description: m.description, totalCalories: m.totalCalories, createdAtMs: msOf(m.createdAt) }))
+        src.meals = meals.map(toRefMeal)
         emit()
       },
       warn('meals'),
@@ -468,6 +490,44 @@ export function watchRefSource(uid: string, day: string, onData: (src: RefSource
     ),
   ]
   return () => subs.forEach((u) => u())
+}
+
+/** One-off read of the same sources as watchRefSource (for a send outside the diary). A failed part reads as empty. */
+export async function readRefSource(uid: string, day: string): Promise<RefSource> {
+  const q = refQueries(uid, day)
+  const soft = <T>(what: string, p: Promise<T>, empty: T) =>
+    p.catch(() => {
+      console.warn(`Echo: could not read ${what}`)
+      return empty
+    })
+  const [reminders, goals, notes, health, meals, caloriesEnabled] = await Promise.all([
+    soft('reminders', getDocs(q.reminders).then((s) => s.docs.map(toRefReminder)), []),
+    soft('goals', getDocs(q.goals).then((s) => s.docs.map(toRefGoal)), []),
+    soft('notes', getDocs(q.notes).then((s) => s.docs.map(toRefNote)), []),
+    soft('health', getDoc(q.health).then((s) => (s.exists() ? s.data() : null)), null),
+    soft('meals', getDocs(q.meals).then((s) => s.docs.map((d) => toRefMeal({ ...d.data(), id: d.id }))), []),
+    soft('calorie settings', getDoc(userDoc(uid)).then((s) => s.data()?.caloriesEnabled !== false), true),
+  ])
+  return { reminders, goals, notes, health, meals, caloriesEnabled }
+}
+
+/** Connector docs -> statuses for the context, the sealed Web search login and the sealed AI model keys. */
+export function connectorContext(docs: ({ id: string } & Partial<Connector>)[]): { statuses: ConnectorState[]; sealed: string; aiKeys: Record<string, string> } {
+  const web = docs.find((d) => d.id === 'web-search')
+  // Sealed AI model keys (ask Claude…), sent with each message; only the server can open them.
+  const aiKeys = Object.fromEntries(docs.filter((d) => (AI_PROVIDERS as readonly string[]).includes(d.id) && d.connected && typeof d.sealed === 'string' && d.sealed).map((d) => [d.id, d.sealed as string]))
+  return { statuses: connectorStatuses(docs), sealed: typeof web?.sealed === 'string' ? web.sealed : '', aiKeys }
+}
+
+/** The Web search key to send: the sealed login, only while Web search is connected. */
+export function webSearchKeyOf(c: { statuses: ConnectorState[]; sealed: string }): string | undefined {
+  return isConnected(c.statuses, 'web-search') && c.sealed ? c.sealed : undefined
+}
+
+/** Web search login after a reply: keep refreshed tokens, or disconnect when Tavily no longer accepts the login. */
+export function saveWebSearchLogin(uid: string, res: Pick<EchoResponse, 'webSearchRevoked' | 'webSearchResealed'>): void {
+  if (res.webSearchRevoked) void setConnectorSecret(uid, 'web-search', null).catch((e) => console.error('Echo: could not disconnect Web search', e))
+  else if (res.webSearchResealed) void setConnectorSecret(uid, 'web-search', res.webSearchResealed).catch((e) => console.error('Echo: could not save the Web search login', e))
 }
 
 // Saves the assistant message; returns its id or undefined on failure.
