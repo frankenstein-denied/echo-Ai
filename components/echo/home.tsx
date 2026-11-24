@@ -199,7 +199,7 @@ export function companionGreeting(name: string | undefined, hour = new Date().ge
   return n ? `Good ${part}, ${n}.` : `Good ${part}.`
 }
 
-export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed, isTodayPage }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call'; /** The page shown is today's (the daily brief can start from it). */ isTodayPage: boolean }) {
+export function Home({ user, profile, pageId, onEnsurePage, disabled = false, onNavigate, header, meta, hint, onCallActiveChange, embed, isTodayPage, autoCall = false, onAutoCallHandled }: { user: User; profile: UserProfile; pageId: string | null; onEnsurePage: () => Promise<string>; disabled?: boolean; onNavigate: (v: HomeView) => void; header: ReactNode; meta?: string; hint?: string; onCallActiveChange?: (active: boolean) => void; embed?: 'chat' | 'call'; /** The page shown is today's (the daily brief can start from it). */ isTodayPage: boolean; /** Start a voice call once the page is ready (the Echo sheet's "Full call"), then onAutoCallHandled. */ autoCall?: boolean; onAutoCallHandled?: () => void }) {
   const uid = user.uid
   const [todayCollapsed, setTodayCollapsed] = useState(false)
   const [todayDrawer, setTodayDrawer] = useState(false)
@@ -841,6 +841,16 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     else startCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embed, disabled, messagesLoaded, memoriesLoaded, prefs])
+  // "Full call" from the Echo sheet: start once the page, its messages, the memories and the voice prefs are ready.
+  useEffect(() => {
+    if (!autoCall || embed || call.active) return
+    const step = embedCallStep({ voiceEnabled: prefs?.enabled ?? null, disabled, messagesLoaded, memoriesLoaded })
+    if (step === 'wait') return
+    onAutoCallHandled?.()
+    if (step === 'voice_off') setCallBlocked('Turn on voice in Settings to talk with Echo out loud.')
+    else startCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCall, embed, disabled, messagesLoaded, memoriesLoaded, prefs])
   // Floating panel: tell native once the chat is readable. Before the page list lands the page is the empty state, not ready.
   const panelReported = useRef(false)
   useEffect(() => {
@@ -949,11 +959,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 max-lg:gap-1 max-lg:py-1.5 max-lg:pl-1 max-lg:pr-3">
           <div className="min-w-0 flex-1">{header}</div>
           {meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{meta}</span>}
-          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden 2xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
+          <IconButton icon={PanelRightOpen} label="Open Today" size="sm" className="max-lg:hidden xl:hidden" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)} />
           <Button variant="secondary" size="sm" icon={CalendarCheck} className="shrink-0 lg:hidden" aria-label="Open Today" aria-haspopup="dialog" aria-expanded={todayDrawer} onClick={() => setTodayDrawer(true)}>
             Today
           </Button>
-          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden 2xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
+          <IconButton icon={todayCollapsed ? PanelRightOpen : PanelRightClose} label={todayCollapsed ? 'Show Today panel' : 'Hide Today panel'} size="sm" className="hidden xl:inline-flex" aria-expanded={!todayCollapsed} onClick={toggleToday} />
         </div>
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
@@ -1114,7 +1124,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
       </div>
 
       {!todayCollapsed && (
-        <aside aria-label="Today" className="hidden w-72 shrink-0 overflow-y-auto border-l border-border 2xl:block">
+        <aside aria-label="Today" className="hidden w-64 shrink-0 overflow-y-auto border-l border-border xl:block 2xl:w-72">
           <TodayPanel uid={uid} day={day} onNavigate={onNavigate} />
         </aside>
       )}
