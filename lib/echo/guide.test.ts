@@ -22,6 +22,12 @@ describe('guide slides', () => {
     }
   })
 
+  it('explains the Echo bubble and its check-ins', () => {
+    const slide = GUIDE_SLIDES.find((s) => s.id === 'check-ins')
+    expect(slide?.image).toBe('/guide/chathead.webp')
+    expect(slide?.body).toMatch(/bubble/i)
+  })
+
   it('ends on installing, with a link for every option', () => {
     expect(GUIDE_SLIDES[INSTALL_SLIDE].id).toBe('install')
     expect(INSTALL_SLIDE).toBe(GUIDE_SLIDES.length - 1)

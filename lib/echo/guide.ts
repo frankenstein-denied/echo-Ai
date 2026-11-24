@@ -1,9 +1,9 @@
-// The "How Echo works" walkthrough. Keep it true to the UI, at most 10 slides, and led by what Echo is for:
+// The "How Echo works" walkthrough. Keep it true to the UI, at most 11 slides, and led by what Echo is for:
 // people treated Echo as a general chatbot, so the purpose comes before any feature. Screens in public/guide
 // are the real pages running on fictional sample data.
 export const WEB_LINK = 'https://echo-ai-blue.vercel.app'
 export const ANDROID_LINK = 'https://github.com/frankenstein-denied/echo-Ai/releases/latest'
-export const MAX_GUIDE_SLIDES = 10
+export const MAX_GUIDE_SLIDES = 11
 
 export type InstallOption = { title: string; link: string; steps: string[]; pwa?: boolean }
 
@@ -106,9 +106,22 @@ export const GUIDE_SLIDES: GuideSlide[] = [
     id: 'notification',
     title: 'Echo in your notification bar',
     body: 'On the Android app, go to More, then Settings, and turn on Pinned Echo notification.',
-    points: ['See your reminders, goals and latest notes', 'Tap Done or +15m without opening the app', 'Talk starts a voice call over any app', 'Type opens a floating chathead with your diary'],
+    points: ['See your reminders, goals and latest notes', 'Tap Done or +15m without opening the app', 'Talk starts a voice call over any app', 'Type opens the Echo bubble with your diary'],
     image: '/guide/settings.webp',
     alt: 'The Settings page with the Pinned Echo notification switch turned on',
+  },
+  {
+    id: 'check-ins',
+    title: 'Echo checks in on you',
+    body: 'On the Android app, the Echo bubble floats over any app. Through the day it pops up a short check-in about your meals, goals, reminders or mood.',
+    points: [
+      'A red number shows check-ins you have not read',
+      'Answer with one tap, or tap Tell Echo to say more',
+      'Drag it to the X to hide it until the next check-in',
+      'It sleeps at night. Set how often it checks in and your sleep time in Settings, under Echo check-ins',
+    ],
+    image: '/guide/chathead.webp',
+    alt: 'The Echo bubble showing a lunch check-in over another app, and the chat it opens',
   },
   {
     id: 'install',

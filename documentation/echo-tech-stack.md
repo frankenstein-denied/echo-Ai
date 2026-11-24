@@ -7,7 +7,7 @@
 
 **Echo is "a diary that speaks back"** — an AI companion PWA. You type or **talk** to it; it replies and **quietly saves** what matters (notes, goals, reminders, health, meals) and builds a **2nd Brain** knowledge graph of your life (people, interests, topics, personality traits).
 
-**Stack in one line:** **Next.js 16 (React 19, TypeScript)** on **Vercel** · **Firebase Auth + Cloud Firestore** for users and data · **Google Gemini** for the brain (text router, live voice, TTS) · small **connectors** (Tavily web search, USDA nutrition, Open-Meteo weather).
+**Stack in one line:** **Next.js 16 (React 19, TypeScript)** on **Vercel** · **Firebase Auth + Cloud Firestore** for users and data · **Google Gemini** for the brain (text router, live voice, TTS) · small **connectors** (Tavily web search, USDA nutrition, Open-Meteo weather, and free lookups: Wikipedia, GNews, Frankfurter rates, Nager.Date holidays, Open Library, TMDB, Open Food Facts) · a built-in **YouTube music player** with playlists and listening habits.
 
 ---
 
@@ -24,7 +24,7 @@
 | Security | **Firestore Security Rules**; server verifies ID tokens with **jose** (JWKS); **AES-256-GCM** for connector secrets | Data is owner-only and schema-validated |
 | AI | **Google Gemini** via `@google/genai` | Text router (Flash-Lite), **Gemini Live** native-audio calls, TTS |
 | Offline | Hand-written **service worker** + web app manifest | Installable **PWA**, offline page |
-| Tests | **Vitest** (~460 unit tests) | Pure logic is tested; `tsc --noEmit` type check |
+| Tests | **Vitest** (~1,000 unit tests) | Pure logic is tested; `tsc --noEmit` type check |
 | Package manager | **pnpm** | |
 
 **Gemini models (overridable by env):** router `gemini-3.5-flash-lite` → fallback `gemini-3.1-flash-lite`; live calls `gemini-3.1-flash-live-preview`; TTS `gemini-3.8-flash-lite-tts` (+ fallbacks). A **fallback chain** retries the next model on overload.
@@ -63,7 +63,18 @@
 - **Web search (Tavily):** user logs in with **their own Tavily account** (OAuth + PKCE). Tokens are **sealed with AES-256-GCM** (`CONNECTOR_SECRET`, bound to the uid) and stored on the user's connector doc; the server opens them per search. First search after idle can be slow → one **retry**, then an honest "Tavily is waking up".
 - **Nutrition (USDA):** built in; server looks up calories per 100 g, Gemini estimates portions.
 - **Weather (Open-Meteo):** user picks location (GPS or city search); browser fetches a 4-day forecast (cached 30 min) and sends a ≤600-char WEATHER block with chat and calls.
-- *(In progress on a branch: Music — YouTube player "play X" + ListenBrainz.)*
+- **Free lookups:** Wikipedia, News (GNews, `GNEWS_API_KEY`), Currency (Frankfurter), Public holidays (Nager.Date), Books (Open Library), Movies & TV (TMDB, `TMDB_API_KEY`), Packaged food (Open Food Facts). The router returns a `lookup {source, query}` action; `lib/server/lookup.ts` fetches the facts and the web-answer step writes the reply with sources. Off / empty / failed → it becomes a `web_search`. Calls use the `lookup` tool via `POST /api/lookup`.
+
+### D2. AI models (bring your own key)
+- Cards for **Claude, ChatGPT, Gemini, Perplexity, Groq, OpenRouter** under AI models. The pasted key goes to `POST /api/connectors/ai-key`, which **seals it with AES-256-GCM** (bound to uid + provider); only the sealed copy is stored on the connector doc. Typed chat sends the sealed keys; the router's `ask_model {provider, question}` action is resolved in `lib/server/ask-model.ts` (provider API called server-side, reply "Claude says: …"). Calls: not yet.
+- **Fitness** (wger, Strava, Health Connect): coming-soon cards.
+- **Needs setup:** News and Movies show "Needs setup" (not Ready) when `GNEWS_API_KEY` / `TMDB_API_KEY` are missing (`GET /api/connectors/config`).
+
+### E. Music
+- **Player:** a docked **YouTube embed** (youtube-nocookie, `enablejsapi`) with a queue: next/previous, auto-advance on the embed's "ended" message, minimize. Pasted YouTube / YouTube Music links play with no key; search by name uses `POST /api/music/search` (`YOUTUBE_API_KEY`). Titles of pasted links come from YouTube **oEmbed**.
+- **Music page:** paste links → Play now / Add to Up next; **link playlists** (`playlists`), Play / Shuffle; "Your listening".
+- **Echo controls it:** `play_music` (a song, a link, or "play my gym playlist") and `music_control` (next, previous, pause, resume, stop, shuffle), in chat and calls. A **MUSIC** block (now playing, up next, playlists, listening habits) goes with every request. In calls songs open paused, never over Echo's voice.
+- **Listening pattern analyzer:** the player records each song YouTube reports playing (`listens`: finished / skipped < 30 s / partial, playing time only). `lib/echo/listening.ts` finds most played, top artists, weekday/weekend × time-of-day habits, usually skipped and new this week (60 days). Used **only when the user asks** ("play my usual", "what do I listen to most?"); history can be cleared.
 
 ---
 
@@ -78,7 +89,9 @@ Everything lives under **`users/{uid}/…`** — one user can only touch their o
 | `notes`, `goals`, `reminders`, `routines` | the user's items |
 | `healthLogs/{YYYY-MM-DD}`, `meals` | mood, sleep, water, energy; meals + calories |
 | `memories/{type-slug}` | **2nd Brain nodes**: label, type, links, mentions, pages |
-| `connectors/{id}` | connector state (sealed tokens, weather location) |
+| `connectors/{id}` | connector state (sealed tokens, weather location, on/off for free lookups) |
+| `playlists/{id}` | link playlists: name, tracks (videoId, title, channel) |
+| `listens/{id}` | listening history: song, startedAt, outcome, listened seconds |
 
 **2nd Brain:** memory id = `<type>-<slug>` (e.g. `person-mama`), so repeats **merge** and `mentions` grows. Types: person, interest, topic, goal, task, health, connector, diary, **trait** (personality, "Confident" at 2+ mentions). Links are made **reciprocal** in one Firestore **transaction**. The graph view lays nodes out with **d3-force**.
 
@@ -89,7 +102,7 @@ Everything lives under **`users/{uid}/…`** — one user can only touch their o
 - **AuthN:** Firebase Auth on the client; every API route calls `verifyUser` → verifies the **ID token (RS256) against Google's JWKS** with `jose` (iss/aud = project, sub, auth_time). No firebase-admin (it breaks in Vercel's bundled runtime).
 - **AuthZ:** **Firestore Security Rules** — `isOwner(uid)` on every path + **schema validation** (allowed keys, types, lengths, enums, `updatedAt == request.time`).
 - **Secrets:** API keys only in **Vercel env vars**; Gemini Live uses **ephemeral tokens**; connector tokens **AES-256-GCM sealed** with the uid as AAD.
-- **Prompt-injection hygiene:** user data, memories, web results and weather are wrapped as **"data, not instructions"**; the server **sanitizes every model output**; deletes need an explicit confirmation turn; web results never trigger saves.
+- **Prompt-injection hygiene:** user data, memories, web results, lookup results, weather and music (song titles) are wrapped as **"data, not instructions"**; the server **sanitizes every model output**; deletes need an explicit confirmation turn; web results never trigger saves.
 - **Abuse limits:** body-size caps, per-user hourly search limit, timeouts on every outside call, no logging of queries/tokens.
 - **Deploy order rule:** when rules change, **deploy `firestore.rules` before the code** (one rejected doc fails a whole memory transaction).
 
@@ -103,6 +116,8 @@ Everything lives under **`users/{uid}/…`** — one user can only touch their o
 | `GEMINI_API_KEY` (+ optional `GEMINI_MODEL`, `GEMINI_LIVE_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_NUTRITION_MODEL`) | All AI calls |
 | `TAVILY_CLIENT_ID`, `CONNECTOR_SECRET` (base64, 32 bytes) | Tavily login + sealing tokens |
 | `USDA_API_KEY` | Nutrition lookups |
+| `YOUTUBE_API_KEY` | Search songs by name (pasted links need no key) |
+| `GNEWS_API_KEY`, `TMDB_API_KEY` | News and Movies & TV lookups |
 
 ---
 
@@ -115,9 +130,11 @@ Everything lives under **`users/{uid}/…`** — one user can only touch their o
 - **How does it learn personality?** `trait` memories, only from what you say about yourself; used quietly to adjust tone/length; never diagnoses or sensitive guesses.
 - **How do you stop the AI doing something wrong?** Strict JSON schema, server-side sanitizer, owner-only Firestore rules, delete confirmation, Undo for 10 s.
 - **How are API keys protected?** Server-only env vars; ephemeral Live tokens; sealed connector tokens.
-- **How is it tested?** ~460 Vitest unit tests on pure logic (sanitizer, prompts, context, dates, connectors) + TypeScript type check.
+- **How is it tested?** ~1,000 Vitest unit tests on pure logic (sanitizer, prompts, context, dates, connectors) + TypeScript type check.
 - **Offline?** PWA service worker caches the app shell and shows an offline page; Firestore caches data locally.
 - **Biggest trade-off?** Client-side writes keep the server simple and cheap but put all trust in Firestore rules — so rules are strict and deployed first.
+- **How does Echo know my music taste?** Its own player records what actually played (finished or skipped); `analyzeListening` finds habits by time of day. Used only when asked; clearable.
+- **Where do news and rates come from?** Free lookup connectors (GNews, Frankfurter/ECB, Nager.Date, Wikipedia…); the reply is written from those facts with sources, web search as backup.
 - **What happens if Gemini is overloaded?** The model fallback chain tries the next model; voice/TTS have their own fallbacks.
 
 ---
