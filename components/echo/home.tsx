@@ -40,7 +40,7 @@ import { showPinnedBriefOrb, showTodayWelcome } from '@/lib/echo/today-orb'
 import { Capacitor } from '@capacitor/core'
 import { embedCallStep } from '@/lib/echo/embed'
 import { markPage } from '@/lib/echo/call-timing'
-import { floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive } from '@/lib/native/float-bridge'
+import { canStartFloatCall, floatingCallActiveWithin, reportCallEnded, reportCallPhase, reportPanelReady, setAppCallActive, startFloatCall } from '@/lib/native/float-bridge'
 import { useMusicPlayer } from './music-player'
 import { SavedCard } from './saved-card'
 import { useDictation } from './use-dictation'
@@ -1108,6 +1108,11 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
     stopAudio() // don't record Echo's own voice
     await dictation.start()
   }
+  // The chathead chat (APK 1.20+) can hand off to Echo's floating call; checked after mount so SSR markup matches.
+  const [floatCallOk, setFloatCallOk] = useState(false)
+  useEffect(() => {
+    if (embed === 'chat') setFloatCallOk(canStartFloatCall())
+  }, [embed])
   // The phone opened this chat to answer a check-in by voice ("Tell Echo" / "Yes, I ate"): start the mic.
   const toggleMicRef = useRef(toggleMic)
   toggleMicRef.current = toggleMic
@@ -1384,7 +1389,7 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                     </Button>
                   )}
                   {speaking && <IconButton icon={Square} label="Stop speaking" variant="secondary" onClick={stopAudio} />}
-                  {prefs?.enabled && embed !== 'chat' && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => startCall()} disabled={disabled || thinking || recording || transcribing} />}
+                  {prefs?.enabled && (embed !== 'chat' || floatCallOk) && <IconButton ref={callBtnRef} icon={Phone} label="Call Echo" variant="secondary" onClick={() => (embed === 'chat' ? void startFloatCall() : startCall())} disabled={disabled || thinking || recording || transcribing} />}
                   <button
                     type="button"
                     onClick={() => void toggleMic()}
@@ -1392,10 +1397,10 @@ export function Home({ user, profile, pageId, onEnsurePage, disabled = false, on
                     title={micLabel}
                     aria-pressed={recording}
                     disabled={disabled || transcribing}
-                    className={buttonClass(recording ? 'danger' : text.trim() ? 'secondary' : 'primary', 'md', 'size-10 px-0 max-lg:size-11')}
+                    className={cn(buttonClass(recording ? 'danger' : text.trim() ? 'secondary' : 'primary', 'md'), 'size-12 max-lg:size-12 shrink-0 rounded-full px-0')}
                     style={recording ? { boxShadow: `0 0 0 ${2 + Math.min(1, dictation.level * 6) * 6}px color-mix(in srgb, var(--color-danger) 25%, transparent)` } : !text.trim() ? { boxShadow: '0 0 16px #2dd4bf66' } : undefined}
                   >
-                    {transcribing ? <Loader2 size={20} className="animate-spin" aria-hidden="true" /> : recording ? <Square size={18} aria-hidden="true" /> : <Mic size={20} aria-hidden="true" />}
+                    {transcribing ? <Loader2 size={24} className="animate-spin" aria-hidden="true" /> : recording ? <Square size={20} aria-hidden="true" /> : <Mic size={24} aria-hidden="true" />}
                   </button>
                   {text.trim() && <IconButton icon={Send} label="Send" variant="primary" onClick={submit} disabled={disabled || thinking} />}
                 </div>

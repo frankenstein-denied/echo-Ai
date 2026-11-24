@@ -9,6 +9,7 @@ interface EchoFloatApi {
   openInApp(): void
   refreshNotification(): void
   onPanelReady?(): void // absent on APKs older than check-ins
+  startCall?(): void // absent before 1.20: the chathead chat can't start a floating call
 }
 
 const api = (): EchoFloatApi | null => {
@@ -37,6 +38,16 @@ export const reportSignedOut = (): void => call((a) => a.onSignedOut())
 export const openFullApp = (): void => call((a) => a.openInApp())
 export const requestFloatRefresh = (): void => call((a) => a.refreshNotification())
 export const reportPanelReady = (): void => call((a) => a.onPanelReady?.())
+
+/** Whether this floating chat can start Echo's floating call (APK 1.20+). */
+export const canStartFloatCall = (): boolean => typeof api()?.startCall === 'function'
+
+/** Asks native to close the chat panel and start the floating call; false when this APK can't. */
+export function startFloatCall(): boolean {
+  if (!canStartFloatCall()) return false
+  call((a) => a.startCall?.())
+  return true
+}
 
 /** True while the floating call runs. A 1.2 APK without the method (or a non-native page) reads as false. */
 export async function isFloatingCallActive(): Promise<boolean> {

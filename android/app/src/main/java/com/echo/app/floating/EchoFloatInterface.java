@@ -16,6 +16,8 @@ public final class EchoFloatInterface {
         void onRendererGone();
         /** The chat page has loaded and is showing its messages. */
         void onPanelReady();
+        /** The chat page's Call button: start Echo's floating call (chat panel only). */
+        void onStartCall();
     }
 
 
@@ -53,5 +55,9 @@ public final class EchoFloatInterface {
 
     @JavascriptInterface public void onPanelReady() {
         main.post(listener::onPanelReady);
+    }
+
+    @JavascriptInterface public void startCall() {
+        main.post(listener::onStartCall);
     }
 }
