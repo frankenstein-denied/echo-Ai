@@ -72,11 +72,43 @@ export function parseCurrencyQuery(q: string): { amount: number; from: string; t
 
 const STOP_2 = new Set(['in', 'on', 'of', 'at', 'to', 'is', 'my', 'by', 'or', 'an', 'as', 'be', 'do', 'it', 'me', 'no', 'so', 'up', 'we'])
 
-/** "PH 2027", "us" (year defaults to now). */
+const A_TO_Z = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+let countryNames: [string, string][] | null = null
+/** [lower-case English name, code] for every region, longest name first ("south korea" before "korea"). */
+function countryNameList(): [string, string][] {
+  if (countryNames) return countryNames
+  const names = new Intl.DisplayNames(['en'], { type: 'region' })
+  const list: [string, string][] = []
+  for (const a of A_TO_Z) {
+    for (const b of A_TO_Z) {
+      let name: string | undefined
+      try {
+        name = names.of(a + b)
+      } catch {
+        continue
+      }
+      if (name && name !== a + b && !name.startsWith('Unknown')) list.push([name.toLowerCase(), a + b])
+    }
+  }
+  countryNames = list.sort((x, y) => y[0].length - x[0].length)
+  return countryNames
+}
+
+function countryByName(q: string): string | undefined {
+  const text = ` ${q.toLowerCase().replace(/[^a-zÀ-ɏ]+/g, ' ')} `
+  return countryNameList().find(([name]) => text.includes(` ${name} `))?.[1]
+}
+
+/** "PH 2027", "us", "holidays in india" (year defaults to now). */
 export function parseHolidayQuery(q: string, now: Date): { country: string; year: number } | null {
-  // An upper-case code wins ("holidays in PH"); otherwise the first two-letter word that isn't a common one.
+  // An upper-case code wins ("holidays in PH"), then a country name ("india"), then the first two-letter word that
+  // isn't a common one. A lone "in" is India: with nothing else to go on, it can't be the preposition.
   const words = q.match(/\b[a-z]{2}\b/gi) ?? []
-  const country = words.find((w) => w === w.toUpperCase()) ?? words.find((w) => !STOP_2.has(w.toLowerCase()))
+  const country =
+    words.find((w) => w === w.toUpperCase()) ??
+    countryByName(q) ??
+    words.find((w) => !STOP_2.has(w.toLowerCase())) ??
+    (words.length === 1 && words[0].toLowerCase() === 'in' ? 'IN' : undefined)
   if (!country) return null
   const y = /\b(19|20)\d{2}\b/.exec(q)
   return { country: country.toUpperCase(), year: y ? Number(y[0]) : now.getUTCFullYear() }

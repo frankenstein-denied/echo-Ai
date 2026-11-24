@@ -28,8 +28,10 @@ describe('filterConnectors', () => {
 describe('groupByCategory', () => {
   it('drops empty groups and keeps section order', () => {
     const groups = groupByCategory(CONNECTORS)
-    expect(groups.map((g) => g.id)).toEqual(['health', 'productivity', 'knowledge', 'live'])
+    expect(groups.map((g) => g.id)).toEqual(['ai', 'health', 'productivity', 'knowledge', 'live'])
     expect(groups.find((g) => g.id === 'health')!.label).toBe('Health & Fitness')
+    // Without the AI models, that section disappears and the rest keep their order.
+    expect(groupByCategory(CONNECTORS.filter((c) => c.category !== 'ai')).map((g) => g.id)).toEqual(['health', 'productivity', 'knowledge', 'live'])
   })
   it('returns nothing for an empty list', () => {
     expect(groupByCategory([])).toEqual([])
@@ -39,7 +41,8 @@ describe('groupByCategory', () => {
 describe('categoryChips', () => {
   it('starts with All and lists only non-empty categories', () => {
     const chips = categoryChips(CONNECTORS)
-    expect(chips.map((c) => c.id)).toEqual(['all', 'health', 'productivity', 'knowledge', 'live'])
+    expect(chips.map((c) => c.id)).toEqual(['all', 'ai', 'health', 'productivity', 'knowledge', 'live'])
+    expect(categoryChips(CONNECTORS.filter((c) => c.category !== 'ai')).map((c) => c.id)).toEqual(['all', 'health', 'productivity', 'knowledge', 'live'])
     expect(chips[0].label).toBe('All')
   })
 })

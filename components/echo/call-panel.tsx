@@ -15,6 +15,7 @@ import { loadPlaylists, loadRecentBriefs } from '@/lib/firestore'
 import type { UndoInput } from '@/lib/echo/undo'
 import type { EchoRequest } from '@/lib/echo/types'
 import { requestLiveSession, VoiceError } from '@/lib/echo/voice-client'
+import { sendTimingReport, timingReport, type TimingReport, type TimingStep } from '@/lib/echo/call-timing'
 import { FOCUS_RING } from '@/lib/echo/ui-classes'
 import { Button, EchoMark, IconButton, type EchoMarkState } from './ui'
 
@@ -143,7 +144,10 @@ export function useEchoCall({
   onMusicControl,
   getListenHistory,
   onBrief,
+  timingEntry = 'app',
 }: {
+  /** Which way the call was started, for the [call-timing] report. */
+  timingEntry?: TimingReport['entry']
   user: User
   voice: string
   getContext: () => EchoRequest['context'] | Promise<EchoRequest['context']>
@@ -194,8 +198,14 @@ export function useEchoCall({
   const lastLive = useRef('')
   // What Echo said last (a delete must follow Echo's confirmation question).
   const lastEcho = useRef('')
-  // [call-timing] marks for the call being connected (logcat shows them through the WebView on Android).
-  const timing = useRef<{ id: number; mark: (step: string) => void; firstAudio: boolean } | null>(null)
+  // [call-timing] marks for the call being connected: logged, and reported to the server once (first audio or failure).
+  const timing = useRef<{ id: number; mark: (step: TimingStep) => void; firstAudio: boolean; marks: [TimingStep, number][]; sent: boolean } | null>(null)
+  const reportTiming = (outcome: TimingReport['outcome']) => {
+    const tm = timing.current
+    if (!tm || tm.sent) return
+    tm.sent = true
+    sendTimingReport(timingReport(timingEntry, outcome, tm.marks), cb.current.user.getIdToken())
+  }
   // Set by a brief call until its first turn is finalized: that turn is the brief.
   const pendingBrief = useRef<{ day: string } | null>(null)
   const levelBuf = useRef<Float32Array<ArrayBuffer> | null>(null)
@@ -282,6 +292,7 @@ export function useEchoCall({
   }, [])
 
   const fail = (e: CallError) => {
+    if (timing.current && !timing.current.firstAudio) reportTiming('failed')
     callId.current++
     finalize(true)
     release()
@@ -442,6 +453,7 @@ export function useEchoCall({
       if (tm && tm.id === id && !tm.firstAudio) {
         tm.firstAudio = true
         tm.mark('first audio ready')
+        reportTiming('first_audio')
       }
       t.modelStarted = true
       t.complete = false
@@ -511,10 +523,13 @@ export function useEchoCall({
     const callMode: CallMode = requested === 'brief' ? 'brief' : 'greeting'
     const id = ++callId.current
     const tap = performance.now()
-    const mark = (step: string) => {
-      if (id === callId.current) console.info(`[call-timing] ${step} +${Math.round(performance.now() - tap)}ms`)
+    const marks: [TimingStep, number][] = []
+    const mark = (step: TimingStep) => {
+      if (id !== callId.current) return
+      marks.push([step, performance.now()])
+      console.info(`[call-timing] ${step} +${Math.round(performance.now() - tap)}ms`)
     }
-    timing.current = { id, mark, firstAudio: false }
+    timing.current = { id, mark, firstAudio: false, marks, sent: false }
     mark('tap')
     userEnded.current = false
     limitReached.current = false

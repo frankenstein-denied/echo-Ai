@@ -18,7 +18,7 @@ const ANSWER_ATTEMPT_TIMEOUT_MS = 7000
 /** Time kept for the answer call after the search. */
 const ANSWER_RESERVE_MS = 4000
 /** Below this much time left, don't start a search at all. */
-const MIN_SEARCH_BUDGET_MS = 6000
+export const MIN_SEARCH_BUDGET_MS = 6000
 /** A timed-out search is retried once (Tavily is awake by then) only with at least this much search time left. */
 const MIN_RETRY_BUDGET_MS = 3000
 

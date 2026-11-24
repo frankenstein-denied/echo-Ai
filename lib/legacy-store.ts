@@ -118,13 +118,38 @@ export async function lookupInheritor(email: string): Promise<{ uid: string; dis
 
 // ---------- settings, beacon, profile copy ----------
 
-/** The owner's release period, remembered for this page so stamping can keep up with short (demo) periods. */
+/**
+ * The owner's release period, remembered for this page and on this device so stamping keeps up with short (demo)
+ * periods. Without the device copy, a fresh load that never opens the Legacy page would stamp only hourly, and an
+ * owner back after a 5-minute demo release could stay released for up to an hour.
+ */
 const releaseMinutesByUid = new Map<string, number>()
+const minutesKey = (uid: string) => `echo.legacy.releaseMinutes.${uid}`
+
+function rememberReleaseMinutes(uid: string, minutes: number): void {
+  releaseMinutesByUid.set(uid, minutes)
+  try {
+    globalThis.localStorage?.setItem(minutesKey(uid), String(minutes))
+  } catch {
+    // Storage blocked: this page still remembers it.
+  }
+}
+
+function releaseMinutes(uid: string): number | undefined {
+  const known = releaseMinutesByUid.get(uid)
+  if (known !== undefined) return known
+  try {
+    const v = Number(globalThis.localStorage?.getItem(minutesKey(uid)))
+    return Number.isFinite(v) && v > 0 ? v : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export async function getLegacySettings(uid: string): Promise<LegacySettings | null> {
   const snap = await getDoc(legacySettingsDoc(uid))
   const s = snap.exists() ? snap.data() : null
-  if (s && typeof s.releaseAfterMinutes === 'number') releaseMinutesByUid.set(uid, s.releaseAfterMinutes)
+  if (s && typeof s.releaseAfterMinutes === 'number') rememberReleaseMinutes(uid, s.releaseAfterMinutes)
   return s
 }
 
@@ -162,7 +187,7 @@ export async function saveLegacySettings(uid: string, s: { enabled: boolean; rel
   b.set(legacyBeaconDoc(uid), { ownerName, updatedAt: serverTimestamp() } as never)
   if (profile) b.set(legacyProfileDoc(uid), legacyProfileFields(profile) as never)
   await b.commit()
-  releaseMinutesByUid.set(uid, s.releaseAfterMinutes)
+  rememberReleaseMinutes(uid, s.releaseAfterMinutes)
 }
 
 const stampKey = (uid: string) => `echo.legacy.lastStamp.${uid}`
@@ -195,7 +220,7 @@ export async function stampActivity(uid: string): Promise<void> {
     writeStamp: (ms) => writeStamp(uid, ms),
     write: () => updateDoc(legacySettingsDoc(uid), { lastActiveAt: serverTimestamp(), updatedAt: serverTimestamp() } as never),
     nowMs: Date.now(),
-    throttleMs: activityThrottleMs(releaseMinutesByUid.get(uid)),
+    throttleMs: activityThrottleMs(releaseMinutes(uid)),
   })
 }
 
