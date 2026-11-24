@@ -222,7 +222,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
           ) : view === 'Reminders' ? (
             <RemindersView uid={user.uid} user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Music' ? (
-            <MusicView uid={user.uid} />
+            <MusicView uid={user.uid} user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Connectors' ? (
             <ConnectorsView uid={user.uid} onTavilyLogin={tavilyLogin} onTavilyDisconnect={tavilyDisconnect} notice={connectorNotice} />
           ) : view === '2nd Brain' ? (
