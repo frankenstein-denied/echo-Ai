@@ -37,6 +37,15 @@ describe('parseHolidayQuery', () => {
   it('rejects a query without a country code', () => {
     expect(parseHolidayQuery('2026', NOW)).toBeNull()
   })
+  it('reads a country name, India included', () => {
+    expect(parseHolidayQuery('holidays in india 2027', NOW)).toEqual({ country: 'IN', year: 2027 })
+    expect(parseHolidayQuery('Philippines', NOW)).toEqual({ country: 'PH', year: 2026 })
+    expect(parseHolidayQuery('public holidays in the United States', NOW)).toEqual({ country: 'US', year: 2026 })
+    expect(parseHolidayQuery('South Korea holidays', NOW)).toEqual({ country: 'KR', year: 2026 })
+  })
+  it('reads a lowercase "in" alone as India', () => {
+    expect(parseHolidayQuery('in 2026', NOW)).toEqual({ country: 'IN', year: 2026 })
+  })
 })
 
 describe('fetchLookup', () => {
