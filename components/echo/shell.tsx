@@ -7,7 +7,8 @@ import { revokeTavilyLogin, startTavilyLogin, verifyTavilyLogin } from '@/lib/ec
 import { currentEmbedMode } from '@/lib/native/float-bridge'
 import { getNativePermissions } from '@/lib/native/echo-bridge'
 import { autoSyncDue, readLastAutoSync, saveLastAutoSync, syncWeatherLocation } from '@/lib/echo/weather-location'
-import { NAV_GROUPS, type NavName } from '@/lib/echo/sidebar'
+import { NAV_GROUPS } from '@/lib/echo/sidebar'
+import { MOBILE_QUERY } from '@/lib/echo/mobile'
 import { Sidebar } from './sidebar'
 import { useSidebarData } from './use-sidebar-data'
 import { DiaryView } from './diary-view'
@@ -25,13 +26,20 @@ import { LegacyInboxContext, useLegacyInboxState } from './legacy/use-legacy-inb
 import { Guide, GuideProvider } from './guide'
 import { CheckInsPrompt } from './check-ins-prompt'
 import { PermissionSetup } from './permission-setup'
-import { MobileTabBar, MobileTitleBar, MoreSheet } from './mobile-tabbar'
+import { MobileTabBar, MobileTitleBar, MoreSheet, type TabView } from './mobile-tabbar'
+import { EchoSheet } from './echo-sheet'
+import { TodayView } from './today-view'
 import { MusicPlayerProvider } from './music-player'
 import { useMobileViewportSync } from './use-mobile'
 
-export type View = NavName
+export type View = TabView
 
-const VIEWS: readonly View[] = [...NAV_GROUPS.flatMap((g) => g.items), 'Settings']
+const VIEWS: readonly View[] = ['Today', ...NAV_GROUPS.flatMap((g) => g.items), 'Settings']
+
+/** Phones open on the Today tab; the desktop layout opens on the diary (it has its own Today column). */
+function firstView(): View {
+  return typeof window !== 'undefined' && window.matchMedia(MOBILE_QUERY).matches ? 'Today' : 'Diary'
+}
 
 const DIARY_MAIN = 'lg:h-dvh lg:p-0'
 const DEFAULT_MAIN = 'mx-auto max-w-[1500px]'
@@ -52,9 +60,12 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   const { user, signOut } = useAuth()
   // Read once: the URL handling below clears the query string. Embedded (floating Echo) mode needs the URL and the native bridge.
   const [embed] = useState(currentEmbedMode)
-  const [view, setView] = useState<View>('Diary')
+  const [view, setView] = useState<View>(firstView)
   const [collapsed, setCollapsed] = useState(false)
   const [more, setMore] = useState(false)
+  const [echoOpen, setEchoOpen] = useState(false)
+  // Set by the Echo sheet's "Full call": the diary starts the voice call once today's page is ready.
+  const [callRequest, setCallRequest] = useState(false)
   const [guideOpen, setGuideOpen] = useState(guideFirst)
   const [guideStart, setGuideStart] = useState(0)
   const openGuide = useCallback((slide = 0) => {
@@ -71,7 +82,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   useLegacyActivity(user?.uid, profile)
   // One watch on the legacies left to this user: the sidebar badge, the home banner and the Legacy page share it.
   const legacyInbox = useLegacyInboxState(embed ? undefined : user?.uid)
-  const { dueCount, week } = useSidebarData(user?.uid)
+  const { dueCount, week, notesCount, goalsPct } = useSidebarData(user?.uid, view)
   useMobileViewportSync()
 
   // Once after sign-in: honour ?view=, save a Tavily login handed back in #web-search=<sealed> (the only place the
@@ -123,6 +134,7 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
   const navigate = useCallback((v: View) => {
     setView(v)
     setMore(false)
+    setCallRequest(false) // a call asked for from the Echo sheet only starts on the way there (fullCall sets it after)
     // A new page starts at the top (the mobile layout scrolls the document).
     window.scrollTo({ top: 0 })
   }, [])
@@ -134,6 +146,19 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     [navigate],
   )
   const clearPendingPage = useCallback(() => setPendingPageId(null), [])
+  const clearCallRequest = useCallback(() => setCallRequest(false), [])
+  const fullCall = useCallback(() => {
+    setEchoOpen(false)
+    navigate('Diary')
+    setCallRequest(true)
+  }, [navigate])
+  const openFromEcho = useCallback(
+    (v: View) => {
+      setEchoOpen(false)
+      navigate(v)
+    },
+    [navigate],
+  )
   const clearFocusGoal = useCallback(() => setFocusGoalId(null), [])
   // Embedded mode has no tab bar: let the stylesheet drop the strip it reserves for one.
   useEffect(() => {
@@ -179,13 +204,15 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
     <GuideProvider value={openGuide}>
     <LegacyInboxContext.Provider value={legacyInbox}>
     <div className="flex min-h-screen bg-background">
-      <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} dueCount={dueCount} legacyCount={legacyInbox.badge} week={week} onOpenPage={openDiaryPage} />
+      <Sidebar view={view} setView={setView} collapsed={collapsed} setCollapsed={setCollapsed} days={days} dueCount={dueCount} legacyCount={legacyInbox.badge} notesCount={notesCount} goalsPct={goalsPct} week={week} onOpenPage={openDiaryPage} />
       <div className="min-w-0 flex-1">
         <main className={`${view === 'Diary' ? DIARY_MAIN : DEFAULT_MAIN} p-4 md:p-8 max-lg:pb-[calc(var(--tabbar-h)+1.5rem)] md:max-lg:pb-[calc(var(--tabbar-h)+2rem)]`}>
-          {/* Diary draws its own full-height mobile header (list / page bar). */}
-          {view !== 'Diary' && <MobileTitleBar title={view} />}
+          {/* Diary draws its own full-height mobile header (list / page bar); Today shows the greeting as its title. */}
+          {view !== 'Diary' && view !== 'Today' && <MobileTitleBar title={view} />}
           {!user ? null : view === 'Diary' ? (
-            <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} />
+            <DiaryView user={user} profile={profile} onNavigate={navigate} openPageId={pendingPageId} onOpenPageHandled={clearPendingPage} startCall={callRequest} onStartCallHandled={clearCallRequest} />
+          ) : view === 'Today' ? (
+            <TodayView user={user} profile={profile} onNavigate={navigate} onOpenPage={openDiaryPage} />
           ) : view === 'Notes' ? (
             <NotesView uid={user.uid} user={user} profile={profile} onNavigate={navigate} />
           ) : view === 'Goals' ? (
@@ -207,8 +234,9 @@ export function Dashboard({ profile, guideFirst = false }: { profile: UserProfil
           )}
         </main>
       </div>
-      <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} />
-      <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} onSignOut={() => void signOut()} />
+      <MobileTabBar view={view} onSelect={navigate} moreOpen={more} onMore={() => setMore(true)} echoOpen={echoOpen} onEcho={() => setEchoOpen(true)} />
+      <MoreSheet open={more} onClose={() => setMore(false)} view={view} onSelect={navigate} userName={userName} email={user?.email} days={days} />
+      {user && <EchoSheet open={echoOpen} onClose={() => setEchoOpen(false)} user={user} profile={profile} onNavigate={openFromEcho} onFullCall={fullCall} />}
       <Guide open={guideOpen} start={guideStart} onClose={closeGuide} />
       {/* The steps wait for the guide; the check-in question waits for both. */}
       {user && <PermissionSetup uid={user.uid} onboarded={profile.onboarded} embed={false} paused={guideOpen} onHoldChange={setSetupHold} />}

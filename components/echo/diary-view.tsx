@@ -212,6 +212,8 @@ export function DiaryView({
   onNavigate,
   openPageId,
   onOpenPageHandled,
+  startCall = false,
+  onStartCallHandled,
   embed,
 }: {
   user: User
@@ -220,6 +222,9 @@ export function DiaryView({
   /** A page to open once (e.g. from the 2nd Brain); cleared through onOpenPageHandled. */
   openPageId?: string | null
   onOpenPageHandled?: () => void
+  /** Start the voice call once today's page is picked (the Echo sheet's "Full call"); cleared through onStartCallHandled. */
+  startCall?: boolean
+  onStartCallHandled?: () => void
   /** Floating Echo: only today's page, no page list, no chrome. */
   embed?: 'chat' | 'call'
 }) {
@@ -339,14 +344,15 @@ export function DiaryView({
     }
   }, [pages, auto])
 
-  // The landing above runs once, so a floating panel loaded before today's page existed moves to it when it appears.
+  // The landing above runs once, so a view still on the fresh "today" state (no page yet) moves to today's page when
+  // one appears: a floating panel loaded before it existed, or a page the Echo sheet / a tell-Echo box created.
   useEffect(() => {
     if (!auto || pages === null) return
-    const id = embedPageToAdopt(sel.id, !!embed, pages)
+    const id = embedPageToAdopt(sel.id, true, pages)
     if (!id) return
     openedDay.current = localDateKey(new Date())
     setSel((s) => (s.id ? s : { id, key: s.key }))
-  }, [embed, pages, auto, sel.id])
+  }, [pages, auto, sel.id])
 
   selRef.current = sel
   pagesRef.current = pages
@@ -557,7 +563,7 @@ export function DiaryView({
           <Alert variant="warning">{notice}</Alert>
         </div>
       )}
-      {!embed && pages !== null && pages.length === 0 && !sel.id ? (
+      {!embed && pages !== null && pages.length === 0 && !sel.id && !startCall ? (
         <>
           <MobileTitleBar title="Diary" />
           <PageHeader title="Diary" description={desc} />
@@ -581,7 +587,7 @@ export function DiaryView({
           )}
           {!embed && list}
           <div className={`min-h-0 min-w-0 flex-1 ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}>
-            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} isTodayPage={sel.id === null || isFromToday(active?.createdAt?.toMillis?.())} />
+            <Home key={sel.key} embed={embed} user={user} profile={profile} pageId={sel.id} onEnsurePage={ensurePage} disabled={pages === null || (!!embed && !auto)} onNavigate={onNavigate} header={header} meta={meta} hint={desc} onCallActiveChange={onCallActiveChange} autoCall={startCall && auto && !embed} onAutoCallHandled={onStartCallHandled} isTodayPage={sel.id === null || isFromToday(active?.createdAt?.toMillis?.())} />
           </div>
         </div>
       )}

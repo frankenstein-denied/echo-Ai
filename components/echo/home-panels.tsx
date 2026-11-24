@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { doc, limit, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore'
 import { Bell, Droplet, Moon, Smile, Target, X, Zap, type LucideIcon } from 'lucide-react'
-import { goalsCol, healthLogsCol, remindersCol, type Goal, type HealthLog, type Reminder } from '@/lib/firestore'
+import { goalsCol, healthLogsCol, mealsForDate, remindersCol, watchCalorieSettings, watchCheckInSettings, type Goal, type HealthLog, type Reminder } from '@/lib/firestore'
+import { DEFAULT_WATER_GOAL } from '@/lib/echo/check-ins'
+import { ORB_COLOR } from '@/lib/echo/orbs'
 import { Button, IconButton, Skeleton } from './ui'
 import type { HomeView } from './home'
 import { GlowDot, ProgressRing, TimeChip } from './glow'
@@ -146,20 +148,75 @@ export function GoalProgress({ uid, onNavigate }: { uid: string; onNavigate: (v:
   )
 }
 
-/** Reminders, health and goals for today, stacked as flat sections. */
+function Tile({ value, unit, label, color, onClick }: { value: string; unit?: string; label: string; color: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="min-h-11 flex-1 rounded-2xl border border-border p-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      style={{ background: `radial-gradient(130% 120% at 50% 0%, color-mix(in srgb, ${color} 20%, transparent), transparent 60%), var(--color-surface)` }}
+    >
+      <span className="block text-base font-bold tracking-tight text-foreground">
+        {value}
+        {unit && <span className="text-[11px] font-medium text-muted-foreground">{unit}</span>}
+      </span>
+      <span className="block text-[11px] text-muted-foreground">{label}</span>
+    </button>
+  )
+}
+
+/** Water and calories at a glance; they update as Echo saves things. Tapping opens Health. */
+export function TodayTiles({ uid, day, onNavigate }: { uid: string; day: string; onNavigate: (v: HomeView) => void }) {
+  const [water, setWater] = useState<number | null>(null)
+  const [goal, setGoal] = useState(DEFAULT_WATER_GOAL)
+  const [kcal, setKcal] = useState<number | null>(null)
+  const [calories, setCalories] = useState(true)
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(healthLogsCol(uid), day),
+        (snap) => setWater(Number(snap.data()?.waterGlasses) || 0),
+        () => setWater(0),
+      ),
+    [uid, day],
+  )
+  useEffect(() => watchCheckInSettings(uid, (s) => setGoal(s.waterGoal), () => undefined), [uid])
+  useEffect(() => watchCalorieSettings(uid, (s) => setCalories(s.enabled), () => undefined), [uid])
+  useEffect(() => {
+    if (!calories) return
+    return mealsForDate(
+      uid,
+      day,
+      (meals) => setKcal(meals.reduce((sum, m) => sum + (Number(m.totalCalories) || 0), 0)),
+      () => setKcal(0),
+    )
+  }, [uid, day, calories])
+  return (
+    <Section>
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-subtle">Today</h2>
+      <div className="mt-3 flex gap-2">
+        <Tile value={water === null ? '–' : String(water)} unit={`/${goal}`} label="water" color={ORB_COLOR.note} onClick={() => onNavigate('Health')} />
+        {calories && <Tile value={kcal === null ? '–' : kcal.toLocaleString('en-US')} label="kcal" color={ORB_COLOR.goal} onClick={() => onNavigate('Health')} />}
+      </div>
+    </Section>
+  )
+}
+
+/** The desktop Today column (and the Today drawer / sheet): water and calories, today's reminders, goals. */
 export function TodayPanel({ uid, day, onNavigate }: { uid: string; day: string; onNavigate: (v: HomeView) => void }) {
   return (
     <>
+      <TodayTiles uid={uid} day={day} onNavigate={onNavigate} />
       <TodayReminders uid={uid} day={day} />
-      <HealthToday uid={uid} day={day} onNavigate={onNavigate} />
       <GoalProgress uid={uid} onNavigate={onNavigate} />
+      <HealthToday uid={uid} day={day} onNavigate={onNavigate} />
     </>
   )
 }
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
 
-/** Right-hand drawer (below 2xl): focus-trapped, Esc or the backdrop closes it, closes if the viewport grows to 2xl. */
+/** Right-hand drawer (below xl): focus-trapped, Esc or the backdrop closes it, closes if the viewport grows to xl. */
 export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; day: string; onNavigate: (v: HomeView) => void; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -167,7 +224,7 @@ export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; da
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     panel.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
-    const mq = window.matchMedia('(min-width: 1536px)')
+    const mq = window.matchMedia('(min-width: 1280px)')
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) onClose()
     }
@@ -202,7 +259,7 @@ export function TodayDrawer({ uid, day, onNavigate, onClose }: { uid: string; da
     }
   }
   return (
-    <div className="fixed inset-0 z-50 2xl:hidden" onKeyDown={onKeyDown}>
+    <div className="fixed inset-0 z-50 xl:hidden" onKeyDown={onKeyDown}>
       <div aria-hidden="true" className="absolute inset-0 bg-background/80" onClick={onClose} />
       <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Today" className="absolute inset-y-0 right-0 flex w-80 max-w-[90vw] flex-col overflow-y-auto border-l border-border bg-surface">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
