@@ -42,6 +42,29 @@ export function WeatherLive({ place, lat, lon }: { place?: string; lat?: number;
   )
 }
 
+/** One line for a connector row: "29° · Cloudy · Manila" (the place alone while loading or when the fetch fails). */
+export function WeatherLine({ place, lat, lon }: { place?: string; lat?: number; lon?: number }) {
+  const [facts, setFacts] = useState<ReturnType<typeof weatherTileFacts> | null>(null)
+
+  useEffect(() => {
+    if (typeof lat !== 'number' || typeof lon !== 'number') return
+    let live = true
+    setFacts(null)
+    fetchForecast(lat, lon)
+      .then((data) => {
+        if (live) setFacts(weatherTileFacts(data, new Date()))
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [lat, lon])
+
+  const name = place || 'Your location'
+  if (!facts) return <>{name}</>
+  return <>{[facts.temp, facts.condition, name].filter(Boolean).join(' · ')}</>
+}
+
 function geoMessage(code: number | undefined): string {
   if (code === 1) return 'Location access was blocked. Search for your city instead.'
   if (code === 3) return 'Finding your location took too long. Search for your city instead.'
