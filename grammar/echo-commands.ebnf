@@ -1,0 +1,72 @@
+(* Echo command grammar, ISO/IEC 14977 EBNF.
+   Runnable version: grammar/echo_commands.pl (Prolog DCG).
+   Input is lower-cased and split into words; edge punctuation (.,!?;") is dropped.
+   A sentence the grammar does not cover goes to Echo's AI router instead. *)
+
+sentence      = opener , command , closer ;
+
+opener        = [ "please" | "echo" | "hey" , "echo" , [ "please" ] ] ;
+closer        = [ "please" | "thanks" | "thank" , "you" ] ;
+
+command       = reminder | goal | note | meal | health
+              | search | lookup | music | delete | mark-done ;
+
+(* ---- Reminders ---- *)
+reminder      = ( "remind" , "me" , "to" | "set" , "a" , "reminder" , "to" ) , text , when ;
+when          = "at" , clock
+              | day , [ "at" , clock ]
+              | "in" , count , unit ;
+day           = "today" | "tomorrow" | "tonight" ;
+unit          = "minute" | "minutes" | "hour" | "hours" | "day" | "days" ;
+
+(* ---- Goals ---- *)
+goal          = ( "my" , "goal" , "is" , "to"
+                | "add" , "a" , "goal" , "to"
+                | "add" , "goal"
+                | "set" , "a" , "goal" , "to" ) , text
+              | "i" , "finished" , "my" , "goal" , text ;
+
+(* ---- Notes ---- *)
+note          = "note" , "that" , text
+              | ( "take" | "save" ) , "a" , "note" , [ "that" ] , text ;
+
+(* ---- Meals ---- *)
+meal          = ate , text , [ "for" , meal-name ] ;
+ate           = "i" , ( "ate" | "had" | "just" , "ate" ) ;
+meal-name     = "breakfast" | "lunch" | "dinner" | [ "a" ] , "snack" ;
+
+(* ---- Health ---- *)
+health        = "i" , "drank" , count , ( "glass" | "glasses" | "cups" ) , "of" , "water"
+              | "i" , "slept" , count , ( "hour" | "hours" )
+              | "i" , "walked" , count , "steps" ;
+
+(* ---- Search and lookups ---- *)
+search        = ( "search" , "the" , "web" , "for" | "search" , "for" | "look" , "up" ) , text ;
+lookup        = ( "news" , "about" | "whats" , "the" , "news" , "on" ) , text      (* news *)
+              | "who" , ( "is" | "was" ) , text ;                                 (* wikipedia *)
+
+(* ---- Music ---- *)
+music         = "next" , "song" | "skip" , [ "this" , "song" ]
+              | "previous" , "song" | "play" , "the" , "last" , "song"
+              | ( "pause" | "resume" | "stop" | "shuffle" ) , [ music-word ]
+              | "play" , text ;
+music-word    = [ "the" ] , "music" | "the" , "song" ;
+
+(* ---- Delete and mark done ---- *)
+delete        = ( "delete" | "remove" ) , [ "my" | "the" ] , kind , [ "called" | "named" ] , text ;
+kind          = "note" | "goal" | "reminder" | "meal" ;
+mark-done     = "mark" , text , "as" , "done" ;
+
+(* ---- Words, numbers, time ---- *)
+text          = word , { word } ;                (* shortest match that lets the rest parse *)
+word          = letter-or-digit , { letter-or-digit | "'" | ":" | "-" } ;
+count         = digit , { digit }
+              | "one" | "two" | "three" | "four" | "five" | "six"
+              | "seven" | "eight" | "nine" | "ten" | "eleven" | "twelve" ;
+clock         = "noon" | "midnight"
+              | hour , [ ":" , minute ] , [ meridiem ] ;   (* "7", "7:30", "19:00", "7pm", "7:30 pm" *)
+hour          = digit , [ digit ] ;                         (* 0-23; 1-12 when a meridiem follows *)
+minute        = digit , digit ;                             (* 00-59 *)
+meridiem      = "am" | "pm" ;
+digit         = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+letter-or-digit = ? any Unicode letter ? | digit ;
