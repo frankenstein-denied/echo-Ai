@@ -24,7 +24,7 @@ For each story: its acceptance criteria and whether each one was met.
 
 ## Tests
 
-Suites run and their results (`pnpm test`, `pnpm test:prolog`, type check).
+Suites run and their results (`pnpm test`, type check, `pnpm engine:demo`).
 
 ## Sprint review
 
