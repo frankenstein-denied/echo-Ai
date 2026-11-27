@@ -31,11 +31,17 @@ describe('a deny also blocks every stronger level', () => {
 
   it('a weaker deny stops a full allow (Prolog)', async () => {
     const s = await PrologSession.load(readFileSync(path.resolve(__dirname, '../../prolog/access_rules.pl'), 'utf8'))
-    await s.assert('entry(h1, [family, health], [])')
-    await s.assert('grant(maria, full, tag(family))')
+    for (const f of [
+      'person(maria)', 'protocol(maria)',
+      "entry(h1, date(2024, 1, 1), 'diary')", 'tag(h1, family)', 'tag(h1, health)',
+      "entry(f1, date(2024, 1, 2), 'diary')", 'tag(f1, family)',
+      'grant(maria, full, tag(family))',
+    ]) await s.assert(f)
+    expect(await s.ask('can_see(maria, full, h1)')).toBe(true) // control: the allow alone works
     await s.assert('deny(maria, existence, tag(health))')
     expect(await s.ask('can_see(maria, full, h1)')).toBe(false)
     expect(await s.ask('can_see(maria, summary, h1)')).toBe(false)
+    expect(await s.ask('can_see(maria, full, f1)')).toBe(true)
   })
 })
 

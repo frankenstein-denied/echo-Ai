@@ -74,7 +74,10 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | R5b | Full allow on family + existence deny on health, entry tagged both | false at every level (a deny hides its level and every stronger one) | ✔ Automated (`review-fixes.test.ts`) |
 | R6 | Letter before / on the release date | false / true for the recipient only | Planned |
 | R7 | Any query before the death trigger fires | false | Planned |
-| R8 | Every row of the access test table | Matches `expected_result` | Vault level ✔ (M1–M6 in `fixtures.test.ts`); Prolog level planned |
+| R8 | Every row of the access test table | Matches `expected_result` | Vault level ✔ (M1–M6 in `fixtures.test.ts`). Prolog level ✔ for **M1, M2, M5, M6, A1, A3, A4** (`access-table.test.ts`); M3, M4, A2 wait for the release and death-trigger rules, A5 for the Q&A script |
+| R9 | A registered person with no protocol, and an unregistered name with a stray grant | Nothing at any level | ✔ Automated (`prolog-bridge.test.ts`) |
+| R10 | A letter with a `full` grant | Never full until the release rules exist; summary still allowed | ✔ Automated |
+| R11 | Facts built from entries and protocols | Correct `entry/3`, `tag/2`, `mentions/2`, `letter/4`, `person/1`, `protocol/1`, `grant/3`, `deny/3`, with names safely quoted | ✔ Automated (`prolog-facts.test.ts`) |
 
 ### 3.3 Entry pipeline
 

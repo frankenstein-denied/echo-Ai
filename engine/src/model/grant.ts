@@ -19,7 +19,7 @@ const RANK: Readonly<Record<AccessLevel, number>> = { existence: 0, summary: 1, 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** Whole-name match: "maria" matches "Maria" and "Maria's", never "Mariano". `_` stands for a space. */
-function mentionsName(text: string, name: string): boolean {
+export function mentionsName(text: string, name: string): boolean {
   const wanted = name.replace(/_/g, ' ').trim().normalize('NFC')
   if (!wanted) return false
   return new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(wanted)}(?![\\p{L}\\p{M}])`, 'iu').test(text.normalize('NFC'))
