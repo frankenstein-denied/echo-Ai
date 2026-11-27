@@ -1,0 +1,7 @@
+# Sample 3 — a named trustee, custody passing to Adam Jr., and limited trustee access.
+# Team: Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)
+trustee lito
+transfer custody to adam_jr if trustee unavailable for 90 days
+protocol lito:
+  may see existence of entries tagged "business"
+default writing mode: light_fix

@@ -9,3 +9,5 @@ Project documentation.
 | `superpowers/plans/` | Step-by-step implementation plans that follow each spec |
 
 More material lives in [`../documentation/`](../documentation/): the architecture diagram (`echo-architecture.drawio`), the tech-stack study guide (`echo-tech-stack.md`) and the presentation.
+
+**CS 413 project documents** (proposal, UML, wireframes, test plan, AI-use log, AI design note, grammar) are all in [`../project-docs/`](../project-docs/).

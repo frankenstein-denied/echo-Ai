@@ -1,0 +1,6 @@
+protocol maria:
+  may see existence of entries mentioning maria
+  may read summary  of entries tagged "family"
+release letter "To my daughter" to maria when date >= 2040-05-01
+transfer custody to adam_jr if trustee unavailable for 90 days
+default writing mode: light_fix

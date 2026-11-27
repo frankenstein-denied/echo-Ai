@@ -20,9 +20,11 @@ This group has one member, who holds every Scrum role. Details: [`docs/scrum.md`
 |---|---|
 | `app/`, `components/`, `lib/` | **Source code**: the Next.js app (pages, API routes), UI components, and app logic |
 | `android/`, `mobile-shell/` | **Source code**: the Android app (Capacitor shell + native Kotlin) |
-| `prolog/` | **Prolog rules**: Echo's decision rules (goal progress, check-ins, delete safety, lookups) |
-| `grammar/` | **Grammar**: Echo's command grammar, as EBNF and as a runnable Prolog DCG |
-| `tests/` | **Tests**: Prolog tests (`tests/prolog/`) and the test guide. App unit tests sit next to their code as `lib/**/*.test.ts` |
+| `engine/` | **Source code**: the Echo Legacy engine (CS 413 project): diary model, entry types, pure pipeline, hash chain, policy lexer, Prolog bridge |
+| `prolog/` | **Prolog rules**: the Legacy engine's access rules (deny by default, deny beats allow) |
+| `grammar/` | **Grammar**: the Legacy Policy language in EBNF, with sample programs |
+| `tests/` | **Tests**: engine tests (`tests/engine/`), fictional test data (`tests/fixtures/`). App unit tests sit next to their code as `lib/**/*.test.ts` |
+| `project-docs/` | **Project documents** (CS 413): proposal, technology decision, UML, wireframes, test plan, AI-use log, AI design note, grammar. Start at [`project-docs/README.md`](project-docs/README.md) |
 | `docs/` | **Docs**: Scrum process, design specs and implementation plans |
 | `documentation/` | Architecture diagram, tech-stack guide, presentation |
 | `reports/` | **Reports**: sprint reports and the report template |
@@ -31,16 +33,18 @@ This group has one member, who holds every Scrum role. Details: [`docs/scrum.md`
 
 ## Getting started
 
-Needs Node.js 20+, pnpm, and (for the Prolog parts) [SWI-Prolog](https://www.swi-prolog.org/download/stable).
+Needs Node.js 24 and pnpm. Nothing else: the Prolog rules run inside Node through [tau-prolog](http://tau-prolog.org/), which `pnpm install` brings in.
 
 ```bash
 git clone https://github.com/frankenstein-denied/echo-Ai.git
 cd echo-Ai
 pnpm install
+pnpm test           # every test: app + Legacy engine (Vitest) — one command
+pnpm engine:demo    # small program: TypeScript asks the Prolog access rules about Maria
 pnpm dev            # app at http://localhost:3000
-pnpm test           # app unit tests (Vitest)
-pnpm test:prolog    # Prolog rules + grammar tests (plunit)
 ```
+
+If `pnpm` is not found, use `corepack pnpm` (Corepack ships with Node).
 
 The app needs Firebase and Gemini keys in `.env.local`. Never commit that file.
 
@@ -59,7 +63,7 @@ The app needs Firebase and Gemini keys in `.env.local`. Never commit that file.
   | `chore/` | tooling, dependencies, config | `chore/bump-next` |
 
 - Branch names are lower case, with words joined by hyphens. Add the Kaneo task number when there is one: `feat/12-weather-card`.
-- Before merging: tests pass (`pnpm test`, `pnpm test:prolog`), the type check passes (`pnpm exec tsc --noEmit`), and the change is reviewed (pull request on GitHub).
+- Before merging: tests pass (`pnpm test`), the type check passes (`pnpm exec tsc --noEmit`), and the change is reviewed (pull request on GitHub).
 - Merge with a merge commit (`git merge --no-ff`, message `Merge <branch>: <what it does>`), then delete the branch.
 - Android releases are tagged `android-v<versionCode>` (see `scripts/release-android.sh`).
 

@@ -1,0 +1,50 @@
+(* Echo — Legacy Policy language, ISO/IEC 14977 EBNF.
+   Team: Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)
+
+   The owner writes a policy to say who may see what after the death trigger fires.
+   Statements are line-based. Keywords and names are case-insensitive (the lexer lowers them).
+   Spaces and tabs between tokens are ignored; "#" starts a comment that runs to the end of the line.
+   Meaning of each statement: project-docs/08-policy-grammar.md *)
+
+(* ---------- Program ---------- *)
+policy          = { newline } , statement , { newline , { newline } , statement } , { newline } ;
+
+statement       = protocol-block                     (* 1 *)
+                | release-statement                  (* 2 *)
+                | custody-statement                  (* 3 *)
+                | mode-statement                     (* 4 *)
+                | trustee-statement ;                (* 5 *)
+
+(* ---------- 1. Protocol: what one person may (or may not) see ---------- *)
+protocol-block  = "protocol" , name , ":" , newline , clause , { newline , clause } ;
+clause          = "may" , [ "not" ] , access ;
+access          = "see" , "existence" , "of" , selector
+                | "read" , "summary" , "of" , selector
+                | "read" , selector ;            (* full text *)
+selector        = "entries" , "mentioning" , name
+                | "entries" , "tagged" , string ;
+
+(* ---------- 2. Release a sealed Letter of Wishes on a date ---------- *)
+release-statement = "release" , "letter" , string , "to" , name , "when" , "date" , ">=" , date ;
+
+(* ---------- 3. Custody passes on if the trustee is unavailable ---------- *)
+custody-statement = "transfer" , "custody" , "to" , name , "if" , "trustee" , "unavailable" , "for" , number , "days" ;
+
+(* ---------- 4. Default writing mode for new entries ---------- *)
+mode-statement  = "default" , "writing" , "mode" , ":" , writing-mode ;
+writing-mode    = "verbatim" | "light_fix" | "review" ;
+
+(* ---------- 5. Name the trustee ---------- *)
+trustee-statement = "trustee" , name ;
+
+(* ---------- Tokens (produced by engine/src/policy/lexer.ts) ---------- *)
+name            = ( letter | "_" ) , { letter | digit | "_" } ;   (* any word that is not a keyword *)
+string          = '"' , { character - ( '"' | newline-char ) } , '"' ;
+date            = digit , digit , digit , digit , "-" , digit , digit , "-" , digit , digit ;
+number          = digit , { digit } ;
+newline         = newline-char ;
+newline-char    = ? line feed (a carriage return before it is ignored) ? ;
+letter          = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"
+                | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+digit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+character       = ? any Unicode character ? ;
