@@ -37,3 +37,5 @@
 - **Went well:** the folders map directly onto the course deliverables.
 - **To improve:** run the Prolog tests in CI, not only on a laptop.
 - **Action for next sprint:** add a GitHub Actions job that runs `pnpm test` and `pnpm test:prolog` on every pull request.
+
+> Later change (2026-11-28): the placeholder Echo-command Prolog and grammar files listed above were replaced by the Legacy engine's access rules and policy grammar; see sprint-02-report.md.
