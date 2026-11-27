@@ -5,8 +5,8 @@ Team: Peter Paul Poloan (Front End, Back End, Q/A, UI/UX Designer, Documentator 
 
 ## Intent
 
-The CS 413 Programming Languages final project ("Alaala" in the handout,
-`C:\Users\THISPC\Downloads\Alaala_Student_Handout.pdf`) is delivered as **Echo**. The name "Alaala"
+The CS 413 Programming Languages final project (the course handout,
+`C:\Users\THISPC\Downloads\Alaala_Student_Handout.pdf`) is delivered as **Echo**. The handout's project name
 is not used anywhere. The project shows that each part of a diary-after-death system uses the right
 programming paradigm, and that the team can defend each choice.
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- The word "Alaala" appears nowhere in the repo. The system is **Echo** (the engine is the "Echo Legacy engine").
+- The handout's project name appears nowhere in the repo. The system is **Echo** (the engine is the "Echo Legacy engine").
 - Every new document and source file starts with the team line: `Team: Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)`. In code files it goes in the top comment.
 - Fictional data only: owner **Ramon Dela Cruz**, daughter **Maria** (`maria`), son **Adam Jr.** (`adam_jr`), trustee **Lito Santos** (`lito`). No real people, emails, addresses.
 - The Letter of Wishes is never called a will. Disclaimer text, verbatim everywhere it appears: **"A Letter of Wishes is a personal message, not a legal will. It has no legal effect under Philippine law and is not legal advice."**
@@ -234,4 +234,4 @@
 - Create: `project-docs/README.md` (team line; table ticket → file → status → "Kaneo link: add" column; how to open .drawio and .svg), `reports/sprint-02-report.md` (from the template: backlog = the 13 tickets with points, increment, acceptance per ticket with owner-only items listed as "Owner to do", tests run with counts, the placeholder removal note)
 - Modify: `reports/README.md` (add sprint 2 row), `docs/README.md` (point to `project-docs/`)
 
-- [ ] **Step 1:** Write the files. **Step 2:** Run `pnpm test` and `pnpm exec tsc --noEmit` and `pnpm engine:demo`; put the real counts in the sprint 2 report. **Step 3:** `grep -ri alaala` over the repo (excluding node_modules) → nothing. **Step 4:** Commit `docs(project): index of deliverables and sprint 2 report`.
+- [ ] **Step 1:** Write the files. **Step 2:** Run `pnpm test` and `pnpm exec tsc --noEmit` and `pnpm engine:demo`; put the real counts in the sprint 2 report. **Step 3:** grep the repo (excluding node_modules) for the handout's project name → nothing. **Step 4:** Commit `docs(project): index of deliverables and sprint 2 report`.
