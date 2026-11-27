@@ -4,7 +4,7 @@
 **Course:** CS 413 Programming Languages, final project
 **Team:** Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)
 
-Every project document is in this folder. The code lives in [`engine/`](../engine/), [`prolog/`](../prolog/), [`grammar/`](../grammar/) and [`tests/`](../tests/).
+Every project document is in this folder. **Study and Kaneo guide:** [`KANEO-GUIDE.md`](KANEO-GUIDE.md) (what was done per ticket, how it meets each criterion, what to submit). The code lives in [`engine/`](../engine/), [`prolog/`](../prolog/), [`grammar/`](../grammar/) and [`tests/`](../tests/).
 
 | Ticket | Deliverable | File | Status | Kaneo link |
 |---|---|---|---|---|
