@@ -21,6 +21,11 @@ Every project document is in this folder. **Study and Kaneo guide:** [`KANEO-GUI
 | 1.08 | AI-use log | [`06-ai-use-log.md`](06-ai-use-log.md) | Started — rows marked "pending review" | add |
 | 1.08 | AI design note | [`07-ai-design-note.md`](07-ai-design-note.md) | First version | add |
 | 2.01 | Policy grammar (EBNF, samples, derivations) | [`08-policy-grammar.md`](08-policy-grammar.md), [`grammar/policy.ebnf`](../grammar/policy.ebnf) | Done — awaiting team agreement | add |
+| 2.06 / 2.07 | Prolog facts and first access rules | [`prolog/access_rules.pl`](../prolog/access_rules.pl), [`tests/engine/access-table.test.ts`](../tests/engine/access-table.test.ts) | Done | add |
+| 2.09 | Style guide | [`09-style-guide.md`](09-style-guide.md) | Done | add |
+| 2.09 | Error message catalog | [`10-error-messages.md`](10-error-messages.md), [`engine/src/messages.ts`](../engine/src/messages.ts) | Done | add |
+| 2.09 | High-fidelity screens | [`11-hifi/`](11-hifi/) | Done — share with FE | add |
+| 2.12 | Lexer tests | [`tests/engine/lexer.test.ts`](../tests/engine/lexer.test.ts) | Done | add |
 | 2.02–2.05, 2.10, 2.11 | Code and tests | [`engine/src/`](../engine/src/), [`tests/engine/`](../tests/engine/) | Done — awaiting review | add |
 
 ## How to open the files
