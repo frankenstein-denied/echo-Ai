@@ -114,3 +114,53 @@ describe('policy lexer', () => {
     expect(Object.isFrozen(tokens[0])).toBe(true)
   })
 })
+
+// Ticket 2.12 — one named case per acceptance criterion.
+describe('policy lexer — ticket 2.12 cases', () => {
+  it('valid tokens: a protocol header gives KEYWORD, NAME, COLON, NEWLINE, EOF', () => {
+    expect(pairs('protocol lito:\n')).toEqual([
+      ['KEYWORD', 'protocol'],
+      ['NAME', 'lito'],
+      ['COLON', ':'],
+      ['NEWLINE', '\n'],
+      ['EOF', ''],
+    ])
+  })
+
+  it('dates: a release date is one DATE token at the right column', () => {
+    const date = tokenize('when date >= 2040-05-01').find((t) => t.type === 'DATE')
+    expect(date).toEqual({ type: 'DATE', value: '2040-05-01', line: 1, column: 14 })
+  })
+
+  it('quoted strings: spaces inside are kept and the quotes are dropped', () => {
+    expect(pairs('release letter "To my daughter, with love"')[2]).toEqual(['STRING', 'To my daughter, with love'])
+  })
+
+  it('quoted strings: an empty string is allowed', () => {
+    expect(pairs('tagged ""')[1]).toEqual(['STRING', ''])
+  })
+
+  it('comments: a whole-line comment and an end-of-line comment are ignored', () => {
+    expect(pairs('# whole line\ntrustee lito # end of line')).toEqual([
+      ['KEYWORD', 'trustee'],
+      ['NAME', 'lito'],
+      ['EOF', ''],
+    ])
+  })
+
+  it('blank lines: several blank lines between statements give one NEWLINE and keep line numbers', () => {
+    const tokens = tokenize('trustee lito\n\n\n\ndefault writing mode: review')
+    expect(tokens.filter((t) => t.type === 'NEWLINE')).toHaveLength(1)
+    expect(tokens.find((t) => t.value === 'default')?.line).toBe(5)
+  })
+
+  it('invalid: an unknown symbol in the middle of a valid line names the symbol and its place', () => {
+    const e = syntaxError('transfer custody to adam_jr if trustee unavailable for 90 days!')
+    expect(e.message).toBe('Unknown character "!" (line 1, column 63)')
+  })
+
+  it('invalid: an unterminated string on a later line points at that line', () => {
+    const e = syntaxError('protocol maria:\n  may read entries tagged "family')
+    expect([e.line, e.column]).toEqual([2, 27])
+  })
+})

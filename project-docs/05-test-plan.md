@@ -48,6 +48,20 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | P10 | Handout sample through the interpreter | Facts `grant(maria, existence, mentions(maria))`, `grant(maria, summary, tag(family))`, `release(...)`, `custody_transfer(adam_jr, 90)`, `default_mode(light_fix)` | Planned |
 | P11 | Compiling a policy after the death trigger | `PolicyFrozen` | Planned |
 
+**Ticket 2.12: lexer test cases.** `tests/engine/lexer.test.ts` has **19 tests**, all passing.
+
+| 2.12 criterion | Tests that cover it |
+|---|---|
+| At least ten test cases | 19 tests in the file |
+| Valid tokens | "tokenizes the handout's sample policy", "valid tokens: a protocol header…", "recognises every operator, and dates before numbers", "reads keywords and names case-insensitively", "every sample program tokenizes without error" |
+| Dates | "dates: a release date is one DATE token at the right column", "recognises every operator, and dates before numbers" |
+| Quoted strings | "quoted strings: spaces inside are kept…", "quoted strings: an empty string is allowed" |
+| Comments | "comments: a whole-line comment and an end-of-line comment are ignored", "ignores comments and blank lines" |
+| Blank lines | "blank lines: several blank lines between statements…", "ignores comments and blank lines" |
+| Unknown symbols | "an unknown character raises a clear error…", "invalid: an unknown symbol in the middle of a valid line…" |
+| Unterminated strings | "an unterminated string raises an error at its opening quote", "invalid: an unterminated string on a later line…" |
+| All pass, or failures logged in Kaneo | All 19 pass |
+
 ### 3.2 Access rules (Prolog)
 
 | ID | Input | Expected | Status |
