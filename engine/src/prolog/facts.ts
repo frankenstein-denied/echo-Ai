@@ -21,6 +21,9 @@ export function quoteAtom(text: string): string {
   return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 }
 
+/** How a person's name appears in mentions facts: trimmed and lower-case (`Carmen` and `carmen` are the same). */
+const personKey = (name: string) => name.trim().normalize('NFC').toLowerCase()
+
 const dateTerm = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
   return `date(${y}, ${m}, ${d})`
@@ -31,7 +34,7 @@ function selectorTerm(s: Readonly<Selector>): string {
     case 'tag':
       return `tag(${quoteAtom(s.tag.trim().toLowerCase())})`
     case 'mentions':
-      return `mentions(${quoteAtom(s.name)})`
+      return `mentions(${quoteAtom(personKey(s.name))})`
     case 'letter':
       return `letter(${quoteAtom(s.title)})`
   }
@@ -44,7 +47,7 @@ export function entryFacts(entries: readonly Entry[], people: readonly string[])
     const id = quoteAtom(e.id)
     facts.push(`entry(${id}, ${dateTerm(e.date)}, ${quoteAtom(e.kind)})`)
     for (const t of e.tags) facts.push(`tag(${id}, ${quoteAtom(t)})`)
-    for (const p of people) if (mentionsName(e.text, p)) facts.push(`mentions(${id}, ${quoteAtom(p)})`)
+    for (const p of new Set(people.map(personKey))) if (mentionsName(e.text, p)) facts.push(`mentions(${id}, ${quoteAtom(p)})`)
     if (e instanceof LetterOfWishes) {
       facts.push(`letter(${id}, ${quoteAtom(e.title)}, ${quoteAtom(e.recipient)}, ${dateTerm(e.releaseDate)})`)
     }
@@ -60,4 +63,18 @@ export function personFacts(personId: string, grants: readonly Grant[] | null): 
   facts.push(`protocol(${p})`)
   for (const g of grants) facts.push(`${g.effect === 'deny' ? 'deny' : 'grant'}(${p}, ${g.level}, ${selectorTerm(g.selector)})`)
   return facts
+}
+
+/**
+ * Every fact for a set of entries and policies. Mentions are checked for every registered
+ * person and every name a mentions-selector uses, so Prolog matches exactly what the
+ * TypeScript Grant.matches would (including people who are not registered, e.g. "carmen").
+ */
+export function factsFor(entries: readonly Entry[], policies: readonly (readonly [string, readonly Grant[] | null])[]): string[] {
+  const names = new Set<string>()
+  for (const [id, grants] of policies) {
+    names.add(id)
+    for (const g of grants ?? []) if (g.selector.kind === 'mentions') names.add(g.selector.name)
+  }
+  return [...entryFacts(entries, [...names]), ...policies.flatMap(([id, grants]) => personFacts(id, grants))]
 }

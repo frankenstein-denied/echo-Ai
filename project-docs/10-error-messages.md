@@ -22,7 +22,7 @@ An asker gets this whenever there is nothing they may be told: no matching entry
 
 | Error type | When it happens | Owner sees (title · body) | Asker sees (title · body) | Tone |
 |---|---|---|---|---|
-| `AccessDenied` | Opening an item that isn't shared with you (e.g. an old link) | **This isn’t available** · Your account can’t open this item. | **This isn’t available** · Echo can only show what was shared with your account. | danger (red) |
+| `AccessDenied` | Asking for, or opening, something that isn't shared with you (including people with no protocol) | **This isn’t available** · Your account can’t open this item. | **Nothing to share** · I don't have anything I can share about that. | owner: danger (red) · asker: neutral |
 | `AmbiguousName` | A name matches more than one person | **More than one person has that name** · Choose the person you mean from the list. | **Nothing to share** · I don't have anything I can share about that. | warning (amber) |
 | `TamperDetected` | The hash chain shows a saved entry was changed, removed or reordered | **Your saved entries were changed outside Echo** · Echo found a change it did not make, starting at entry {index}. Nothing is shared with anyone until this is checked. Contact your trustee. | **Nothing to share** · I don't have anything I can share about that. | danger (red) |
 | `PolicySyntaxError` | The legacy policy has a mistake | **Line {line}, column {column}: {problem}** (e.g. "Line 3, column 7: Unknown character "@"") · Fix the highlighted line, then check the policy again. | **Nothing to share** · I don't have anything I can share about that. | danger (red) |
@@ -39,12 +39,13 @@ An asker gets this whenever there is nothing they may be told: no matching entry
 | Letter's release date not reached | **This letter opens on {date}.** Ramon sealed it for you. On that day Echo will show it to you word for word. | Screen 08 (only the letter's own recipient sees it) |
 | Chain verified | **Chain verified · {n} entries · nothing altered** | Entry list (owner) |
 | Entry saved | **Saved · chain verified** | Write entry (owner) |
+| Saving paused | Saving is paused while the vault is checked. | Write entry after `TamperDetected` (owner, screen 12 in `11-hifi`) |
 | Not a legal will | A Letter of Wishes is a personal message, not a legal will. It has no legal effect under Philippine law and is not legal advice. | Policy editor, released letter, sealed letter |
 
 ## Rules for writing new messages
 
 1. **Askers never learn about protected entries.** Don't write "exists", "protected", "hidden", "you're not allowed to see", entry names, dates or counts in an asker message.
 2. **Same message for "missing" and "forbidden".** An asker can't tell the two apart.
-3. **Say what happens next.** Each owner message ends with what to do.
+3. **Say what happens next** when there is something to do. Some owner messages, such as a locked policy, are only information.
 4. **Calm and short.** No error codes, no stack traces, no blame.
-5. **Never show raw error text** (e.g. `ECONNRESET`) to anyone.
+5. **Never show raw error text from unexpected errors** (e.g. `ECONNRESET`) to anyone. The one exception is a policy syntax problem: it describes the owner's own policy text and is shown only to the owner.

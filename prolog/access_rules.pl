@@ -24,6 +24,7 @@
     and the stronger ones, so a weaker deny also blocks a stronger allow.
     Anything that cannot be proven is false (closed-world assumption).
 
+    A Letter of Wishes is only ever visible to its recipient.
     Not yet here (later tickets): letter release dates, the death trigger,
     the frozen policy. Until then a letter is never shown in full.
 */
@@ -66,6 +67,9 @@ denied(P, L, E)  :- deny(P, DL, S), level_covers(L, DL), matches(E, S).
 % Until the release rules exist, no letter is shown in full.
 withheld(full, E) :- letter(E, _, _, _).
 
+% A Letter of Wishes is only for its recipient: anyone else gets nothing about it, at any level.
+not_for(P, E) :- letter(E, _, Recipient, _), Recipient \== P.
+
 % can_see(?Person, ?Level, ?Entry): deny by default, deny beats allow.
 can_see(P, L, E) :-
     person(P),
@@ -74,7 +78,8 @@ can_see(P, L, E) :-
     entry(E, _, _),
     allowed(P, L, E),
     \+ denied(P, L, E),
-    \+ withheld(L, E).
+    \+ withheld(L, E),
+    \+ not_for(P, E).
 
 % visible(+Person, +Level, -Entries): every entry Person may see at Level, once each.
 visible(P, L, Es) :- findall(E, can_see(P, L, E), All), sort(All, Es).

@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DiaryEntry, entryFromRecord, type EntryRecord } from '@/engine/src/entries'
 import { Grant } from '@/engine/src/model'
 import { PrologSession } from '@/engine/src/prolog/bridge'
-import { entryFacts, personFacts } from '@/engine/src/prolog/facts'
+import { factsFor } from '@/engine/src/prolog/facts'
 
 const root = path.resolve(__dirname, '../..')
 const fixture: { entries: EntryRecord[] } = JSON.parse(readFileSync(path.join(root, 'tests/fixtures/ramon-owner.json'), 'utf8'))
@@ -22,17 +22,20 @@ const entries = [
   // A1 needs an entry tagged both family and health (the fixture has none).
   new DiaryEntry({ id: 'x1', date: '2025-01-15', text: 'Clinic visit; the family came along.', tags: ['family', 'health'] }),
 ]
-const PEOPLE = ['maria', 'adam_jr', 'lito', 'carmen']
 
 // The policies the table's rows are written against: the handout's sample for Maria (plus the
-// health denial from sample 2), sample 2 for Adam Jr., sample 3 for Lito, and a stranger with no protocol.
+// health denial from sample 2), samples 1 and 2 for Adam Jr. (his family grant makes row A3 a real test
+// of the letter-recipient rule), sample 3 for Lito, and a stranger with no protocol.
 const policies: [string, Grant[] | null][] = [
   ['maria', [
     new Grant('existence', { kind: 'mentions', name: 'maria' }),
     new Grant('summary', { kind: 'tag', tag: 'family' }),
     new Grant('summary', { kind: 'tag', tag: 'health' }, 'deny'),
   ]],
-  ['adam_jr', [new Grant('existence', { kind: 'mentions', name: 'adam_jr' })]],
+  ['adam_jr', [
+    new Grant('existence', { kind: 'mentions', name: 'adam_jr' }),
+    new Grant('summary', { kind: 'tag', tag: 'family' }),
+  ]],
   ['lito', [new Grant('existence', { kind: 'tag', tag: 'business' })]],
   ['stranger', null],
 ]
@@ -44,8 +47,7 @@ const idsWhere = (pred: (e: (typeof entries)[number]) => boolean) => sorted(entr
 
 beforeAll(async () => {
   prolog = await PrologSession.load(readFileSync(path.join(root, 'prolog/access_rules.pl'), 'utf8'))
-  for (const f of entryFacts(entries, PEOPLE)) await prolog.assert(f)
-  for (const [id, grants] of policies) for (const f of personFacts(id, grants)) await prolog.assert(f)
+  for (const f of factsFor(entries, policies)) await prolog.assert(f)
 })
 
 const rows: Record<string, () => Promise<void>> = {
@@ -73,6 +75,9 @@ const rows: Record<string, () => Promise<void>> = {
     expect(await prolog.ask("can_see('maria', full, 'x1')")).toBe(false)
   },
   async A3() {
+    // Control: Adam Jr.'s family grant does reach other family entries…
+    expect(await prolog.ask("can_see('adam_jr', summary, 'e1')")).toBe(true)
+    // …but never the letter addressed to Maria, at any level.
     expect(await prolog.ask("can_see('adam_jr', _, 'e20')")).toBe(false)
   },
   async A4() {

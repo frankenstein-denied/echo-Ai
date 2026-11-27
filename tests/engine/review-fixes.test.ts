@@ -128,3 +128,76 @@ describe('the vault refuses entry types it cannot read back', () => {
     expect(() => entryFromRecord({ kind: 'photo', id: 'p', date: '2024-01-01', text: '', tags: [] })).toThrow(UnknownEntryType)
   })
 })
+
+// ---- Batch-2 review ----
+import { NEUTRAL_REPLY, messageFor } from '@/engine/src/messages'
+import { factsFor } from '@/engine/src/prolog/facts'
+import { LetterOfWishes } from '@/engine/src/entries'
+import * as allErrors from '@/engine/src/errors'
+
+const RULES_TEXT = readFileSync(path.resolve(__dirname, '../../prolog/access_rules.pl'), 'utf8')
+const letterToMaria = new LetterOfWishes({
+  id: 'L1', date: '2026-10-30', text: 'Anak, I am proud of you.', tags: ['family'],
+  title: 'To my daughter', recipient: 'maria', releaseDate: '2040-05-01',
+})
+
+describe('a letter is only for its recipient, at every level', () => {
+  it('Prolog: a family grant does not show someone else the letter, even its existence', async () => {
+    const s = await PrologSession.load(RULES_TEXT)
+    const adamFamily = [new Grant('summary', { kind: 'tag', tag: 'family' })]
+    for (const f of factsFor([letterToMaria, both], [['adam_jr', adamFamily], ['maria', adamFamily]])) await s.assert(f)
+    expect(await s.ask("can_see('adam_jr', summary, 'h1')")).toBe(true) // control: the grant works
+    expect(await s.ask("can_see('adam_jr', _, 'L1')")).toBe(false)
+    expect(await s.ask("can_see('maria', summary, 'L1')")).toBe(true)
+  })
+
+  it('TypeScript: the vault hides a letter from anyone but its recipient', () => {
+    const owner = new Owner('Ramon Dela Cruz')
+    owner.vault.append(letterToMaria)
+    const adam = new Beneficiary('adam_jr', 'Adam Jr.')
+    owner.addBeneficiary(adam)
+    const p = new Protocol('adam_jr')
+    p.addGrant(new Grant('summary', { kind: 'tag', tag: 'family' }))
+    owner.assignProtocol(adam, p)
+    expect(owner.vault.entriesFor(adam, 'existence', '2041-01-01')).toEqual([])
+  })
+})
+
+describe('mentions work the same in Prolog and TypeScript for any name', () => {
+  it('a grant on a name that is not a registered person still matches in Prolog', async () => {
+    const carmen = new DiaryEntry({ id: 'c1', date: '2019-11-01', text: "Visited Carmen's grave after mass.", tags: ['faith'] })
+    const grants = [new Grant('existence', { kind: 'mentions', name: 'Carmen' })]
+    expect(grants[0].matches(carmen)).toBe(true)
+    const s = await PrologSession.load(RULES_TEXT)
+    for (const f of factsFor([carmen], [['maria', grants]])) await s.assert(f)
+    expect(await s.ask("can_see('maria', existence, 'c1')")).toBe(true)
+  })
+})
+
+describe('both person/1 and protocol/1 are required', () => {
+  it('a grant with person but no protocol gives nothing', async () => {
+    const s = await PrologSession.load(RULES_TEXT)
+    for (const f of ["entry(e1, date(2024, 1, 1), 'diary')", 'tag(e1, family)', 'person(p)', 'grant(p, full, tag(family))']) await s.assert(f)
+    expect(await s.ask('can_see(p, _, e1)')).toBe(false)
+  })
+
+  it('a grant with protocol but no person gives nothing', async () => {
+    const s = await PrologSession.load(RULES_TEXT)
+    for (const f of ["entry(e1, date(2024, 1, 1), 'diary')", 'tag(e1, family)', 'protocol(p)', 'grant(p, full, tag(family))']) await s.assert(f)
+    expect(await s.ask('can_see(p, _, e1)')).toBe(false)
+  })
+})
+
+describe('asker messages', () => {
+  it('denied access gives an asker exactly the neutral reply', () => {
+    expect(messageFor(new allErrors.AccessDenied('Nothing to share.'), 'asker').body).toBe(NEUTRAL_REPLY)
+  })
+
+  it('error names that are object keys do not crash messageFor', () => {
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      const e = new Error('x')
+      e.name = name
+      for (const audience of ['owner', 'asker'] as const) expect(messageFor(e, audience).title).toBeTypeOf('string')
+    }
+  })
+})

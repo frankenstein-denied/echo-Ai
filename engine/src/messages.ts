@@ -22,7 +22,7 @@ const neutral: UserMessage = { title: 'Nothing to share', body: NEUTRAL_REPLY, t
 export const MESSAGES = {
   AccessDenied: {
     owner: { title: 'This isn’t available', body: 'Your account can’t open this item.', tone: 'danger' },
-    asker: { title: 'This isn’t available', body: 'Echo can only show what was shared with your account.', tone: 'danger' },
+    asker: neutral,
   },
   AmbiguousName: {
     owner: { title: 'More than one person has that name', body: 'Choose the person you mean from the list.', tone: 'warning' },
@@ -56,7 +56,7 @@ export const MESSAGES = {
 
 /** Fills a catalog message for this error and audience. Unknown errors get the calm generic one. */
 export function messageFor(error: unknown, audience: Audience): UserMessage {
-  const name = error instanceof Error && error.name in MESSAGES ? (error.name as keyof typeof MESSAGES) : 'Unexpected'
+  const name = error instanceof Error && Object.hasOwn(MESSAGES, error.name) ? (error.name as keyof typeof MESSAGES) : 'Unexpected'
   const base = MESSAGES[name][audience]
   if (audience === 'asker') return base
   if (error instanceof PolicySyntaxError) {

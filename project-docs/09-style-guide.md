@@ -68,8 +68,9 @@ Echo is a **dark** interface. Never put readable text in `subtle`: it fails cont
 - Gap between cards: **8–14 px**.
 
 **Fixed areas**
-- **Header:** 56 px tall, with Echo's orb, the section label and the page title, and a 1 px bottom border.
-- **Tab bar:** 72 px tall with four tabs (**Today, Notes, Reminders, More**). Icon 22 px; label 11 px. Active = primary, inactive = muted. Legacy pages live under **More**.
+- **Header:** **48 px** tall in the app (`--topbar-h`, plus the phone's safe area), with Echo's orb, the section label and the page title, and a 1 px bottom border.
+- **Tab bar:** **56 px** tall in the app (`--tabbar-h`, plus the safe area) with four tabs (**Today, Notes, Reminders, More**). Icon 22 px; label 11 px. Active = primary, inactive = muted. Legacy pages live under **More**.
+- The design drawings draw the header at 56 px and the tab bar at 72 px, with the safe area included, so they read clearly. Build them with the app's variables above.
 
 **Corner radii**
 
@@ -94,7 +95,7 @@ Echo is a **dark** interface. Never put readable text in `subtle`: it fails cont
 | `book-open` | Today / Entries |
 | `file-text` | Notes |
 | `bell` | Reminders |
-| `ellipsis` | More |
+| `layout-grid` | More (as in `components/echo/mobile-tabbar.tsx`) |
 | `lock` | Locked, sealed, access denied |
 | `shield-check` | Chain verified |
 | `pen-line` | Write |
