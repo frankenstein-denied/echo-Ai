@@ -13,11 +13,15 @@ async function main(): Promise<void> {
   const prolog = await PrologSession.load(rules)
 
   // Three invented entries and the two grants from the course handout's sample policy.
-  await prolog.assert('entry(e1, [family], [maria])')
-  await prolog.assert('entry(e2, [family], [])')
-  await prolog.assert('entry(e3, [business], [])')
-  await prolog.assert('grant(maria, existence, mentions(maria))')
-  await prolog.assert('grant(maria, summary, tag(family))')
+  const facts = [
+    "entry(e1, date(2021, 3, 14), 'diary')", 'tag(e1, family)', 'mentions(e1, maria)',
+    "entry(e2, date(2022, 8, 1), 'diary')", 'tag(e2, family)',
+    "entry(e3, date(2023, 2, 10), 'diary')", 'tag(e3, business)',
+    'person(maria)', 'protocol(maria)',
+    'grant(maria, existence, mentions(maria))',
+    'grant(maria, summary, tag(family))',
+  ]
+  for (const fact of facts) await prolog.assert(fact)
 
   const yesNo = (b: boolean) => (b ? 'yes' : 'no')
   console.log(`Can Maria see entry e1 (existence)? ${yesNo(await prolog.ask('can_see(maria, existence, e1)'))}`)

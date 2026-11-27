@@ -11,7 +11,7 @@
  * with its own protocol, is never registered and so sees nothing.
  */
 import { appendLink, verifyChain, type ChainLink } from '../chain/hash-chain'
-import { entryFromRecord, type Entry } from '../entries'
+import { LetterOfWishes, entryFromRecord, type Entry } from '../entries'
 import { AccessDenied } from '../errors'
 import type { Beneficiary } from './beneficiary'
 import type { AccessLevel } from './grant'
@@ -57,6 +57,8 @@ export class Vault {
     const out: Entry[] = []
     for (const link of this.#chain) {
       const entry = entryFromRecord(link.record)
+      // A Letter of Wishes is only for its recipient, at every level.
+      if (entry instanceof LetterOfWishes && entry.recipient !== beneficiary.id) continue
       if (protocol.decide(entry, level) !== 'allow') continue
       if (level === 'full' && !entry.isReadableOn(today, beneficiary.id)) continue
       out.push(entry)

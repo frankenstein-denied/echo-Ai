@@ -34,7 +34,10 @@ Every link below works now because `main` is pushed. The base address is:
 | [2.05](#205--append-only-hash-chain) | Append-only hash chain | Done |
 | [2.10](#210--pipeline-and-hash-chain-tests) | Pipeline and hash chain tests | Done |
 | [2.11](#211--policy-lexer) | Policy lexer | Done — your review pending |
-| [Not started](#tickets-not-started-yet) | 1.09, 2.06, 2.07, 2.08, 2.09, 2.12 | Waiting |
+| [2.06 / 2.07](#206--207--prolog-facts-and-first-access-rules) | Prolog facts and first access rules | Done (2.07 has the same text as 2.06) |
+| [2.09](#209--high-fidelity-screens-style-guide-error-messages) | High-fidelity screens, style guide, error messages | Done — share with FE |
+| [2.12](#212--lexer-tests) | Lexer tests | Done |
+| [Not started](#tickets-not-started-yet) | 1.09, 2.08 | Waiting on you |
 
 ---
 
@@ -42,7 +45,7 @@ Every link below works now because `main` is pushed. The base address is:
 
 ```bash
 corepack pnpm install      # once; pnpm is not on your PATH, so always prefix with corepack
-corepack pnpm test         # every test, one command (1,275 tests; 100 are the engine's)
+corepack pnpm test         # every test, one command (1,315 tests; 140 are the engine's)
 corepack pnpm engine:demo  # TypeScript asks the Prolog rules about Maria
 ```
 
@@ -63,7 +66,7 @@ The handout requires six components, each in a different **paradigm**:
 | Diary model | Object-oriented | `engine/src/model/`, `engine/src/entries/` | ✔ |
 | Entry processing | Functional | `engine/src/pipeline/`, `engine/src/chain/` | ✔ |
 | Writing modes | Object-oriented | (planned) | — |
-| Access rules | Logic (Prolog) | `prolog/access_rules.pl` | Starter ✔ |
+| Access rules | Logic (Prolog) | `prolog/access_rules.pl` | Facts + three levels ✔; release dates, death trigger planned |
 | Legacy Policy language | Language design | `grammar/policy.ebnf`, `engine/src/policy/lexer.ts` | Grammar + lexer ✔; parser, interpreter planned |
 | Grounded AI Q&A | Scripting | (planned) | — |
 
@@ -497,18 +500,106 @@ Every field is `#private`. The vault hands out only fresh frozen copies, and it 
 
 **Be ready to explain:** why DATE is tried before NUMBER (otherwise `2040` would be read as a number), and why STRING's column is its opening quote.
 
+
+---
+
+## 2.06 / 2.07 — Prolog facts and first access rules
+
+> In Kaneo, 2.07 has exactly the same text as 2.06. Both are covered here. If 2.07 should be something else, tell me.
+
+**What was done:**
+- **The rules** `prolog/access_rules.pl` now has a full **fact structure**:
+
+  | Fact | Meaning |
+  |---|---|
+  | `person(P)` | P is a registered person |
+  | `protocol(P)` | P has a protocol from the owner |
+  | `entry(E, date(Y,M,D), Kind)` | An entry and its date |
+  | `tag(E, T)` | Entry E is tagged T |
+  | `mentions(E, P)` | Entry E mentions person P |
+  | `letter(E, Title, Recipient, date(...))` | A Letter of Wishes |
+  | `grant(P, Level, Selector)` | An allow |
+  | `deny(P, Level, Selector)` | A denial |
+
+- **The rule** `can_see(P, Level, E)`: deny by default; three levels (existence < summary < full); deny beats allow; a weaker deny blocks stronger levels; a Letter of Wishes is visible **only to its recipient**, and never in full until the release rules exist. Helpers: `visible/3`, `visible_count/3`.
+- **The facts builder** `engine/src/prolog/facts.ts` (`factsFor`) builds the facts from the engine's real entries and grants, with every name safely quoted. It checks mentions for every name a grant uses, so Prolog and the TypeScript model always agree.
+- **The tests** `tests/engine/access-table.test.ts` read the access table CSV and run **7 rows** through Prolog against the fictional owner: **M1, M2, M5, M6, A1, A3, A4**. The other 4 rows are listed as later work: M3 and M4 need release dates, A2 needs the death trigger, A5 needs the AI.
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| The Prolog file loads without errors from the main program | Test "the rule file loads from the main program"; `corepack pnpm engine:demo` | ✔ |
+| A person with no protocol is denied everything | Tests "a person with no protocol is denied everything", "…even with a stray grant"; access-table row M6 | ✔ |
+| Rules distinguish existence, summary and full | Tests "summary access… also gives existence", "the three levels are distinct…"; rows M1, A4 | ✔ |
+| At least five access-table rows pass | 7 rows pass (M1, M2, M5, M6, A1, A3, A4) | ✔ |
+| Stored in the repo and linked in Kaneo | `prolog/access_rules.pl` | ☐ **you** add the link |
+
+**Submit / link in Kaneo:**
+- `prolog/access_rules.pl`
+- `engine/src/prolog/facts.ts`
+- `tests/engine/access-table.test.ts`
+- `tests/engine/prolog-bridge.test.ts`
+- `tests/engine/prolog-facts.test.ts`
+- `project-docs/05-access-test-table.csv`
+
+**Be ready to explain:**
+- **How `can_see` reads in English:** "P can see E at level L if P is registered, has a protocol, some grant reaches L and picks out E, and no denial reaches L and picks out E."
+- **Why a person with no protocol sees nothing:** `protocol(P)` can't be proven, so `can_see` fails. That's the closed-world assumption.
+- **Row A3:** Adam Jr. has a family grant and can summarise other family entries, but gets nothing about the letter to Maria. That's the recipient-only rule `not_for/2`.
+
+---
+
+## 2.09 — High-fidelity screens, style guide, error messages
+
+**What was done:**
+
+| Deliverable | Where | Contents |
+|---|---|---|
+| High-fidelity screens | `project-docs/11-hifi/` | **12 screens**: the 9 wireframe screens in final form (real lucide icons, final wording, no annotations), plus owner home (10), asker home (11), and a write-entry error state (12). PNG previews included. Generated by `scripts/project-docs/gen-hifi.mjs` |
+| Style guide | `project-docs/09-style-guide.md` | Echo's real colour tokens (from `app/globals.css`), what each colour means, type scale, spacing, radii, icons, components, wording rules |
+| Error message catalog | `project-docs/10-error-messages.md` | **One message per error type**: AccessDenied, AmbiguousName, TamperDetected, PolicySyntaxError, PolicyFrozen, UnknownEntryType, plus a generic fallback. Each has an owner version and an asker version, and there are rules for writing new ones. **Every asker message is the handout's neutral reply** |
+| The same messages in code | `engine/src/messages.ts` | `messageFor(error, audience)`. Tested in `tests/engine/messages.test.ts` (7 tests), which also checks that the document and the code use the same words |
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| High-fidelity designs for all owner and asker screens | `11-hifi/README.md` lists the owner screens and the asker screens | ✔ |
+| Style guide: colours, fonts, component styles | `09-style-guide.md` sections 1, 2, 5 | ✔ |
+| One message for each error type | `10-error-messages.md`; test "has one message for each error type" | ✔ |
+| Denied-access messages never reveal that a protected entry exists | Tests "denied access reads the same whatever the hidden reason", "no asker-facing message reveals that a protected entry exists", "askers get the neutral reply…" | ✔ |
+| Shared with Front End and linked in Kaneo | Table in `11-hifi/README.md` | ☐ **you** tick it and add the links |
+
+**Submit / link in Kaneo:**
+- the folder `project-docs/11-hifi/` (and a Figma link if you import the SVGs)
+- `project-docs/09-style-guide.md`
+- `project-docs/10-error-messages.md`
+- `engine/src/messages.ts`
+
+**Be ready to explain:**
+- **Why an asker sees the neutral reply for every error, including AccessDenied:** the handout says a person with no protocol gets "the same neutral reply, with no detail", and any other wording could reveal that a protected entry, or a particular person, exists.
+- **The two audiences:** only the owner sees details about their own diary.
+
+---
+
+## 2.12 — Lexer tests
+
+**What was done:** `tests/engine/lexer.test.ts` now has **19 tests**, with one clearly named case per criterion. A table in `project-docs/05-test-plan.md` (section 3.1) maps each criterion to its tests.
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| At least ten test cases | 19 | ✔ |
+| Valid tokens, dates, quoted strings, comments, blank lines | Tests named "valid tokens…", "dates…", "quoted strings…" (×2), "comments…", "blank lines…" | ✔ |
+| Unknown symbols and unterminated strings | Tests "invalid: an unknown symbol…", "invalid: an unterminated string on a later line…", and the earlier two | ✔ |
+| All pass, or failures logged in Kaneo | All 19 pass | ✔ |
+
+**Submit / link in Kaneo:** `tests/engine/lexer.test.ts`, and `project-docs/05-test-plan.md` (section 3.1)
+
 ---
 
 ## Tickets not started yet
 
 | Ticket | What it needs | Notes |
 |---|---|---|
-| **1.09** UI structure | Layout, navigation (owner and asker areas), placeholder sign-in, empty home | Waiting on your choice: a separate `studio/` Next.js app (my pick, never touches the live app) or pages inside the live Echo app |
-| **2.06** Prolog facts and first rules | Facts for people, protocols, entries, tags, grants; three levels; ≥ 5 access-table rows passing | Builds on `prolog/access_rules.pl` |
-| **2.07** | Same text as 2.06 in Kaneo | Probably a copy-paste. Check what 2.07 should be |
-| **2.08** Owner screens | Write entry + entry list, saved to the append-only store, no edit/delete, approved error messages | Needs 1.09, and a stored (file) hash chain |
-| **2.09** High-fidelity designs | Hi-fi screens, style guide, error message catalog (AccessDenied, AmbiguousName, TamperDetected, PolicySyntaxError) | Denied-access messages must never reveal that an entry exists |
-| **2.12** Lexer tests | ≥ 10 cases: valid tokens, dates, strings, comments, blank lines, unknown symbols, unterminated strings | 11 tests already exist in `tests/engine/lexer.test.ts`. Mostly a matter of mapping them to the criteria |
+| **1.09** UI structure | Layout, navigation (owner and asker areas), placeholder sign-in, empty home | You chose a separate `studio/` Next.js app, then put it on hold |
+| **2.08** Owner screens | Write entry + entry list, saved to the append-only store, no edit/delete, approved error messages | Needs 1.09. The messages (`engine/src/messages.ts`) and hi-fi screens are ready for it |
 
 ---
 
@@ -524,5 +615,7 @@ Every field is `#private`. The vault hands out only fresh frozen copies, and it 
 - ☐ Drag the wireframe SVGs into Figma once and share the Figma link.
 - ☐ Read every AI-log row and remove "(pending review)" from the ones you've checked.
 - ☐ Review the code for 2.02 and 2.11 as "another member".
+- ☐ Tick "Received the designs" in `11-hifi/README.md` (2.09).
+- ☐ Check what ticket 2.07 is meant to be.
 - ☐ Run `corepack pnpm test` and `corepack pnpm engine:demo` yourself.
 - ☐ Ask your instructor to confirm that a one-member group is acceptable (the handout asks for five).

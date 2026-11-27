@@ -48,6 +48,20 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | P10 | Handout sample through the interpreter | Facts `grant(maria, existence, mentions(maria))`, `grant(maria, summary, tag(family))`, `release(...)`, `custody_transfer(adam_jr, 90)`, `default_mode(light_fix)` | Planned |
 | P11 | Compiling a policy after the death trigger | `PolicyFrozen` | Planned |
 
+**Ticket 2.12: lexer test cases.** `tests/engine/lexer.test.ts` has **19 tests**, all passing.
+
+| 2.12 criterion | Tests that cover it |
+|---|---|
+| At least ten test cases | 19 tests in the file |
+| Valid tokens | "tokenizes the handout's sample policy", "valid tokens: a protocol header…", "recognises every operator, and dates before numbers", "reads keywords and names case-insensitively", "every sample program tokenizes without error" |
+| Dates | "dates: a release date is one DATE token at the right column", "recognises every operator, and dates before numbers" |
+| Quoted strings | "quoted strings: spaces inside are kept…", "quoted strings: an empty string is allowed" |
+| Comments | "comments: a whole-line comment and an end-of-line comment are ignored", "ignores comments and blank lines" |
+| Blank lines | "blank lines: several blank lines between statements…", "ignores comments and blank lines" |
+| Unknown symbols | "an unknown character raises a clear error…", "invalid: an unknown symbol in the middle of a valid line…" |
+| Unterminated strings | "an unterminated string raises an error at its opening quote", "invalid: an unterminated string on a later line…" |
+| All pass, or failures logged in Kaneo | All 19 pass |
+
 ### 3.2 Access rules (Prolog)
 
 | ID | Input | Expected | Status |
@@ -60,7 +74,10 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | R5b | Full allow on family + existence deny on health, entry tagged both | false at every level (a deny hides its level and every stronger one) | ✔ Automated (`review-fixes.test.ts`) |
 | R6 | Letter before / on the release date | false / true for the recipient only | Planned |
 | R7 | Any query before the death trigger fires | false | Planned |
-| R8 | Every row of the access test table | Matches `expected_result` | Vault level ✔ (M1–M6 in `fixtures.test.ts`); Prolog level planned |
+| R8 | Every row of the access test table | Matches `expected_result` | Vault level ✔ (M1–M6 in `fixtures.test.ts`). Prolog level ✔ for **M1, M2, M5, M6, A1, A3, A4** (`access-table.test.ts`); M3, M4, A2 wait for the release and death-trigger rules, A5 for the Q&A script |
+| R9 | A registered person with no protocol, and an unregistered name with a stray grant | Nothing at any level | ✔ Automated (`prolog-bridge.test.ts`) |
+| R10 | A letter with a `full` grant | Never full until the release rules exist; summary still allowed | ✔ Automated |
+| R11 | Facts built from entries and protocols | Correct `entry/3`, `tag/2`, `mentions/2`, `letter/4`, `person/1`, `protocol/1`, `grant/3`, `deny/3`, with names safely quoted | ✔ Automated (`prolog-facts.test.ts`) |
 
 ### 3.3 Entry pipeline
 

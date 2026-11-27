@@ -305,6 +305,8 @@ const classDiagram = page('Class Diagram', 'cls', 1900, 1500, (api) => {
 
   // Policy + Prolog
   const lexer = cls('Lexer', '«module»', [], ['+ tokenize(source): Token[]'], 1340, 110, 220, C.orange)
+  const facts = cls('PrologFacts', '«module»', [], ['+ quoteAtom(text): string', '+ entryFacts(entries, people): string[]', '+ personFacts(id, grants | null): string[]'], 1650, 560, 230, C.green)
+  const msgs = cls('Messages', '«module»', ['+ MESSAGES: catalog', '+ NEUTRAL_REPLY: string'], ['+ messageFor(error, audience): UserMessage'], 1650, 790, 230, C.purple)
   const token = cls('Token', '«type»', ['+ type: TokenType', '+ value: string', '+ line: number', '+ column: number'], [], 1600, 110, 180, C.orange)
   const parser = cls('Parser', '«planned»', [], ['+ parse(tokens): PolicyTree'], 1340, 280, 220, C.grey, true)
   const interp = cls('Interpreter', '«planned»', [], ['+ compile(tree): PrologFact[]'], 1340, 420, 220, C.grey, true)
@@ -362,6 +364,9 @@ const classDiagram = page('Class Diagram', 'cls', 1900, 1500, (api) => {
   api.edge('«throw»', dep, lexer, exc[3])
   api.edge('«throw»', dep, owner, exc[2])
   api.edge('«throw»', dep, vault, exc[5])
+  api.edge('«use»', dep, facts, grant)
+  api.edge('«use»', dep, facts, entry)
+  api.edge('«use»', dep, msgs, base)
 })
 file('class-diagram.drawio', [classDiagram])
 console.log('ok')
