@@ -1,0 +1,4 @@
+# Policy samples and Prolog rules keep LF line endings on every machine.
+*.policy text eol=lf
+*.pl text eol=lf
+*.ebnf text eol=lf

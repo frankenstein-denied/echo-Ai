@@ -7,7 +7,8 @@ import { PolicySyntaxError } from '@/engine/src/errors'
 import { tokenize } from '@/engine/src/policy/lexer'
 
 const SAMPLES = path.resolve(__dirname, '../../grammar/samples')
-const handout = readFileSync(path.join(SAMPLES, 'handout.policy'), 'utf8')
+// Git may check samples out with CRLF on Windows; the tests start from LF and add CRLF themselves.
+const handout = readFileSync(path.join(SAMPLES, 'handout.policy'), 'utf8').replace(/\r\n/g, '\n')
 
 const pairs = (src: string) => tokenize(src).map((t) => [t.type, t.value])
 
