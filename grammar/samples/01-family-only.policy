@@ -1,0 +1,6 @@
+# Sample 1 — Adam Jr. reads summaries of family entries and everything about the store.
+# Team: Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)
+protocol adam_jr:
+  may read summary of entries tagged "family"
+  may read entries tagged "business"
+default writing mode: verbatim

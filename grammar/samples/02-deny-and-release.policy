@@ -1,0 +1,9 @@
+# Sample 2 — a denial beats an allow, and a sealed letter with a release date.
+# Team: Peter Paul Poloan — Front End, Back End, Q/A, UI/UX Designer, Documentator (one-member group)
+protocol maria:
+  may read summary of entries tagged "family"
+  may not read summary of entries tagged "health"
+protocol adam_jr:
+  may see existence of entries mentioning adam_jr
+release letter "To my daughter" to maria when date >= 2040-05-01
+default writing mode: review
