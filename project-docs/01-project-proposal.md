@@ -86,10 +86,10 @@ The engine lives in the Echo repository (`engine/`, `prolog/`, `grammar/`). The 
 
 ### C4 — Access rules (Prolog)
 - **FR-16** The rules decide, for an asker, a level and an entry, whether the asker may see it. **Deny by default:** without a matching grant the answer is no.
-- **FR-17** **Deny beats allow:** a matching denial wins over any matching grant.
+- **FR-17** **Deny beats allow:** a matching denial wins over any matching grant. A denial hides its level and every stronger level, so a weaker denial also blocks a stronger grant.
 - **FR-18** A Letter of Wishes opens only for its recipient, only on or after its release date.
 - **FR-19** Before the death trigger fires, no asker sees anything. After it fires, the policy is **frozen**: any attempt to change it raises `PolicyFrozen`.
-- **FR-20** The application code calls the rules through a bridge. No access decision is made with `if` statements outside the rules and their object-oriented mirror (`Protocol.decide`).
+- **FR-20** The application code calls the rules through a bridge. Access decisions are made only by the rules and their object-oriented mirror: `Protocol.decide` (grants and denials), `LetterOfWishes.isReadableOn` (release date and recipient) and `Vault.entriesFor` (registered askers only), never by ad-hoc `if` statements elsewhere.
 
 ### C5 — Legacy Policy language
 - **FR-21** The grammar is written in EBNF and has at least four statement types. It has five:
@@ -123,7 +123,7 @@ The engine lives in the Echo repository (`engine/`, `prolog/`, `grammar/`). The 
 - **FR-33 Instructions:** a standing system prompt plus the owner's compiled policy. It tells the model to answer only from permitted entries, cite dates, say when there is no record, and never claim to be the owner.
 
 ### Errors
-- **FR-34** Failures raise typed exceptions: `AccessDenied`, `AmbiguousName`, `TamperDetected`, `PolicySyntaxError`, `PolicyFrozen`. When anything fails, the system falls back to the safe action, which is the neutral reply.
+- **FR-34** Failures raise typed exceptions: `AccessDenied`, `AmbiguousName`, `TamperDetected`, `PolicySyntaxError`, `PolicyFrozen`, `UnknownEntryType`. When anything fails, the system falls back to the safe action, which is the neutral reply.
 
 ## 6. Non-functional requirements
 
@@ -175,7 +175,7 @@ The engine lives in the Echo repository (`engine/`, `prolog/`, `grammar/`). The 
 
 > **A Letter of Wishes is a personal message, not a legal will. It has no legal effect under Philippine law and is not legal advice.**
 
-Philippine law sets formal requirements for wills. Echo never presents a letter as a will or as legal advice, and shows this disclaimer on the policy editor, the write-letter screen, and wherever a letter is shown.
+Philippine law sets formal requirements for wills. Echo never presents a letter as a will or as legal advice, and shows this disclaimer on the policy editor and wherever a letter is shown (the released letter and the sealed-letter screen). A screen for writing a letter will carry it too when it is designed.
 
 ## 10. Approval
 

@@ -53,15 +53,18 @@ number = digit , { digit } ;
 
 ## 3. What each statement means
 
-Access levels go from weakest to strongest: **existence < summary < full**. A clause that grants a level also grants the levels below it.
+Access levels go from weakest to strongest: **existence < summary < full**.
+
+- An **allow** gives its level **and every weaker level**: `may read summary` also lets the asker know the entry exists.
+- A **deny** hides its level **and every stronger level**: `may not see existence` hides everything about matching entries; `may not read summary` hides summaries and full text but still lets the asker know the entry exists.
 
 | # | Statement | Meaning | Prolog fact it compiles to |
 |---|---|---|---|
 | 1a | `protocol maria:` then `may see existence of <selector>` | Maria may learn **that** matching entries exist and **how many**, never their content. | `grant(maria, existence, S).` |
 | 1b | `may read summary of <selector>` | Maria may read a short summary of matching entries, with their dates. | `grant(maria, summary, S).` |
 | 1c | `may read <selector>` | Maria may read matching entries in full (verbatim). | `grant(maria, full, S).` |
-| 1d | `may not …` (any of the three) | A denial. **Deny beats allow**: if a deny and an allow both match an entry at a level, the answer is no. | `deny(maria, Level, S).` |
-| — | selector `entries mentioning maria` | Entries whose text mentions the name (`adam_jr` matches "Adam Jr"). | `S = mentions(maria)` |
+| 1d | `may not …` (any of the three) | A denial. It hides its level and every stronger one. **Deny beats allow**: if a deny and an allow both reach an entry at the requested level, the answer is no. Example: `may read entries tagged "family"` plus `may not see existence of entries tagged "health"` hides every family entry that is also tagged health, completely. | `deny(maria, Level, S).` |
+| — | selector `entries mentioning maria` | Entries whose text mentions the name as a whole word (`maria` matches "Maria" and "Maria's" but not "Mariano"; `adam_jr` matches "Adam Jr"). | `S = mentions(maria)` |
 | — | selector `entries tagged "family"` | Entries carrying the tag. | `S = tag(family)` |
 | 2 | `release letter "To my daughter" to maria when date >= 2040-05-01` | The sealed Letter of Wishes with that title opens for Maria only, on or after the date. Before then even its content is refused. | `release(letter("To my daughter"), maria, date(2040,5,1)).` |
 | 3 | `transfer custody to adam_jr if trustee unavailable for 90 days` | If the trustee does not respond for 90 days, custody of the vault passes to Adam Jr. | `custody_transfer(adam_jr, 90).` |

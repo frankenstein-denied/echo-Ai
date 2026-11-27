@@ -1,6 +1,6 @@
 # Echo Legacy engine (CS 413 final project) — design
 
-Date: 2026-11-28 · Status: draft for owner approval
+Date: 2026-11-28 · Status: approved by the owner on 2026-11-28
 Team: Peter Paul Poloan (Front End, Back End, Q/A, UI/UX Designer, Documentator — one-member group)
 
 ## Intent

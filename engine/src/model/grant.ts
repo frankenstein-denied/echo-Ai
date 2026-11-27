@@ -16,6 +16,15 @@ export type Effect = 'allow' | 'deny'
 
 const RANK: Readonly<Record<AccessLevel, number>> = { existence: 0, summary: 1, full: 2 }
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Whole-name match: "maria" matches "Maria" and "Maria's", never "Mariano". `_` stands for a space. */
+function mentionsName(text: string, name: string): boolean {
+  const wanted = name.replace(/_/g, ' ').trim().normalize('NFC')
+  if (!wanted) return false
+  return new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(wanted)}(?![\\p{L}\\p{M}])`, 'iu').test(text.normalize('NFC'))
+}
+
 export class Grant {
   readonly #level: AccessLevel
   readonly #selector: Readonly<Selector>
@@ -43,7 +52,7 @@ export class Grant {
     const s = this.#selector
     switch (s.kind) {
       case 'mentions':
-        return entry.text.toLowerCase().includes(s.name.replace(/_/g, ' ').toLowerCase())
+        return mentionsName(entry.text, s.name)
       case 'tag':
         return entry.tags.includes(s.tag.trim().toLowerCase())
       case 'letter':
@@ -51,8 +60,12 @@ export class Grant {
     }
   }
 
-  /** Whether this grant's level reaches `level` (a summary grant also covers existence). */
+  /**
+   * Whether this grant applies to a request at `level`.
+   * An allow reaches its own level and the weaker ones (a summary grant also gives existence).
+   * A deny reaches its own level and every stronger one (hiding existence hides everything).
+   */
   covers(level: AccessLevel): boolean {
-    return RANK[this.#level] >= RANK[level]
+    return this.#effect === 'allow' ? RANK[this.#level] >= RANK[level] : RANK[level] >= RANK[this.#level]
   }
 }

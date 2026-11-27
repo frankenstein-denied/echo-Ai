@@ -89,8 +89,8 @@ Can Maria read summary of e3 (business)? no
 Entries Maria may summarise: e1, e2
 ```
 
-**Verified on:** Windows 11, Node.js 24.14.0, pnpm 12.3.4 (2026-11-28). The same commands work on macOS and Linux.
+**Verified on:** Windows 11, Node.js 24.14.0, pnpm 12.3.4 (2026-11-28). pnpm was run through Corepack (`corepack pnpm ...`), and tests were also run as `npx vitest run`. Not yet tried on macOS or Linux; every tool used is cross-platform.
 
 | Member | Ran `pnpm test` and `pnpm engine:demo` on their machine | Date |
 |---|---|---|
-| Peter Paul Poloan | ☑ | 2026-11-28 |
+| Peter Paul Poloan | ☑ (via `corepack pnpm`) | 2026-11-28 |

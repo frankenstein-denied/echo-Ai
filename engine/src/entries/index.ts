@@ -5,6 +5,7 @@
 import { DiaryEntry } from './diary-entry'
 import { Entry, type EntryRecord } from './entry'
 import { LetterOfWishes } from './letter-of-wishes'
+import { UnknownEntryType } from '../errors'
 
 export { DiaryEntry, Entry, LetterOfWishes }
 export { isIsoDate, type EntryData, type EntryRecord } from './entry'
@@ -17,5 +18,5 @@ export function entryFromRecord(r: EntryRecord): Entry {
     return new LetterOfWishes({ ...base, title: r.title ?? '', recipient: r.recipient ?? '', releaseDate: r.releaseDate ?? '' })
   }
   if (r.kind === 'diary') return new DiaryEntry(base)
-  throw new Error(`Unknown entry kind: ${r.kind}`)
+  throw new UnknownEntryType(`Unknown entry kind: ${r.kind}`)
 }

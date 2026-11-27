@@ -34,7 +34,8 @@ level_covers(summary, existence).
 level_covers(existence, existence).
 
 allowed(A, L, E) :- grant(A, GL, S), level_covers(GL, L), matches(E, S).
-denied(A, L, E)  :- deny(A, GL, S),  level_covers(GL, L), matches(E, S).
+% A deny hides its own level and every stronger one (hiding existence hides everything).
+denied(A, L, E)  :- deny(A, DL, S),  level_covers(L, DL), matches(E, S).
 
 % can_see(?Asker, ?Level, ?Entry): deny by default, deny beats allow.
 can_see(A, L, E) :- entry(E, _, _), allowed(A, L, E), \+ denied(A, L, E).

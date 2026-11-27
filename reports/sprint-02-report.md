@@ -61,10 +61,23 @@ Most criteria are met in the repository. These need the team (the Product Owner)
 
 | Command | Result |
 |---|---|
-| `pnpm test` (whole repository) | 104 files, **1,264 tests passed** |
-| `npx vitest run tests/engine` (engine only) | 8 files, **89 tests passed** |
+| `pnpm test` (whole repository) | 105 files, **1,275 tests passed** |
+| `npx vitest run tests/engine` (engine only) | 9 files, **100 tests passed** |
 | `pnpm exec tsc --noEmit` | No type errors |
 | `pnpm engine:demo` | `e1 existence: yes` · `e3 summary: no` · `may summarise: e1, e2` |
+
+## Final review
+
+A fresh reviewer checked the whole branch. Problems found and fixed, each with a test that failed first:
+- A denial at a weak level (e.g. `may not see existence`) did not block a stronger grant (full text). Now a denial hides its level and every stronger one, in both the TypeScript model and the Prolog rules.
+- The policy could still be changed after the freeze, through a beneficiary's protocol. Protocols and beneficiaries are now sealed when the policy freezes.
+- The vault answered any beneficiary object handed to it, even one made up outside the owner. It now serves only beneficiaries its owner registered.
+- `entries mentioning maria` also matched "Mariano". Names now match as whole words.
+- An entry type the vault could not read back broke every later read. It is now refused on append with the typed error `UnknownEntryType`.
+- The access-denied wireframe named the trustee and told a no-protocol person they were not on the list. It now gives no names or details, and questions from a no-protocol person go to the neutral reply.
+- Several documents were corrected to match the code and to drop claims that had not been checked.
+
+Smaller review notes are deferred to the next sprint (see the AI-use log, row 17).
 
 ## Change from Sprint 1
 

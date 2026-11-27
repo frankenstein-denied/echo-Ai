@@ -43,3 +43,6 @@ export class TamperDetected extends EchoLegacyError {
     this.index = index
   }
 }
+
+/** An entry type the vault cannot store and read back. */
+export class UnknownEntryType extends EchoLegacyError {}

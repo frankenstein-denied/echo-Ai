@@ -10,12 +10,14 @@ import { Vault } from './vault'
 export class Owner {
   readonly #name: string
   readonly #vault: Vault
+  readonly #vaultKey: symbol
   readonly #beneficiaries: Beneficiary[] = []
   #policyFrozen = false
 
   constructor(name: string, vault: Vault = new Vault()) {
     this.#name = name
     this.#vault = vault
+    this.#vaultKey = vault.claim()
   }
 
   get name(): string {
@@ -34,6 +36,7 @@ export class Owner {
   addBeneficiary(beneficiary: Beneficiary): void {
     this.#assertEditable()
     this.#beneficiaries.push(beneficiary)
+    this.#vault.admit(beneficiary, this.#vaultKey)
   }
 
   assignProtocol(beneficiary: Beneficiary, protocol: Protocol): void {
@@ -44,6 +47,7 @@ export class Owner {
   /** Called when the death trigger fires: from now on the policy cannot change. */
   freezePolicy(): void {
     this.#policyFrozen = true
+    for (const b of this.#beneficiaries) b.seal()
   }
 
   findBeneficiary(nameOrId: string): Beneficiary {

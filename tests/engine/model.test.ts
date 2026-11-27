@@ -21,13 +21,20 @@ const letter = new LetterOfWishes({
   releaseDate: '2040-05-01',
 })
 
+// The vault serves only beneficiaries its owner registered, so each vault comes with a registered Maria.
+let registeredMaria: Beneficiary | null = null
+
 function vaultWithEntries(): Vault {
-  const v = new Vault()
-  for (const e of [e1, e2, e3, e4, letter]) v.append(e)
-  return v
+  const owner = new Owner('Ramon Dela Cruz')
+  for (const e of [e1, e2, e3, e4, letter]) owner.vault.append(e)
+  registeredMaria = makeMaria()
+  owner.addBeneficiary(registeredMaria)
+  return owner.vault
 }
 
-function maria(): Beneficiary {
+const maria = (): Beneficiary => registeredMaria ?? makeMaria()
+
+function makeMaria(): Beneficiary {
   const b = new Beneficiary('maria', 'Maria Dela Cruz')
   const p = new Protocol('maria')
   p.addGrant(new Grant('existence', { kind: 'mentions', name: 'maria' }))
@@ -96,7 +103,8 @@ describe('Protocol and Grant', () => {
     p.addGrant(new Grant('summary', { kind: 'tag', tag: 'business' }, 'deny'))
     expect(p.decide(e2, 'summary')).toBe('allow')
     expect(p.decide(e4, 'summary')).toBe('deny')
-    expect(p.decide(e4, 'existence')).toBe('deny')
+    // A summary deny hides summary and full text, not the fact that the entry exists.
+    expect(p.decide(e4, 'existence')).toBe('allow')
   })
 })
 

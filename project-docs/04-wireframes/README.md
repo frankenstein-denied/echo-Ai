@@ -21,7 +21,7 @@ All names and entries are fictional.
 | [`04-policy-editor.svg`](04-policy-editor.svg) | Legacy policy editor with a syntax error at line 3, column 7, and the disclaimer | policy editor |
 | [`05-ask-question.svg`](05-ask-question.svg) | Asker's question screen, with suggested questions and the "not Ramon" line | ask question |
 | [`06-cited-answer.svg`](06-cited-answer.svg) | Answer citing each entry by date, and a released letter shown word for word, with the disclaimer | cited answer |
-| [`07-access-denied.svg`](07-access-denied.svg) | Access denied | access denied |
+| [`07-access-denied.svg`](07-access-denied.svg) | Access denied: shown when a person opens an item directly (e.g. an old link) that is not shared with them. Names nobody, gives no reason, same whether or not the item exists. A person with no protocol who **asks** gets the neutral reply (09), as the handout requires. | access denied |
 | [`08-release-not-reached.svg`](08-release-not-reached.svg) | Letter sealed until 1 May 2040, with the disclaimer | release date not reached |
 | [`09-neutral-reply.svg`](09-neutral-reply.svg) | Neutral reply: "I don't have anything I can share about that." | neutral reply |
 | [`user-flow.svg`](user-flow.svg) | How the owner and the asker move through the system | user flow |

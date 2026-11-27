@@ -57,6 +57,7 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | R3 | Business entry, no grant | false (deny by default) | ✔ Automated |
 | R4 | Asker with no grants | false | ✔ Automated |
 | R5 | Allow and deny both match | false (deny beats allow) | ✔ Automated |
+| R5b | Full allow on family + existence deny on health, entry tagged both | false at every level (a deny hides its level and every stronger one) | ✔ Automated (`review-fixes.test.ts`) |
 | R6 | Letter before / on the release date | false / true for the recipient only | Planned |
 | R7 | Any query before the death trigger fires | false | Planned |
 | R8 | Every row of the access test table | Matches `expected_result` | Vault level ✔ (M1–M6 in `fixtures.test.ts`); Prolog level planned |
@@ -86,6 +87,8 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 | H6 | Entry removed and indexes renumbered | Caught: "previous hash does not match" | ✔ Automated |
 | H7 | Caller changes the object after appending | Chain unchanged | ✔ Automated |
 | H8 | Looking for edit/delete functions | None exist | ✔ Automated |
+| H9 | Appending an entry type the vault cannot read back | `UnknownEntryType`; vault unchanged and still readable | ✔ Automated (`review-fixes.test.ts`) |
+| H10 | Removing the **last** entry | Not detectable from the chain alone while it is held in memory; once stored, the chain's length and last hash must be recorded too | Planned |
 
 ### 3.5 Writing modes
 
@@ -112,13 +115,15 @@ Status key: **✔ Automated** = in the suite and passing · **Planned** = writte
 
 ### 3.7 Diary model (classes)
 
-`model.test.ts` and `entries.test.ts` (✔ Automated) cover:
+`model.test.ts`, `entries.test.ts` and `review-fixes.test.ts` (✔ Automated) cover:
 - vault encapsulation;
 - frozen copies;
 - Beneficiary → Protocol → Grants;
 - deny by default and deny beats allow;
 - the release date;
-- `AmbiguousName` and `PolicyFrozen`;
+- `AmbiguousName` and `PolicyFrozen` (including grants added through a beneficiary after the freeze);
+- a made-up beneficiary that the owner never registered gets nothing;
+- `entries mentioning maria` matches whole names only (not "Mariano");
 - polymorphic `describe()` and `summarize()`.
 
 ## 4. Environment and how to run
